@@ -1,0 +1,40 @@
+import { NextRequest, NextResponse } from "next/server";
+import { assignOrderBundle } from "@/lib/services/orders";
+
+export const runtime = "nodejs";
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const body = await request.json();
+  const vehicleId = Number(body.vehicleId);
+  const deliveryRound = Number(body.deliveryRound) || 1;
+  const pickerId = body.pickerId ? Number(body.pickerId) : null;
+  const autoAssignTeam = body.autoAssignTeam !== false;
+  const ignoreWeightWarning = Boolean(body.ignoreWeightWarning);
+  const ignoreCraneRule = Boolean(body.ignoreCraneRule);
+
+  if (!vehicleId) {
+    return NextResponse.json({ error: "vehicleId is required" }, { status: 400 });
+  }
+
+  const result = await assignOrderBundle({
+    orderId: Number(id),
+    vehicleId,
+    deliveryRound,
+    pickerId,
+    autoAssignTeam,
+    ignoreWeightWarning,
+    ignoreCraneRule,
+  });
+
+  if (!result.ok) {
+    const status =
+      "isWeightWarning" in result && result.isWeightWarning ? 422 : 409;
+    return NextResponse.json(result, { status });
+  }
+
+  return NextResponse.json(result);
+}
