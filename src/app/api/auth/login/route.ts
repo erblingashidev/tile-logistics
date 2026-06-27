@@ -3,6 +3,7 @@ import {
   loginAdmin,
   loginEmployee,
   setSessionCookie,
+  employeeLoginRedirect,
 } from "@/lib/auth";
 
 export const runtime = "nodejs";
@@ -29,6 +30,11 @@ export async function POST(request: NextRequest) {
 
   await setSessionCookie(user);
 
+  const redirect =
+    user.role === "admin"
+      ? "/"
+      : employeeLoginRedirect(user.roles);
+
   return NextResponse.json({
     user: {
       role: user.role,
@@ -36,6 +42,6 @@ export async function POST(request: NextRequest) {
       employeeId: user.role === "employee" ? user.employeeId : undefined,
       roles: user.role === "employee" ? user.roles : undefined,
     },
-    redirect: user.role === "admin" ? "/" : "/portal",
+    redirect,
   });
 }

@@ -6,22 +6,33 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "next dev -H 127.0.0.1",
+    "dev": "USE_LOCAL_DATABASE=true next dev -H 127.0.0.1",
+    "dev:local": "USE_LOCAL_DATABASE=true next dev -H 127.0.0.1",
+    "dev:turso": "USE_LOCAL_DATABASE=false next dev -H 127.0.0.1",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "seed": "esbuild scripts/seed-demo-data.ts --bundle --platform=node --format=cjs --outfile=scripts/seed-demo-data.cjs --external:@libsql/client --external:fs --external:path --external:crypto && node scripts/seed-demo-data.cjs",
-    "reset-data": "tsx scripts/reset-demo-data.ts"
+    "seed": "esbuild scripts/seed.ts --bundle --platform=node --format=cjs --outfile=.tmp/seed.cjs --external:@libsql/client --external:fs --external:path --external:crypto && DB_TARGET=turso node .tmp/seed.cjs",
+    "seed:local": "esbuild scripts/seed.ts --bundle --platform=node --format=cjs --outfile=.tmp/seed.cjs --external:@libsql/client --external:fs --external:path --external:crypto && DB_TARGET=local node .tmp/seed.cjs",
+    "reset": "npm run reset:turso",
+    "reset:turso": "esbuild scripts/reset-data.ts --bundle --platform=node --format=cjs --outfile=.tmp/reset.cjs --external:@libsql/client --external:fs --external:path --external:crypto && DB_TARGET=turso node .tmp/reset.cjs",
+    "reset:turso:cli": "chmod +x scripts/setup-turso.sh && ./scripts/setup-turso.sh --wipe",
+    "reset:local": "esbuild scripts/reset-data.ts --bundle --platform=node --format=cjs --outfile=.tmp/reset.cjs --external:@libsql/client --external:fs --external:path --external:crypto && DB_TARGET=local node .tmp/reset.cjs",
+    "reset:all": "npm run reset:turso && npm run reset:local",
+    "turso:info": "chmod +x scripts/setup-turso.sh && ./scripts/setup-turso.sh --info"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",
     "better-sqlite3": "^12.11.1",
     "date-fns": "^4.4.0",
     "drizzle-orm": "^0.45.2",
+    "heic2any": "^0.0.4",
+    "html5-qrcode": "^2.3.8",
     "next": "16.2.9",
     "pdf-parse": "^1.1.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "tesseract.js": "^7.0.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

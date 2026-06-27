@@ -23,6 +23,8 @@
 # misc
 .DS_Store
 *.pem
+.cert/
+.tmp/
 
 # debug
 npm-debug.log*
@@ -46,3 +48,7 @@ data/
 *.db
 *.db-shm
 *.db-wal
+
+# generated seed bundles (legacy)
+scripts/*.cjs
+.tmp/

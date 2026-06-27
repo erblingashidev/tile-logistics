@@ -13,7 +13,9 @@ import {
   type SessionUser,
 } from "@/lib/auth/session";
 
+import type { EmployeeRole } from "@/lib/constants";
 import { getAdminCredentials } from "@/lib/config/auth-env";
+import { employeeLoginRedirect } from "@/lib/employee-categories";
 
 export async function loginAdmin(
   username: string,
@@ -81,5 +83,22 @@ export async function requireEmployee(): Promise<
   if (session.role !== "employee") throw new Error("Forbidden");
   return session;
 }
+
+export function employeeHasRole(
+  session: Extract<SessionUser, { role: "employee" }>,
+  role: EmployeeRole
+) {
+  return session.roles.includes(role);
+}
+
+export function employeeCanUseWms(
+  session: Extract<SessionUser, { role: "employee" }>
+) {
+  return session.roles.some((r) =>
+    (["warehouse_admin", "picker", "unloader", "maintainer"] as EmployeeRole[]).includes(r)
+  );
+}
+
+export { employeeLoginRedirect };
 
 export { hashPassword, verifySessionToken, SESSION_COOKIE };

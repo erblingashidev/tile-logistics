@@ -100,10 +100,26 @@ Then deploy — see [DEPLOY-NETLIFY.md](./DEPLOY-NETLIFY.md).
 
 ---
 
-## 4. Reset local test data
+## 4. Empty database (production)
 
 ```bash
-npm run reset-data
+npm run reset:turso          # uses TURSO_* from .env.local
+npm run reset:turso:cli      # same via Turso CLI (./scripts/setup-turso.sh --wipe)
+npm run reset:local          # optional: clear local SQLite file too
 ```
 
-This clears orders, vehicles, and employees on your **local** file database only (not Turso).
+Fresh Turso instance (new URL if the old database was deleted):
+
+```bash
+./scripts/setup-turso.sh --fresh
+```
+
+Copy the printed `TURSO_DATABASE_URL` and create a token into `.env.local` and Netlify.
+
+## 5. Demo data (optional, for testing)
+
+```bash
+npm run seed
+```
+
+Demo password for staff accounts: **demo123**.

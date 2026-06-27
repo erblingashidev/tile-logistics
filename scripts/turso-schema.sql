@@ -130,3 +130,80 @@ CREATE INDEX IF NOT EXISTS idx_order_staff_order ON order_employee_assignments(o
 CREATE INDEX IF NOT EXISTS idx_order_staff_employee ON order_employee_assignments(employee_id);
 CREATE INDEX IF NOT EXISTS idx_delivery_proofs_order ON delivery_proofs(order_id);
 CREATE INDEX IF NOT EXISTS idx_vehicle_round_defaults_vehicle ON vehicle_round_defaults(vehicle_id, delivery_round);
+
+CREATE TABLE IF NOT EXISTS products (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ean TEXT UNIQUE,
+  product_name TEXT,
+  tile_width_cm REAL,
+  tile_height_cm REAL,
+  tile_thickness_cm REAL,
+  pieces_per_pallet INTEGER,
+  m2_per_pallet REAL,
+  status TEXT NOT NULL DEFAULT 'draft',
+  source TEXT NOT NULL DEFAULT 'manual',
+  notes TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS warehouse_locations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT NOT NULL UNIQUE,
+  zone TEXT,
+  label TEXT,
+  notes TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS stock_balances (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  location_id INTEGER NOT NULL REFERENCES warehouse_locations(id) ON DELETE CASCADE,
+  quantity_m2 REAL NOT NULL DEFAULT 0,
+  full_pallets INTEGER NOT NULL DEFAULT 0,
+  loose_pieces INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL,
+  UNIQUE(product_id, location_id)
+);
+
+CREATE TABLE IF NOT EXISTS stock_movements (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  location_id INTEGER REFERENCES warehouse_locations(id) ON DELETE SET NULL,
+  movement_type TEXT NOT NULL,
+  quantity_m2 REAL NOT NULL DEFAULT 0,
+  full_pallets INTEGER NOT NULL DEFAULT 0,
+  loose_pieces INTEGER NOT NULL DEFAULT 0,
+  reference_type TEXT,
+  reference_id INTEGER,
+  employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+  notes TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS inventory_sessions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open',
+  started_at TEXT NOT NULL,
+  closed_at TEXT,
+  started_by_employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+  notes TEXT
+);
+
+CREATE TABLE IF NOT EXISTS inventory_lines (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id INTEGER NOT NULL REFERENCES inventory_sessions(id) ON DELETE CASCADE,
+  product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+  ean TEXT,
+  quantity_m2 REAL NOT NULL DEFAULT 0,
+  location_id INTEGER REFERENCES warehouse_locations(id) ON DELETE SET NULL,
+  employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+  notes TEXT,
+  counted_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_products_ean ON products(ean);
+CREATE INDEX IF NOT EXISTS idx_stock_balances_product ON stock_balances(product_id);
+CREATE INDEX IF NOT EXISTS idx_stock_movements_product ON stock_movements(product_id);

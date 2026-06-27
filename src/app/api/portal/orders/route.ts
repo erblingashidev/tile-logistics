@@ -10,7 +10,9 @@ export async function GET() {
   try {
     const session = await requireEmployee();
     const profile = await getEmployee(session.employeeId);
-    const orders = await listOrdersForEmployee(session.employeeId);
+    const orders = await listOrdersForEmployee(session.employeeId, {
+      roles: session.roles,
+    });
     const isDriver = session.roles.includes("driver");
     const truckGroups = isDriver
       ? await getDriverTruckGroups(session.employeeId)

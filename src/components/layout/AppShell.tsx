@@ -9,6 +9,8 @@ import { Button } from "@/components/ui";
 const nav = [
   { href: "/", label: "Dashboard" },
   { href: "/orders", label: "Orders" },
+  { href: "/dispatch", label: "Dispatch" },
+  { href: "/warehouse", label: "Warehouse" },
   { href: "/routes", label: "Routes" },
   { href: "/vehicles", label: "Vehicles" },
   { href: "/employees", label: "Employees" },
@@ -28,11 +30,20 @@ export function AppShell({
   const [userName, setUserName] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/auth/me")
-      .then((r) => (r.ok ? r.json() : null))
+    fetch("/api/auth/me", { cache: "no-store" })
+      .then((r) => {
+        if (!r.ok) {
+          const from = encodeURIComponent(pathname || "/");
+          router.replace(`/login?from=${from}`);
+          return null;
+        }
+        return r.json();
+      })
       .then((data) => setUserName(data?.user?.name ?? null))
-      .catch(() => setUserName(null));
-  }, []);
+      .catch(() => {
+        router.replace("/login");
+      });
+  }, [pathname, router]);
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });

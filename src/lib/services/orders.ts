@@ -23,6 +23,7 @@ import {
   autoAssignPickerTeam,
 } from "@/lib/services/vehicle-defaults";
 import { deleteDeliveryProofsForOrder } from "@/lib/services/delivery-proofs";
+import { registerProductsFromOrder } from "@/lib/services/products";
 import { validateTruckForOrder } from "@/lib/dispatch/validate-assignment";
 import {
   isOrderReadyToShip,
@@ -71,6 +72,7 @@ import {
 export interface OrderItemPayload {
   productType: "tile" | "adhesive";
   productName?: string;
+  productEan?: string;
   tileWidthCm?: number;
   tileHeightCm?: number;
   tileThicknessCm?: number;
@@ -95,6 +97,7 @@ export interface OrderPayload {
   deliveryTimePreference?: string | null;
   status?: string;
   notes?: string;
+  priority?: "normal" | "urgent";
   items: OrderItemPayload[];
 }
 
@@ -157,6 +160,7 @@ function enrichItems(items: OrderItemPayload[]) {
     return {
       productType: enriched.productType,
       productName: enriched.productName,
+      productEan: item.productEan?.trim() || null,
       tileWidthCm: enriched.tileWidthCm,
       tileHeightCm: enriched.tileHeightCm,
       tileThicknessCm: enriched.tileThicknessCm,
@@ -186,6 +190,10 @@ export async function listOrders(filters?: {
   pickerId?: number;
   driverId?: number;
   unassigned?: boolean;
+  vehicleId?: number;
+  deliveryRound?: number;
+  /** When vehicleId set: workspace = on truck + unassigned; on_truck; unassigned */
+  vehicleScope?: "workspace" | "on_truck" | "unassigned";
   status?: string;
   search?: string;
   hideDelivered?: boolean;
@@ -241,6 +249,31 @@ export async function listOrders(filters?: {
     conditions.push(
       sql`NOT EXISTS (SELECT 1 FROM assignments a WHERE a.order_id = ${orders.id})`
     );
+  }
+  if (filters?.vehicleId != null) {
+    const round = filters.deliveryRound ?? 1;
+    const scope = filters.vehicleScope ?? "workspace";
+    if (scope === "on_truck") {
+      conditions.push(
+        sql`EXISTS (SELECT 1 FROM assignments a WHERE a.order_id = ${orders.id} AND a.vehicle_id = ${filters.vehicleId} AND a.delivery_round = ${round})`
+      );
+    } else if (scope === "unassigned") {
+      conditions.push(
+        sql`NOT EXISTS (SELECT 1 FROM assignments a WHERE a.order_id = ${orders.id})`
+      );
+    } else {
+      conditions.push(
+        sql`(
+          NOT EXISTS (SELECT 1 FROM assignments a WHERE a.order_id = ${orders.id})
+          OR EXISTS (
+            SELECT 1 FROM assignments a
+            WHERE a.order_id = ${orders.id}
+              AND a.vehicle_id = ${filters.vehicleId}
+              AND a.delivery_round = ${round}
+          )
+        )`
+      );
+    }
   }
   if (filters?.search) {
     conditions.push(
@@ -441,6 +474,7 @@ export async function createOrder(payload: OrderPayload) {
         totalPallets: totals.totalPallets,
         totalWeightKg: totals.totalWeightKg,
         notes: payload.notes ?? null,
+        priority: payload.priority ?? "normal",
         createdAt: now,
         updatedAt: now,
       })
@@ -451,6 +485,8 @@ export async function createOrder(payload: OrderPayload) {
   for (const item of enriched) {
     await db.insert(orderItems).values({ orderId, ...item });
   }
+
+  await registerProductsFromOrder(orderId);
 
   await logActivity(
     "create",
@@ -527,6 +563,7 @@ export async function updateOrder(id: number, payload: OrderPayload) {
       totalPallets: totals.totalPallets,
       totalWeightKg: totals.totalWeightKg,
       notes: payload.notes ?? null,
+      priority: payload.priority ?? undefined,
       updatedAt: now,
     })
     .where(eq(orders.id, id));
@@ -711,6 +748,7 @@ export async function assignOrderToVehicle(
 
   for (const prev of previousAssignments) {
     await db.delete(assignments).where(eq(assignments.id, prev.id));
+    await syncTruckDriverOnAssignments(prev.vehicleId);
   }
 
   await db.insert(assignments).values({
@@ -1123,26 +1161,13 @@ export async function listOrderAssignmentTimeline(orderId: number) {
 
 export { updateOrderStatus } from "@/lib/services/order-status";
 
-/** Orders assigned to this employee (picker, driver, or other staff role). */
-export async function listOrdersForEmployee(employeeId: number) {
+/** Orders visible in the employee portal — role-aware. */
+export async function listOrdersForEmployee(
+  employeeId: number,
+  options?: { roles?: EmployeeRole[] }
+) {
+  const roles = options?.roles ?? [];
   const db = await getDb();
-  const staffOrderIds = (
-    await dbAll(
-      db
-        .select({ orderId: orderEmployeeAssignments.orderId })
-        .from(orderEmployeeAssignments)
-        .where(eq(orderEmployeeAssignments.employeeId, employeeId))
-    )
-  ).map((r) => r.orderId);
-
-  const driverOrderIds = (
-    await dbAll(
-      db
-        .select({ orderId: assignments.orderId })
-        .from(assignments)
-        .where(eq(assignments.driverEmployeeId, employeeId))
-    )
-  ).map((r) => r.orderId);
 
   const employee = await dbOne(
     db
@@ -1151,21 +1176,74 @@ export async function listOrdersForEmployee(employeeId: number) {
       .where(eq(employees.id, employeeId))
   );
 
-  let vehicleOrderIds: number[] = [];
-  if (employee?.assignedVehicleId) {
-    vehicleOrderIds = (
+  let ids: number[] = [];
+
+  // Drivers see only their assigned truck (unless admin changes their vehicle).
+  if (roles.includes("driver")) {
+    if (employee?.assignedVehicleId) {
+      ids = (
+        await dbAll(
+          db
+            .select({ orderId: assignments.orderId })
+            .from(assignments)
+            .where(eq(assignments.vehicleId, employee.assignedVehicleId))
+        )
+      ).map((r) => r.orderId);
+    } else {
+      ids = (
+        await dbAll(
+          db
+            .select({ orderId: assignments.orderId })
+            .from(assignments)
+            .where(eq(assignments.driverEmployeeId, employeeId))
+        )
+      ).map((r) => r.orderId);
+    }
+  } else if (roles.some((r) => r === "picker" || r === "unloader")) {
+    ids = (
+      await dbAll(
+        db
+          .select({ orderId: orderEmployeeAssignments.orderId })
+          .from(orderEmployeeAssignments)
+          .where(eq(orderEmployeeAssignments.employeeId, employeeId))
+      )
+    ).map((r) => r.orderId);
+  } else {
+    const staffOrderIds = (
+      await dbAll(
+        db
+          .select({ orderId: orderEmployeeAssignments.orderId })
+          .from(orderEmployeeAssignments)
+          .where(eq(orderEmployeeAssignments.employeeId, employeeId))
+      )
+    ).map((r) => r.orderId);
+
+    const driverOrderIds = (
       await dbAll(
         db
           .select({ orderId: assignments.orderId })
           .from(assignments)
-          .where(eq(assignments.vehicleId, employee.assignedVehicleId))
+          .where(eq(assignments.driverEmployeeId, employeeId))
       )
     ).map((r) => r.orderId);
+
+    let vehicleOrderIds: number[] = [];
+    if (employee?.assignedVehicleId) {
+      vehicleOrderIds = (
+        await dbAll(
+          db
+            .select({ orderId: assignments.orderId })
+            .from(assignments)
+            .where(eq(assignments.vehicleId, employee.assignedVehicleId))
+        )
+      ).map((r) => r.orderId);
+    }
+
+    ids = [
+      ...new Set([...staffOrderIds, ...driverOrderIds, ...vehicleOrderIds]),
+    ];
   }
 
-  const ids = [
-    ...new Set([...staffOrderIds, ...driverOrderIds, ...vehicleOrderIds]),
-  ];
   if (ids.length === 0) return [];
 
   const orderList = await Promise.all(ids.map((id) => getOrder(id)));
@@ -1425,6 +1503,117 @@ export async function assignRouteToVehicle(
     }
   }
   return results;
+}
+
+/** Move one or more orders to another truck (e.g. breakdown). Keeps picker by default. */
+export async function transferOrdersToVehicle(input: {
+  orderIds: number[];
+  vehicleId: number;
+  deliveryRound: number;
+  preservePicker?: boolean;
+  ignoreWeightWarning?: boolean;
+  ignoreCraneRule?: boolean;
+}) {
+  const db = await getDb();
+  const vehicle = await dbOne(
+    db.select().from(vehicles).where(eq(vehicles.id, input.vehicleId))
+  );
+  if (!vehicle) {
+    return { ok: false as const, error: "Vehicle not found", results: [] };
+  }
+
+  const results: Array<{
+    orderId: number;
+    ok: boolean;
+    error?: string;
+    requiresCrane?: boolean;
+    isWeightWarning?: boolean;
+    invoiceNumber?: string;
+  }> = [];
+
+  for (const orderId of input.orderIds) {
+    const order = await getOrder(orderId);
+    if (!order) {
+      results.push({ orderId, ok: false, error: "Order not found" });
+      continue;
+    }
+    if (order.status === "delivered" || order.status === "cancelled") {
+      results.push({
+        orderId,
+        ok: false,
+        error: `Cannot transfer ${order.status} order`,
+        invoiceNumber: order.invoiceNumber,
+      });
+      continue;
+    }
+
+    const fromVehicle = order.assignment?.vehicleName ?? "previous truck";
+    const pickerId =
+      input.preservePicker !== false
+        ? (order.staff?.picker?.employeeId ?? null)
+        : null;
+
+    const result = await assignOrderBundle({
+      orderId,
+      vehicleId: input.vehicleId,
+      deliveryRound: input.deliveryRound,
+      pickerId,
+      autoAssignTeam: pickerId == null,
+      ignoreWeightWarning: input.ignoreWeightWarning ?? false,
+      ignoreCraneRule: input.ignoreCraneRule ?? false,
+    });
+
+    if (!result.ok) {
+      results.push({
+        orderId,
+        ok: false,
+        error: "error" in result ? result.error : "Transfer failed",
+        requiresCrane:
+          "requiresCrane" in result ? result.requiresCrane : undefined,
+        isWeightWarning:
+          "isWeightWarning" in result ? result.isWeightWarning : undefined,
+        invoiceNumber: order.invoiceNumber,
+      });
+      if ("isWeightWarning" in result && result.isWeightWarning) {
+        break;
+      }
+      if (!("requiresCrane" in result && result.requiresCrane)) {
+        break;
+      }
+      continue;
+    }
+
+    await logActivity(
+      "transfer",
+      "order",
+      orderId,
+      `${order.invoiceNumber} transferred from ${fromVehicle} to ${vehicle.name} (${vehicle.plateNumber}) — round ${input.deliveryRound}.`,
+      {
+        category: "deliveries",
+        details: {
+          invoiceNumber: order.invoiceNumber,
+          fromVehicle,
+          vehicleId: input.vehicleId,
+          vehicleName: vehicle.name,
+          deliveryRound: input.deliveryRound,
+        },
+      }
+    );
+
+    results.push({
+      orderId,
+      ok: true,
+      invoiceNumber: order.invoiceNumber,
+    });
+  }
+
+  const transferred = results.filter((r) => r.ok).length;
+  return {
+    ok: transferred === input.orderIds.length,
+    transferred,
+    results,
+    vehicleName: vehicle.name,
+  };
 }
 
 export {

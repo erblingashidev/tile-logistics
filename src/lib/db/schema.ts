@@ -22,6 +22,7 @@ export const orders = sqliteTable("orders", {
   totalPallets: integer("total_pallets").notNull().default(0),
   totalWeightKg: real("total_weight_kg").notNull().default(0),
   notes: text("notes"),
+  priority: text("priority").notNull().default("normal"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
@@ -33,6 +34,7 @@ export const orderItems = sqliteTable("order_items", {
     .references(() => orders.id, { onDelete: "cascade" }),
   productType: text("product_type").notNull(),
   productName: text("product_name"),
+  productEan: text("product_ean"),
   tileWidthCm: real("tile_width_cm"),
   tileHeightCm: real("tile_height_cm"),
   tileThicknessCm: real("tile_thickness_cm"),
@@ -137,4 +139,99 @@ export const vehicleRoundDefaults = sqliteTable("vehicle_round_defaults", {
     { onDelete: "set null" }
   ),
   updatedAt: text("updated_at").notNull(),
+});
+
+/** Product catalog — learned from orders, receiving, or inventory. */
+export const products = sqliteTable("products", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  ean: text("ean").unique(),
+  productName: text("product_name"),
+  tileWidthCm: real("tile_width_cm"),
+  tileHeightCm: real("tile_height_cm"),
+  tileThicknessCm: real("tile_thickness_cm"),
+  piecesPerPallet: integer("pieces_per_pallet"),
+  m2PerPallet: real("m2_per_pallet"),
+  status: text("status").notNull().default("draft"),
+  source: text("source").notNull().default("manual"),
+  notes: text("notes"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const warehouseLocations = sqliteTable("warehouse_locations", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  code: text("code").notNull().unique(),
+  zone: text("zone"),
+  label: text("label"),
+  notes: text("notes"),
+  createdAt: text("created_at").notNull(),
+});
+
+/** Current stock per product + bin location. */
+export const stockBalances = sqliteTable("stock_balances", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  productId: integer("product_id")
+    .notNull()
+    .references(() => products.id, { onDelete: "cascade" }),
+  locationId: integer("location_id")
+    .notNull()
+    .references(() => warehouseLocations.id, { onDelete: "cascade" }),
+  quantityM2: real("quantity_m2").notNull().default(0),
+  fullPallets: integer("full_pallets").notNull().default(0),
+  loosePieces: integer("loose_pieces").notNull().default(0),
+  updatedAt: text("updated_at").notNull(),
+});
+
+export const stockMovements = sqliteTable("stock_movements", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  productId: integer("product_id")
+    .notNull()
+    .references(() => products.id, { onDelete: "cascade" }),
+  locationId: integer("location_id").references(() => warehouseLocations.id, {
+    onDelete: "set null",
+  }),
+  movementType: text("movement_type").notNull(),
+  quantityM2: real("quantity_m2").notNull().default(0),
+  fullPallets: integer("full_pallets").notNull().default(0),
+  loosePieces: integer("loose_pieces").notNull().default(0),
+  referenceType: text("reference_type"),
+  referenceId: integer("reference_id"),
+  employeeId: integer("employee_id").references(() => employees.id, {
+    onDelete: "set null",
+  }),
+  notes: text("notes"),
+  createdAt: text("created_at").notNull(),
+});
+
+export const inventorySessions = sqliteTable("inventory_sessions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  status: text("status").notNull().default("open"),
+  startedAt: text("started_at").notNull(),
+  closedAt: text("closed_at"),
+  startedByEmployeeId: integer("started_by_employee_id").references(
+    () => employees.id,
+    { onDelete: "set null" }
+  ),
+  notes: text("notes"),
+});
+
+export const inventoryLines = sqliteTable("inventory_lines", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  sessionId: integer("session_id")
+    .notNull()
+    .references(() => inventorySessions.id, { onDelete: "cascade" }),
+  productId: integer("product_id").references(() => products.id, {
+    onDelete: "set null",
+  }),
+  ean: text("ean"),
+  quantityM2: real("quantity_m2").notNull().default(0),
+  locationId: integer("location_id").references(() => warehouseLocations.id, {
+    onDelete: "set null",
+  }),
+  employeeId: integer("employee_id").references(() => employees.id, {
+    onDelete: "set null",
+  }),
+  notes: text("notes"),
+  countedAt: text("counted_at").notNull(),
 });

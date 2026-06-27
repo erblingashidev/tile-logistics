@@ -276,6 +276,11 @@ export function OrderAssignmentPanel({
       >
         {hasAssignment ? "Save assignment" : "Assign truck + picker"}
       </Button>
+      {hasAssignment && draft.vehicleId && (
+        <p className="text-[10px] leading-snug text-amber-800">
+          Changing truck here moves this order to another vehicle (keeps picker).
+        </p>
+      )}
 
       {!hasAssignment && (
         <Button

@@ -290,13 +290,11 @@ export async function assertTruckReadyForDriverDeparture(orderId: number): Promi
   return { ok: true, truck };
 }
 
-/** Truck groups for a driver (vehicle link + assignment records). */
+/** Truck groups for a driver — only their assigned vehicle. */
 export async function getDriverTruckGroups(
   driverEmployeeId: number
 ): Promise<TruckLoadStatus[]> {
   const db = await getDb();
-  const keys = new Set<string>();
-
   const employee = await dbOne(
     db
       .select({ assignedVehicleId: employees.assignedVehicleId })
@@ -304,56 +302,41 @@ export async function getDriverTruckGroups(
       .where(eq(employees.id, driverEmployeeId))
   );
 
-  const fromDriverColumn = await dbAll(
-    db
-      .select({
-        vehicleId: assignments.vehicleId,
-        deliveryRound: assignments.deliveryRound,
-      })
-      .from(assignments)
-      .where(eq(assignments.driverEmployeeId, driverEmployeeId))
-  );
-
-  for (const row of fromDriverColumn) {
-    keys.add(`${row.vehicleId}-${row.deliveryRound}`);
-  }
-
-  if (employee?.assignedVehicleId) {
-    const onAssignedTruck = await dbAll(
+  const vehicleId = employee?.assignedVehicleId;
+  if (!vehicleId) {
+    const fromDriverColumn = await dbAll(
       db
-        .select({ deliveryRound: assignments.deliveryRound })
+        .select({
+          vehicleId: assignments.vehicleId,
+          deliveryRound: assignments.deliveryRound,
+        })
         .from(assignments)
-        .where(eq(assignments.vehicleId, employee.assignedVehicleId))
+        .where(eq(assignments.driverEmployeeId, driverEmployeeId))
     );
-    for (const row of onAssignedTruck) {
-      keys.add(`${employee.assignedVehicleId}-${row.deliveryRound}`);
-    }
+    const keys = new Set(
+      fromDriverColumn.map((r) => `${r.vehicleId}-${r.deliveryRound}`)
+    );
+    const trucks = await Promise.all(
+      [...keys].map(async (key) => {
+        const [vid, deliveryRound] = key.split("-").map(Number);
+        return getTruckLoadStatus(vid, deliveryRound);
+      })
+    );
+    return trucks
+      .filter((t) => t.totalOrders > 0)
+      .sort((a, b) => a.deliveryRound - b.deliveryRound);
   }
 
-  const staffDriverOrders = await dbAll(
+  const onAssignedTruck = await dbAll(
     db
-      .select({ orderId: orderEmployeeAssignments.orderId })
-      .from(orderEmployeeAssignments)
-      .where(
-        and(
-          eq(orderEmployeeAssignments.employeeId, driverEmployeeId),
-          eq(orderEmployeeAssignments.role, "driver")
-        )
-      )
+      .select({ deliveryRound: assignments.deliveryRound })
+      .from(assignments)
+      .where(eq(assignments.vehicleId, vehicleId))
   );
 
-  for (const { orderId } of staffDriverOrders) {
-    const assignment = await getTruckAssignmentForOrder(orderId);
-    if (assignment) {
-      keys.add(`${assignment.vehicleId}-${assignment.deliveryRound}`);
-    }
-  }
-
+  const rounds = [...new Set(onAssignedTruck.map((r) => r.deliveryRound))];
   const trucks = await Promise.all(
-    [...keys].map(async (key) => {
-      const [vehicleId, deliveryRound] = key.split("-").map(Number);
-      return getTruckLoadStatus(vehicleId, deliveryRound);
-    })
+    rounds.map((deliveryRound) => getTruckLoadStatus(vehicleId, deliveryRound))
   );
 
   return trucks

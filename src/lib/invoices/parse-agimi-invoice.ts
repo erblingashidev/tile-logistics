@@ -308,6 +308,7 @@ export function parseAgimiInvoice(rawText: string): ParsedAgimiInvoice {
     items.push({
       productType: "tile",
       productName: parseProductName(text, productEan, sizeLabel),
+      productEan: productEan ?? undefined,
       tileWidthCm: tileSize.w,
       tileHeightCm: tileSize.h,
       quantityM2: quantityM2,
@@ -316,6 +317,7 @@ export function parseAgimiInvoice(rawText: string): ParsedAgimiInvoice {
     items.push({
       productType: "tile",
       productName: parseProductName(text, productEan, sizeLabel),
+      productEan: productEan ?? undefined,
       tileWidthCm: 60,
       tileHeightCm: 120,
       quantityM2: quantityM2,

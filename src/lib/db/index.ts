@@ -122,7 +122,17 @@ async function runMigrations(client: Client) {
     "delivery_time_preference TEXT NOT NULL DEFAULT 'flexible'",
     orderCols
   );
+  await addColumnIfMissing(
+    client,
+    "orders",
+    "priority",
+    "priority TEXT NOT NULL DEFAULT 'normal'",
+    orderCols
+  );
 
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_orders_priority ON orders(priority)"
+  );
   await client.execute(
     "CREATE INDEX IF NOT EXISTS idx_orders_requested_delivery ON orders(requested_delivery_date)"
   );
@@ -160,6 +170,104 @@ async function runMigrations(client: Client) {
   );
   await client.execute(
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_employees_username ON employees(username) WHERE username IS NOT NULL"
+  );
+
+  const orderItemCols2 = await tableColumns(client, "order_items");
+  await addColumnIfMissing(
+    client,
+    "order_items",
+    "product_ean",
+    "product_ean TEXT",
+    orderItemCols2
+  );
+
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS products (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ean TEXT UNIQUE,
+      product_name TEXT,
+      tile_width_cm REAL,
+      tile_height_cm REAL,
+      tile_thickness_cm REAL,
+      pieces_per_pallet INTEGER,
+      m2_per_pallet REAL,
+      status TEXT NOT NULL DEFAULT 'draft',
+      source TEXT NOT NULL DEFAULT 'manual',
+      notes TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS warehouse_locations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      code TEXT NOT NULL UNIQUE,
+      zone TEXT,
+      label TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS stock_balances (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+      location_id INTEGER NOT NULL REFERENCES warehouse_locations(id) ON DELETE CASCADE,
+      quantity_m2 REAL NOT NULL DEFAULT 0,
+      full_pallets INTEGER NOT NULL DEFAULT 0,
+      loose_pieces INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL,
+      UNIQUE(product_id, location_id)
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS stock_movements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+      location_id INTEGER REFERENCES warehouse_locations(id) ON DELETE SET NULL,
+      movement_type TEXT NOT NULL,
+      quantity_m2 REAL NOT NULL DEFAULT 0,
+      full_pallets INTEGER NOT NULL DEFAULT 0,
+      loose_pieces INTEGER NOT NULL DEFAULT 0,
+      reference_type TEXT,
+      reference_id INTEGER,
+      employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+      notes TEXT,
+      created_at TEXT NOT NULL
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS inventory_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open',
+      started_at TEXT NOT NULL,
+      closed_at TEXT,
+      started_by_employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+      notes TEXT
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS inventory_lines (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER NOT NULL REFERENCES inventory_sessions(id) ON DELETE CASCADE,
+      product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+      ean TEXT,
+      quantity_m2 REAL NOT NULL DEFAULT 0,
+      location_id INTEGER REFERENCES warehouse_locations(id) ON DELETE SET NULL,
+      employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+      notes TEXT,
+      counted_at TEXT NOT NULL
+    )
+  `);
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_products_ean ON products(ean)"
+  );
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_stock_balances_product ON stock_balances(product_id)"
+  );
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_stock_movements_product ON stock_movements(product_id)"
   );
 }
 

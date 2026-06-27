@@ -50,6 +50,9 @@ export function assertProductionSecrets(): void {
 }
 
 export function getTursoConfig(): { url: string; authToken: string } | null {
+  if (process.env.USE_LOCAL_DATABASE === "true") {
+    return null;
+  }
   const url = process.env.TURSO_DATABASE_URL?.trim();
   const authToken = process.env.TURSO_AUTH_TOKEN?.trim();
   if (!url) return null;

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireApiSession } from "@/lib/auth/api-guard";
 import {
   listOrders,
   createOrder,
@@ -8,6 +9,9 @@ import {
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
+  const auth = await requireApiSession();
+  if (!auth.ok) return auth.response;
+
   const sp = request.nextUrl.searchParams;
   const orders = await listOrders({
     dateFrom: sp.get("dateFrom") ?? undefined,
@@ -28,6 +32,16 @@ export async function GET(request: NextRequest) {
     employeeId: sp.get("employeeId") ? Number(sp.get("employeeId")) : undefined,
     pickerId: sp.get("pickerId") ? Number(sp.get("pickerId")) : undefined,
     driverId: sp.get("driverId") ? Number(sp.get("driverId")) : undefined,
+    vehicleId: sp.get("vehicleId") ? Number(sp.get("vehicleId")) : undefined,
+    deliveryRound: sp.get("deliveryRound")
+      ? Number(sp.get("deliveryRound"))
+      : undefined,
+    vehicleScope:
+      sp.get("vehicleScope") === "on_truck" ||
+      sp.get("vehicleScope") === "unassigned" ||
+      sp.get("vehicleScope") === "workspace"
+        ? (sp.get("vehicleScope") as "workspace" | "on_truck" | "unassigned")
+        : undefined,
     unassigned: sp.get("unassigned") === "true",
     status: sp.get("status") ?? undefined,
     search: sp.get("search") ?? undefined,
@@ -41,6 +55,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireApiSession();
+  if (!auth.ok) return auth.response;
+
   const body = (await request.json()) as OrderPayload;
   if (!body.invoiceNumber || !body.customerName) {
     return NextResponse.json(

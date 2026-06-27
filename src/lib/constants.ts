@@ -33,13 +33,52 @@ export const EMPLOYEE_STATUSES = [
 
 export type EmployeeStatus = (typeof EMPLOYEE_STATUSES)[number];
 
+/** Staff groups shown on the Employees page. */
+export const EMPLOYEE_CATEGORIES = [
+  {
+    id: "showroom",
+    label: "Showroom",
+    description: "Showroom floor — customer-facing",
+    roles: ["showroom_picker"] as const,
+  },
+  {
+    id: "sales",
+    label: "Sales",
+    description: "Office & field sales — orders and invoices",
+    roles: ["sales_admin", "sales_agent"] as const,
+  },
+  {
+    id: "warehouse",
+    label: "Warehouse",
+    description: "Depot — loading, trucks, stock (Albanian mobile app)",
+    roles: [
+      "warehouse_admin",
+      "picker",
+      "driver",
+      "unloader",
+      "maintainer",
+    ] as const,
+  },
+  {
+    id: "facility",
+    label: "Facility",
+    description: "Cleaning & general site",
+    roles: ["cleaner"] as const,
+  },
+] as const;
+
+export type EmployeeCategoryId = (typeof EMPLOYEE_CATEGORIES)[number]["id"];
+
 export const EMPLOYEE_ROLES = [
-  { id: "picker", label: "Picker (loader)" },
-  { id: "driver", label: "Driver" },
-  { id: "showroom_picker", label: "Picker for showroom" },
-  { id: "cleaner", label: "Cleaner" },
-  { id: "maintainer", label: "Maintainer" },
-  { id: "unloader", label: "Unloader" },
+  { id: "showroom_picker", label: "Showroom picker", category: "showroom" as const },
+  { id: "sales_admin", label: "Sales admin (office)", category: "sales" as const },
+  { id: "sales_agent", label: "Sales agent (field)", category: "sales" as const },
+  { id: "warehouse_admin", label: "Warehouse admin", category: "warehouse" as const },
+  { id: "picker", label: "Picker (loader)", category: "warehouse" as const },
+  { id: "driver", label: "Driver", category: "warehouse" as const },
+  { id: "unloader", label: "Unloader / receiver", category: "warehouse" as const },
+  { id: "maintainer", label: "Maintainer", category: "warehouse" as const },
+  { id: "cleaner", label: "Cleaner", category: "facility" as const },
 ] as const;
 
 export type EmployeeRole = (typeof EMPLOYEE_ROLES)[number]["id"];

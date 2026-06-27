@@ -18,6 +18,9 @@ import { listOrders, getVehicleLoad } from "@/lib/services/orders";
 import { getDriverForVehicle } from "@/lib/services/employees";
 import { analyzeOrderCargo } from "@/lib/dispatch/large-tiles";
 import { isOrderReadyToShip } from "@/lib/delivery-schedule";
+import { isOrderUrgent } from "@/lib/order-priority";
+import { recommendUrgentPlacement } from "@/lib/dispatch/urgent-routing";
+import { pickerOnTruckRound } from "@/lib/dispatch/picker-resolution";
 import {
   type DispatchVehicle,
   estimateRouteCostKm,
@@ -42,6 +45,7 @@ export interface DispatchOrderStop {
   totalM2: number;
   requiresCrane: boolean;
   cargoReasons: string[];
+  priority: "normal" | "urgent";
 }
 
 export interface DispatchRecommendation {
@@ -121,9 +125,12 @@ async function pickerWorkload(pickerId: number): Promise<number> {
 }
 
 async function resolvePicker(
-  _vehicleId: number,
-  _deliveryRound: number
+  vehicleId: number,
+  deliveryRound: number
 ): Promise<{ id: number | null; name: string | null }> {
+  const onRoute = await pickerOnTruckRound(vehicleId, deliveryRound);
+  if (onRoute) return onRoute;
+
   const db = await getDb();
 
   const rows = await dbAll(
@@ -180,6 +187,7 @@ function toStop(
     totalM2: order.totalM2,
     requiresCrane: cargo.requiresCrane,
     cargoReasons: cargo.reasons,
+    priority: isOrderUrgent(order) ? "urgent" : "normal",
   };
 }
 
@@ -450,9 +458,58 @@ export async function generateDispatchPlan(options?: {
   }
 
   const craneStops = stops.filter((s) => s.requiresCrane);
-  const standardStops = stops.filter((s) => !s.requiresCrane);
+  let standardStops = stops.filter((s) => !s.requiresCrane);
+  const plannedUrgentIds = new Set<number>();
 
   const recommendations: DispatchRecommendation[] = [];
+
+  for (const stop of standardStops.filter((s) => s.priority === "urgent")) {
+    const placement = await recommendUrgentPlacement(stop.id);
+    if (!placement.ok) {
+      skipped.push({
+        orderId: stop.id,
+        invoiceNumber: stop.invoiceNumber,
+        reason: placement.error,
+      });
+      continue;
+    }
+    const best = placement.options[0];
+    if (best.deliveryRound !== deliveryRound) {
+      skipped.push({
+        orderId: stop.id,
+        invoiceNumber: stop.invoiceNumber,
+        reason: `Urgent: best fit is ${best.vehicleName} · round ${best.deliveryRound} (see Dispatch board)`,
+      });
+      continue;
+    }
+    const vehicle = fleet.find((v) => v.id === best.vehicleId);
+    if (!vehicle) continue;
+    const rec = await buildRecommendation([stop], vehicle, deliveryRound, fleet);
+    if (!rec) {
+      skipped.push({
+        orderId: stop.id,
+        invoiceNumber: stop.invoiceNumber,
+        reason: "Urgent: no capacity on suggested truck",
+      });
+      continue;
+    }
+    rec.reasons = [`Urgent — ${best.reasons[0]}`, ...rec.reasons];
+    if (best.almostReady) {
+      rec.warnings.push("Adds to truck almost ready to leave");
+    }
+    recommendations.push(rec);
+    plannedUrgentIds.add(stop.id);
+    const idx = fleet.findIndex((v) => v.id === rec.vehicleId);
+    if (idx >= 0) {
+      fleet[idx] = simulateVehicleAfterAssign(
+        fleet[idx],
+        rec.totalPallets,
+        rec.totalWeightKg
+      );
+    }
+  }
+
+  standardStops = standardStops.filter((s) => !plannedUrgentIds.has(s.id));
 
   for (const stop of craneStops) {
     const rec = await buildRecommendation(
