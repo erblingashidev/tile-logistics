@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireApiSessionNoSalesWrite } from "@/lib/auth/api-guard";
 import {
   assignEmployeeToOrder,
   unassignEmployeeFromOrder,
@@ -12,6 +13,9 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireApiSessionNoSalesWrite(request.method);
+  if (!auth.ok) return auth.response;
+
   const { id } = await params;
   const body = await request.json();
   const employeeId = Number(body.employeeId);
@@ -35,6 +39,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireApiSessionNoSalesWrite(request.method);
+  if (!auth.ok) return auth.response;
+
   const { id } = await params;
   const role = request.nextUrl.searchParams.get("role") as EmployeeRole;
   if (!role) {

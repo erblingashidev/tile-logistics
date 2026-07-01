@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireApiSessionNoSalesWrite } from "@/lib/auth/api-guard";
 import { clearOrderAssignments } from "@/lib/services/orders";
 import type { AssignmentClearScope } from "@/lib/services/orders";
 
@@ -8,6 +9,9 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireApiSessionNoSalesWrite(request.method);
+  if (!auth.ok) return auth.response;
+
   const { id } = await params;
   const body = await request.json().catch(() => ({}));
   const force = Boolean(body.force);

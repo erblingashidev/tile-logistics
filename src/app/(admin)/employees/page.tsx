@@ -32,12 +32,19 @@ interface Employee {
   username?: string | null;
   hasLogin?: boolean;
   notes?: string | null;
+  warehouseZones?: string[];
   assignedVehicle?: {
     id: number;
     name: string;
     plateNumber: string;
   } | null;
   assignments: EmployeeAssignment[];
+}
+
+interface WarehouseZoneOption {
+  zone: string;
+  leader: { id: number; name: string } | null;
+  locationCount: number;
 }
 
 interface VehicleOption {
@@ -57,6 +64,7 @@ const statusTone: Record<string, "green" | "amber" | "blue" | "red" | "slate"> =
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [vehicles, setVehicles] = useState<VehicleOption[]>([]);
+  const [warehouseZones, setWarehouseZones] = useState<WarehouseZoneOption[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({
@@ -64,18 +72,21 @@ export default function EmployeesPage() {
     status: "available",
     roles: [] as EmployeeRole[],
     assignedVehicleId: "" as string,
+    warehouseZones: [] as string[],
     username: "",
     password: "",
     notes: "",
   });
 
   const load = useCallback(async () => {
-    const [employeesRes, vehiclesRes] = await Promise.all([
+    const [employeesRes, vehiclesRes, zonesRes] = await Promise.all([
       fetch("/api/employees"),
       fetch("/api/vehicles"),
+      fetch("/api/warehouse/zones"),
     ]);
     setEmployees(await employeesRes.json());
     setVehicles(await vehiclesRes.json());
+    setWarehouseZones(await zonesRes.json());
   }, []);
 
   useEffect(() => {
@@ -83,12 +94,38 @@ export default function EmployeesPage() {
   }, [load]);
 
   function toggleRole(role: EmployeeRole) {
+    setForm((f) => {
+      const roles = f.roles.includes(role)
+        ? f.roles.filter((r) => r !== role)
+        : [...f.roles, role];
+      return {
+        ...f,
+        roles,
+        warehouseZones: roles.includes("group_leader") ? f.warehouseZones : [],
+      };
+    });
+  }
+
+  function toggleWarehouseZone(zone: string) {
     setForm((f) => ({
       ...f,
-      roles: f.roles.includes(role)
-        ? f.roles.filter((r) => r !== role)
-        : [...f.roles, role],
+      warehouseZones: f.warehouseZones.includes(zone)
+        ? f.warehouseZones.filter((z) => z !== zone)
+        : [...f.warehouseZones, zone],
     }));
+  }
+
+  function resetForm() {
+    setForm({
+      name: "",
+      status: "available",
+      roles: [],
+      assignedVehicleId: "",
+      warehouseZones: [],
+      username: "",
+      password: "",
+      notes: "",
+    });
   }
 
   async function saveEmployee(e: React.FormEvent) {
@@ -108,6 +145,9 @@ export default function EmployeesPage() {
           form.roles.includes("driver") && form.assignedVehicleId
             ? Number(form.assignedVehicleId)
             : null,
+        warehouseZones: form.roles.includes("group_leader")
+          ? form.warehouseZones
+          : [],
         username: form.username.trim() || null,
         ...(form.password.trim()
           ? { password: form.password.trim() }
@@ -116,15 +156,7 @@ export default function EmployeesPage() {
     });
     setShowForm(false);
     setEditingId(null);
-    setForm({
-      name: "",
-      status: "available",
-      roles: [],
-      assignedVehicleId: "",
-      username: "",
-      password: "",
-      notes: "",
-    });
+    resetForm();
     load();
   }
 
@@ -135,6 +167,7 @@ export default function EmployeesPage() {
       status: e.status,
       roles: e.roles,
       assignedVehicleId: e.assignedVehicle ? String(e.assignedVehicle.id) : "",
+      warehouseZones: e.warehouseZones ?? [],
       username: e.username ?? "",
       password: "",
       notes: e.notes ?? "",
@@ -158,7 +191,7 @@ export default function EmployeesPage() {
   }
 
   return (
-    <AppShell title="Employees">
+    <AppShell title="Employees" description="Roles, contact details, and portal access.">
       <div className="mb-4">
         <Button onClick={() => setShowForm(true)}>Add employee</Button>
       </div>
@@ -197,7 +230,6 @@ export default function EmployeesPage() {
               {EMPLOYEE_CATEGORIES.map((cat) => (
                 <div key={cat.id}>
                   <p className="text-sm font-semibold text-zinc-800">{cat.label}</p>
-                  <p className="text-xs text-zinc-500">{cat.description}</p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {EMPLOYEE_ROLES.filter((r) => r.category === cat.id).map(
                       (r) => (
@@ -251,6 +283,52 @@ export default function EmployeesPage() {
                 ))}
               </Select>
             )}
+            {form.roles.includes("group_leader") && (
+              <div>
+                <p className="mb-2 text-xs font-medium text-zinc-600">
+                  Warehouse zones (sections)
+                </p>
+                <p className="mb-3 text-xs text-zinc-500">
+                  Each zone can have one group leader. Assigning a zone here moves
+                  it from another leader if needed.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {warehouseZones.map((option) => {
+                    const takenByOther =
+                      option.leader &&
+                      option.leader.id !== editingId &&
+                      !form.warehouseZones.includes(option.zone);
+                    return (
+                      <label
+                        key={option.zone}
+                        className={`flex cursor-pointer items-center gap-2 rounded border px-3 py-1.5 text-sm ${
+                          form.warehouseZones.includes(option.zone)
+                            ? "border-zinc-900 bg-zinc-50"
+                            : "border-zinc-200"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={form.warehouseZones.includes(option.zone)}
+                          onChange={() => toggleWarehouseZone(option.zone)}
+                        />
+                        <span>
+                          {option.zone}
+                          {option.locationCount > 0
+                            ? ` · ${option.locationCount} bins`
+                            : ""}
+                        </span>
+                        {takenByOther && (
+                          <span className="text-xs text-amber-700">
+                            ({option.leader!.name})
+                          </span>
+                        )}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <div className="flex gap-2">
               <Button type="submit" disabled={form.roles.length === 0}>
                 Save
@@ -261,6 +339,7 @@ export default function EmployeesPage() {
                 onClick={() => {
                   setShowForm(false);
                   setEditingId(null);
+                  resetForm();
                 }}
               >
                 Cancel
@@ -271,7 +350,7 @@ export default function EmployeesPage() {
       )}
 
       {employees.length === 0 ? (
-        <EmptyState title="No employees yet — add your team members." />
+        <EmptyState title="No employees yet." />
       ) : (
         <div className="space-y-8">
           {EMPLOYEE_CATEGORIES.map((cat) => {
@@ -283,7 +362,6 @@ export default function EmployeesPage() {
               <section key={cat.id}>
                 <div className="mb-3">
                   <h2 className="text-sm font-semibold text-zinc-900">{cat.label}</h2>
-                  <p className="text-xs text-zinc-500">{cat.description}</p>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {group.map((e) => (
@@ -334,6 +412,12 @@ export default function EmployeesPage() {
                           {e.assignedVehicle.plateNumber})
                         </p>
                       )}
+                      {e.roles.includes("group_leader") &&
+                        (e.warehouseZones?.length ?? 0) > 0 && (
+                          <p className="mt-2 text-xs text-zinc-500">
+                            Zones: {e.warehouseZones!.join(", ")}
+                          </p>
+                        )}
                       {!e.hasLogin && (
                         <p className="mt-1 text-xs text-amber-600">
                           No portal login set

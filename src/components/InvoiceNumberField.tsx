@@ -52,10 +52,6 @@ export function InvoiceNumberField({
             Scan #
           </Button>
         </div>
-        <span className="mt-1 block text-xs text-zinc-500">
-          Scan the fiscal barcode at the top-right of the paper invoice, or type
-          it manually.
-        </span>
       </div>
 
       <BarcodeScannerModal

@@ -190,10 +190,7 @@ export function SmartDispatchPanel({
               ▸
             </span>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-zinc-900">
-                Smart dispatch{" "}
-                <span className="font-normal text-zinc-500">(AI suggestions)</span>
-              </p>
+              <p className="text-sm font-semibold text-zinc-900">Smart dispatch</p>
               {!expanded && (
                 <p className="truncate text-xs text-zinc-500">{collapsedStatus}</p>
               )}
@@ -261,10 +258,7 @@ export function SmartDispatchPanel({
             )}
 
             {!loading && unassignedCount === 0 && (
-              <Alert tone="info">
-                No unassigned orders with mapped locations. Add coordinates on
-                orders or clear assignments to get suggestions.
-              </Alert>
+              <Alert tone="info">No unassigned orders with mapped locations.</Alert>
             )}
 
             {!loading && plan && plan.skipped.length > 0 && (
@@ -344,10 +338,6 @@ export function SmartDispatchPanel({
               </div>
             )}
 
-            <p className="text-[11px] leading-snug text-zinc-500">
-              Suggestions never lock assignments — override truck, picker, or round
-              on each order after applying.
-            </p>
           </div>
         )}
       </Card>

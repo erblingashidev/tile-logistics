@@ -14,6 +14,7 @@ import { InvoiceImportPanel,
   type InvoiceImportFormState,
 } from "@/components/InvoiceImportPanel";
 import { InvoiceNumberField } from "@/components/InvoiceNumberField";
+import { ProductSearchField } from "@/components/ProductSearchField";
 import { Badge, Button, Card, Input, Select, Alert, PageSection, tableClass } from "@/components/ui";
 import {
   orderListRowClass,
@@ -23,9 +24,25 @@ import {
 import {
   calculateOrderTotals,
   calculateTileLine,
+  calculateWeightLine,
   formatM2,
   tileSpecOptionsForItem,
+  type OrderItemInput,
 } from "@/lib/calculations";
+import {
+  calculateLineLogistics,
+  isUsablePalletSpec,
+  productToOrderItemDefaults,
+  type ProductPalletSpec,
+} from "@/lib/product-pallet-spec";
+import { readJsonListWithError } from "@/lib/api/read-json-list";
+import {
+  ORDER_UNITS,
+  ORDER_UNIT_LABELS,
+  inferOrderUnitFromProductName,
+  normalizeOrderUnit,
+  type OrderUnit,
+} from "@/lib/constants";
 import {
   DELIVERY_TIME_PREFERENCE_LABELS,
   DELIVERY_TIME_PREFERENCES,
@@ -36,9 +53,13 @@ import {
 import { deliveryRoundSelectOptions, formatDeliveryRound } from "@/lib/delivery-rounds";
 import { isOrderUrgent } from "@/lib/order-priority";
 import { KOSOVO_MUNICIPALITIES } from "@/lib/locations";
+import type { ProductRecord } from "@/lib/services/products";
 
 interface OrderItem {
-  productType: "tile" | "adhesive";
+  unit: OrderUnit;
+  productId?: number;
+  productEan?: string;
+  catalogStatus?: string;
   productName?: string;
   tileWidthCm?: number;
   tileHeightCm?: number;
@@ -48,6 +69,7 @@ interface OrderItem {
   weightKg?: number;
   manualPallets?: number;
   manualPieces?: number;
+  catalogPallet?: ProductPalletSpec | null;
 }
 
 interface Order {
@@ -70,13 +92,15 @@ interface Order {
   deliveryStage?: OrderDisplayStage;
   deliveryStageLabel?: string;
   notes?: string | null;
+  salesAgentName?: string | null;
   priority?: string | null;
   totalM2: number;
   totalPieces: number;
   totalPallets: number;
   totalWeightKg: number;
   items: Array<{
-    productType: string;
+    unit: string;
+    productEan?: string | null;
     productName?: string | null;
     quantityM2?: number | null;
     pieceCount?: number | null;
@@ -130,12 +154,25 @@ interface EmployeeOption {
 }
 
 const emptyItem = (): OrderItem => ({
-  productType: "tile",
+  unit: "m2",
   productName: "",
   tileWidthCm: 60,
   tileHeightCm: 120,
   quantityM2: 0,
 });
+
+function parseReferentiFromNotes(notes?: string | null): string {
+  const match = notes?.match(/Referenti:\s*([^·\n]+)/i);
+  return match?.[1]?.trim() ?? "";
+}
+
+function buildOrderNotes(salesAgent: string, customerPhone: string): string | undefined {
+  const parts = [
+    salesAgent.trim() ? `Referenti: ${salesAgent.trim()}` : null,
+    customerPhone.trim() ? `Phone: ${customerPhone.trim()}` : null,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : undefined;
+}
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -165,6 +202,7 @@ export default function OrdersPage() {
     invoiceNumber: "",
     customerName: "",
     customerPhone: "",
+    salesAgent: "",
     region: "",
     location: "",
     locationId: "" as string | undefined,
@@ -197,9 +235,21 @@ export default function OrdersPage() {
       fetch("/api/vehicles", { cache: "no-store" }),
       fetch("/api/employees", { cache: "no-store" }),
     ]);
-    setOrders(await ordersRes.json());
-    setVehicles(await vehiclesRes.json());
-    setEmployees(await employeesRes.json());
+
+    const ordersPayload = await readJsonListWithError<Order>(ordersRes);
+    const vehiclesPayload = await readJsonListWithError<Vehicle>(vehiclesRes);
+    const employeesPayload = await readJsonListWithError<EmployeeOption>(
+      employeesRes
+    );
+
+    setOrders(ordersPayload.data);
+    setVehicles(vehiclesPayload.data);
+    setEmployees(employeesPayload.data);
+
+    const loadError =
+      ordersPayload.error ?? vehiclesPayload.error ?? employeesPayload.error;
+    setError(loadError ?? "");
+
     setLastRefreshed(new Date());
   }, [filters]);
 
@@ -261,7 +311,7 @@ export default function OrdersPage() {
     }
   }, [orders, filters.vehicleId, filters.deliveryRound]);
 
-  const preview = calculateOrderTotals(form.items);
+  const preview = calculateOrderTotals(form.items as OrderItemInput[]);
 
   async function saveOrder(e: React.FormEvent) {
     e.preventDefault();
@@ -282,9 +332,8 @@ export default function OrdersPage() {
       requestedDeliveryDate: form.requestedDeliveryDate.trim() || null,
       deliveryTimePreference: form.deliveryTimePreference,
       priority: form.priority,
-      notes: form.customerPhone.trim()
-        ? `Phone: ${form.customerPhone.trim()}`
-        : undefined,
+      salesAgentName: form.salesAgent.trim() || undefined,
+      notes: buildOrderNotes(form.salesAgent, form.customerPhone),
       items: form.items,
     };
     const url = editingId ? `/api/orders/${editingId}` : "/api/orders";
@@ -305,6 +354,7 @@ export default function OrdersPage() {
       invoiceNumber: "",
       customerName: "",
       customerPhone: "",
+      salesAgent: "",
       region: "",
       location: "",
       locationId: undefined,
@@ -328,6 +378,8 @@ export default function OrdersPage() {
       customerName: order.customerName,
       customerPhone:
         order.notes?.match(/Phone:\s*([^\s·]+)/)?.[1]?.trim() ?? "",
+      salesAgent:
+        order.salesAgentName?.trim() || parseReferentiFromNotes(order.notes),
       region: order.region ?? "",
       location: order.location,
       locationId: order.locationId ?? undefined,
@@ -344,11 +396,13 @@ export default function OrdersPage() {
       items:
         order.items.length > 0
           ? order.items.map((i) => {
+              const unit = normalizeOrderUnit(i.unit);
               const w = i.tileWidthCm ?? 60;
               const h = i.tileHeightCm ?? 60;
               const m2 = i.quantityM2 ?? 0;
               const item: OrderItem = {
-                productType: i.productType as "tile" | "adhesive",
+                unit,
+                productEan: i.productEan ?? undefined,
                 productName: i.productName ?? "",
                 tileWidthCm: w,
                 tileHeightCm: h,
@@ -357,17 +411,34 @@ export default function OrdersPage() {
                 quantityM2: m2,
                 weightKg: i.weightKg ?? 0,
               };
-              const line = calculateTileLine(w, h, m2, tileSpecOptionsForItem(item));
-              const hasManualPallets =
-                i.palletCount != null && i.palletCount !== line.calculatedPallets;
-              const hasManualPieces =
-                i.pieceCount != null && i.pieceCount !== line.calculatedPieces;
-              item.manualPallets = hasManualPallets
-                ? (i.palletCount ?? undefined)
-                : undefined;
-              item.manualPieces = hasManualPieces
-                ? (i.pieceCount ?? undefined)
-                : undefined;
+
+              if (unit === "m2") {
+                const line = calculateTileLine(w, h, m2, tileSpecOptionsForItem(item));
+                const hasManualPallets =
+                  i.palletCount != null && i.palletCount !== line.calculatedPallets;
+                const hasManualPieces =
+                  i.pieceCount != null && i.pieceCount !== line.calculatedPieces;
+                item.manualPallets = hasManualPallets
+                  ? (i.palletCount ?? undefined)
+                  : undefined;
+                item.manualPieces = hasManualPieces
+                  ? (i.pieceCount ?? undefined)
+                  : undefined;
+              } else if (unit === "kg") {
+                const weightLine = calculateWeightLine(
+                  i.weightKg ?? 0,
+                  i.productName ?? ""
+                );
+                const hasManualPieces =
+                  i.pieceCount != null &&
+                  i.pieceCount !== weightLine.calculatedPieces;
+                item.manualPieces = hasManualPieces
+                  ? (i.pieceCount ?? undefined)
+                  : undefined;
+              } else {
+                item.manualPieces = i.pieceCount ?? undefined;
+              }
+
               return item;
             })
           : [emptyItem()],
@@ -590,6 +661,7 @@ export default function OrdersPage() {
       invoiceNumber: importForm.invoiceNumber,
       customerName: importForm.customerName,
       customerPhone: importForm.customerPhone ?? "",
+      salesAgent: importForm.salesAgent ?? "",
       region: importForm.region,
       location: importForm.location,
       locationId: importForm.locationId || undefined,
@@ -602,11 +674,13 @@ export default function OrdersPage() {
       deliveryTimePreference: importForm.deliveryTimePreference,
       priority: "normal" as "normal" | "urgent",
       items: importForm.items.map((item) => ({
-        productType: item.productType,
+        unit: normalizeOrderUnit(item.unit),
+        productEan: item.productEan,
         productName: item.productName ?? "",
         tileWidthCm: item.tileWidthCm ?? 60,
         tileHeightCm: item.tileHeightCm ?? 120,
         quantityM2: item.quantityM2 ?? 0,
+        weightKg: item.weightKg ?? 0,
       })),
     });
     setShowForm(true);
@@ -656,7 +730,10 @@ export default function OrdersPage() {
   }
 
   return (
-    <AppShell title="Orders">
+    <AppShell
+      title="Orders"
+      description="Invoices, truck assignment, and delivery tracking."
+    >
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => setShowForm(true)}>New order</Button>
@@ -685,10 +762,6 @@ export default function OrdersPage() {
             Dispatch board
           </Link>
         </div>
-        <p className="text-sm text-zinc-500">
-          Pallet/piece values show system calculations — enter your own if
-          different.
-        </p>
       </div>
 
       {warning && (
@@ -705,10 +778,8 @@ export default function OrdersPage() {
 
       <PageSection title="Truck workspace">
         <Card className="border-blue-200 bg-gradient-to-br from-blue-50/80 to-white p-4">
-          <p className="mb-3 text-sm text-zinc-600">
-            Pick one truck and round to build its load — the list shows orders
-            already on that truck plus orders you can still assign. Assignment
-            panels pre-fill this truck.
+          <p className="mb-3 text-sm text-zinc-500">
+            Focus a truck and round to filter the order list.
           </p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Select
@@ -919,12 +990,12 @@ export default function OrdersPage() {
           </label>
           <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-500">
             <span className="inline-flex items-center gap-1.5">
-              <span className="h-3 w-3 rounded-sm bg-amber-200 ring-1 ring-amber-300" />
-              Assigned / on the way
+              <span className="h-2.5 w-2.5 rounded-sm bg-amber-200 ring-1 ring-amber-300" />
+              In transit
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <span className="h-3 w-3 rounded-sm bg-green-200 ring-1 ring-green-300" />
-              Arrived / delivered
+              <span className="h-2.5 w-2.5 rounded-sm bg-green-200 ring-1 ring-green-300" />
+              Delivered
             </span>
             <Button variant="secondary" className="text-xs" onClick={load}>
               Refresh now
@@ -973,6 +1044,14 @@ export default function OrdersPage() {
                   setForm({ ...form, customerPhone: e.target.value })
                 }
                 placeholder="045/669985"
+              />
+              <Input
+                label="Referenti Juaj"
+                value={form.salesAgent}
+                onChange={(e) =>
+                  setForm({ ...form, salesAgent: e.target.value })
+                }
+                placeholder="Sales agent from invoice"
               />
               <LocationPicker
                 region={form.region}
@@ -1042,21 +1121,9 @@ export default function OrdersPage() {
                     })
                   }
                 />
-                <span>
-                  <span className="font-medium text-red-800">Urgent delivery</span>
-                  <span className="mt-0.5 block text-xs text-red-700/80">
-                    Ship on the next matching route — not cross-region unless
-                    distance still fits
-                  </span>
-                </span>
+                <span className="font-medium text-red-800">Urgent delivery</span>
               </label>
             </div>
-            <p className="text-xs text-zinc-500">
-              Leave delivery date empty to ship as soon as the order is ready.
-              Set a date when the customer wants delivery days later (e.g. in 3
-              days). Time preference is optional — use morning when they ask for
-              an early slot.
-            </p>
 
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -1075,13 +1142,23 @@ export default function OrdersPage() {
                 </Button>
               </div>
               {form.items.map((item, idx) => {
+                const unit = normalizeOrderUnit(item.unit);
                 const w = item.tileWidthCm ?? 60;
                 const h = item.tileHeightCm ?? 60;
                 const m2 = item.quantityM2 ?? 0;
                 const specOptions = tileSpecOptionsForItem(item);
                 const lineCalc =
-                  item.productType === "tile"
-                    ? calculateTileLine(w, h, m2, specOptions)
+                  unit === "m2" && isUsablePalletSpec(item.catalogPallet)
+                    ? calculateLineLogistics(m2, item.catalogPallet!, {
+                        manualPieces: item.manualPieces,
+                        manualPallets: item.manualPallets,
+                      })
+                    : unit === "m2"
+                      ? calculateTileLine(w, h, m2, specOptions)
+                      : null;
+                const weightCalc =
+                  unit === "kg"
+                    ? calculateWeightLine(item.weightKg ?? 0, item.productName ?? "")
                     : null;
 
                 return (
@@ -1090,32 +1167,56 @@ export default function OrdersPage() {
                   className="space-y-3 rounded-lg border border-slate-200 p-3"
                 >
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <ProductSearchField
+                    productName={item.productName ?? ""}
+                    productEan={item.productEan}
+                    productId={item.productId}
+                    catalogStatus={item.catalogStatus}
+                    onDraftChange={(draft) => {
+                      const items = [...form.items];
+                      const inferred = inferOrderUnitFromProductName(draft.productName);
+                      items[idx] = {
+                        ...items[idx],
+                        productId: draft.productId,
+                        productEan: draft.productEan,
+                        productName: draft.productName,
+                        catalogStatus: draft.catalogStatus,
+                        unit: inferred ?? items[idx].unit,
+                      };
+                      setForm({ ...form, items });
+                    }}
+                    onSelect={(product: ProductRecord) => {
+                      const items = [...form.items];
+                      items[idx] = {
+                        ...items[idx],
+                        ...productToOrderItemDefaults(product),
+                      };
+                      if (normalizeOrderUnit(product.unit) === "kg" && product.unitWeightKg) {
+                        items[idx].weightKg = items[idx].weightKg ?? 0;
+                      }
+                      setForm({ ...form, items });
+                    }}
+                  />
                   <Select
-                    label="Type"
-                    value={item.productType}
+                    label="Unit"
+                    value={unit}
                     onChange={(e) => {
                       const items = [...form.items];
                       items[idx] = {
                         ...items[idx],
-                        productType: e.target.value as "tile" | "adhesive",
+                        unit: e.target.value as OrderUnit,
                       };
                       setForm({ ...form, items });
                     }}
                   >
-                    <option value="tile">Tile (m² + dimensions)</option>
-                    <option value="adhesive">Adhesive (kg)</option>
+                    {ORDER_UNITS.map((u) => (
+                      <option key={u} value={u}>
+                        {ORDER_UNIT_LABELS[u]}
+                      </option>
+                    ))}
                   </Select>
-                  {item.productType === "tile" ? (
+                  {unit === "m2" ? (
                     <>
-                      <Input
-                        label="Product name"
-                        value={item.productName ?? ""}
-                        onChange={(e) => {
-                          const items = [...form.items];
-                          items[idx].productName = e.target.value;
-                          setForm({ ...form, items });
-                        }}
-                      />
                       <Input
                         label="Width (cm)"
                         type="number"
@@ -1152,10 +1253,9 @@ export default function OrdersPage() {
                         </div>
                       ) : (
                         <Input
-                          label="Height (mm) — optional"
+                          label="Height (mm)"
                           type="number"
                           step="0.1"
-                          hint="Only if non-standard — adjusts pallet calculation"
                           value={
                             item.tileThicknessCm != null
                               ? Math.round(item.tileThicknessCm * 1000) / 10
@@ -1210,18 +1310,61 @@ export default function OrdersPage() {
                         }}
                       />
                     </>
+                  ) : unit === "kg" ? (
+                    <>
+                      <Input
+                        label="Total weight (kg)"
+                        type="number"
+                        step="0.1"
+                        value={item.weightKg ?? 0}
+                        onChange={(e) => {
+                          const items = [...form.items];
+                          items[idx].weightKg = Number(e.target.value);
+                          setForm({ ...form, items });
+                        }}
+                      />
+                      <Input
+                        label={`Your pieces (calc. ${weightCalc?.calculatedPieces ?? 0})`}
+                        type="number"
+                        placeholder={String(weightCalc?.calculatedPieces ?? 0)}
+                        value={item.manualPieces ?? ""}
+                        onChange={(e) => {
+                          const items = [...form.items];
+                          items[idx].manualPieces = e.target.value
+                            ? Number(e.target.value)
+                            : undefined;
+                          setForm({ ...form, items });
+                        }}
+                      />
+                    </>
                   ) : (
-                    <Input
-                      label="Weight (kg) — advisory for vehicle load"
-                      type="number"
-                      step="0.1"
-                      value={item.weightKg ?? 0}
-                      onChange={(e) => {
-                        const items = [...form.items];
-                        items[idx].weightKg = Number(e.target.value);
-                        setForm({ ...form, items });
-                      }}
-                    />
+                    <>
+                      <Input
+                        label="Quantity (pieces)"
+                        type="number"
+                        value={item.manualPieces ?? ""}
+                        onChange={(e) => {
+                          const items = [...form.items];
+                          items[idx].manualPieces = e.target.value
+                            ? Number(e.target.value)
+                            : undefined;
+                          setForm({ ...form, items });
+                        }}
+                      />
+                      <Input
+                        label="Weight (kg) — optional"
+                        type="number"
+                        step="0.1"
+                        value={item.weightKg ?? ""}
+                        onChange={(e) => {
+                          const items = [...form.items];
+                          items[idx].weightKg = e.target.value
+                            ? Number(e.target.value)
+                            : undefined;
+                          setForm({ ...form, items });
+                        }}
+                      />
+                    </>
                   )}
                   <div className="flex items-end">
                     <Button
@@ -1241,7 +1384,9 @@ export default function OrdersPage() {
                   {lineCalc && (
                     <div className="rounded border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-600">
                       <p className="font-medium text-zinc-800">
-                        {lineCalc.standardLabel}
+                        {"label" in lineCalc
+                          ? `${lineCalc.label} (catalog pallet)`
+                          : (lineCalc as ReturnType<typeof calculateTileLine>).standardLabel}
                       </p>
                       <p className="mt-1">
                         Calculated: {lineCalc.calculatedPieces} pieces,{" "}
@@ -1249,10 +1394,27 @@ export default function OrdersPage() {
                         {lineCalc.m2PerPallet.toFixed(2)} m²/pallet ·{" "}
                         {lineCalc.piecesPerPallet} pcs/pallet · ~
                         {lineCalc.kgPerPallet} kg/pallet).
+                        {"truckPalletSlots" in lineCalc &&
+                        lineCalc.truckPalletSlots !== lineCalc.palletCount ? (
+                          <> · {lineCalc.truckPalletSlots} truck slot(s)</>
+                        ) : null}
+                        {"weightKg" in lineCalc && lineCalc.weightKg > 0 ? (
+                          <> · ~{lineCalc.weightKg.toFixed(0)} kg for this line</>
+                        ) : null}
                       </p>
-                      {lineCalc.note && (
-                        <p className="mt-1 text-zinc-500">{lineCalc.note}</p>
-                      )}
+                    </div>
+                  )}
+                  {weightCalc && (
+                    <div className="rounded border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-600">
+                      <p className="font-medium text-zinc-800">
+                        Weight-based quantity
+                      </p>
+                      <p className="mt-1">
+                        {weightCalc.unitWeightKg != null
+                          ? `Pack size ${weightCalc.unitWeightKg} kg from name · calculated ${weightCalc.calculatedPieces} pieces for ${weightCalc.totalWeightKg} kg total.`
+                          : weightCalc.note ??
+                            "Enter pack weight in the product name (e.g. 25 kg)."}
+                      </p>
                     </div>
                   )}
                 </div>
@@ -1262,8 +1424,12 @@ export default function OrdersPage() {
 
             <div className="rounded border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-600">
               Calculated totals: {formatM2(preview.totalM2)} m² ·{" "}
-              {preview.totalPieces} pieces · {preview.totalPallets} pallets · ~
-              {preview.totalWeightKg.toFixed(0)} kg
+              {preview.totalPieces} pieces · {preview.totalPallets} pallets
+              {(preview.totalTruckPalletSlots ?? preview.totalPallets) >
+              preview.totalPallets
+                ? ` (${preview.totalTruckPalletSlots} truck slots)`
+                : ""}{" "}
+              · ~{preview.totalWeightKg.toFixed(0)} kg
             </div>
 
             <div className="flex gap-2">
@@ -1459,28 +1625,43 @@ export default function OrdersPage() {
                       <span className="text-zinc-400">—</span>
                     ) : (
                       <ul className="space-y-1 text-xs leading-snug">
-                        {order.items.map((item, idx) => (
+                        {order.items.map((item, idx) => {
+                          const unit = normalizeOrderUnit(item.unit);
+                          return (
                           <li key={idx}>
                             <span className="font-medium text-zinc-900">
-                              {item.productName?.trim() ||
-                                (item.productType === "tile"
-                                  ? "Tile"
-                                  : "Adhesive")}
+                              {item.productName?.trim() || "Product"}
                             </span>
-                            {item.tileWidthCm && item.tileHeightCm ? (
+                            {unit === "m2" && item.tileWidthCm && item.tileHeightCm ? (
                               <span className="text-zinc-500">
                                 {" "}
                                 · {item.tileWidthCm}×{item.tileHeightCm} cm
                               </span>
                             ) : null}
-                            {item.quantityM2 != null ? (
+                            {unit === "m2" && item.quantityM2 != null ? (
                               <span className="text-zinc-600">
                                 {" "}
                                 · {formatM2(item.quantityM2)} m²
                               </span>
                             ) : null}
+                            {unit === "kg" && item.weightKg != null ? (
+                              <span className="text-zinc-600">
+                                {" "}
+                                · {item.weightKg.toFixed(0)} kg
+                                {item.pieceCount != null
+                                  ? ` · ${item.pieceCount} pcs`
+                                  : ""}
+                              </span>
+                            ) : null}
+                            {unit === "piece" && item.pieceCount != null ? (
+                              <span className="text-zinc-600">
+                                {" "}
+                                · {item.pieceCount} pcs
+                              </span>
+                            ) : null}
                           </li>
-                        ))}
+                          );
+                        })}
                       </ul>
                     )}
                   </td>

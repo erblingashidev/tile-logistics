@@ -1,15 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Badge,
   Button,
-  Card,
   EmptyState,
   Alert,
 } from "@/components/ui";
+import {
+  PortalCard,
+  PortalSectionTitle,
+  PortalShell,
+} from "@/components/portal/PortalShell";
 import {
   DELIVERY_PROOF_PHASES,
   EMPLOYEE_STATUSES,
@@ -238,7 +241,11 @@ export default function PortalPage() {
   const isDriver = employee?.roles.includes("driver") ?? false;
   const showWmsLink =
     employee?.roles.some((r) =>
-      (["warehouse_admin", "picker", "unloader", "maintainer"] as EmployeeRole[]).includes(r)
+      (["warehouse_admin", "warehouse_reporter", "group_leader", "picker", "unloader", "maintainer"] as EmployeeRole[]).includes(r)
+    ) ?? false;
+  const showReportsLink =
+    employee?.roles.some((r) =>
+      (["warehouse_admin", "warehouse_reporter", "group_leader"] as EmployeeRole[]).includes(r)
     ) ?? false;
 
   function loaderPhasesForOrder(order: PortalOrder) {
@@ -261,53 +268,43 @@ export default function PortalPage() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-100">
-      <header className="sticky top-0 z-10 border-b border-zinc-200 bg-white px-4 py-3">
-        <div className="mx-auto flex max-w-lg items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold text-zinc-900">{sq.appName}</p>
-            <p className="text-xs text-zinc-500">{employee?.name ?? "…"}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            {showWmsLink && (
-              <Link href="/portal/wms" className="text-xs text-zinc-600 underline">
-                {sq.depotLink}
-              </Link>
-            )}
-            <Button variant="ghost" className="text-xs" onClick={logout}>
-              {sq.logout}
-            </Button>
-          </div>
+    <PortalShell
+      title={sq.appName}
+      subtitle={employee?.name}
+      activeNav="orders"
+      showOrders
+      showWms={showWmsLink}
+      showReports={showReportsLink}
+      onLogout={logout}
+    >
+      {error && <Alert tone="error">{error}</Alert>}
+      {success && <Alert tone="info">{success}</Alert>}
+
+      <PortalCard>
+        <PortalSectionTitle className="mb-3 normal-case tracking-normal text-zinc-700">
+          {sq.myStatus}
+        </PortalSectionTitle>
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+          {EMPLOYEE_STATUSES.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setStatus(s)}
+              className={`rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
+                myStatus === s
+                  ? "bg-zinc-900 text-white shadow-sm"
+                  : "border border-zinc-200 bg-zinc-50 text-zinc-700 hover:border-zinc-300"
+              }`}
+            >
+              {statusLabelSq(s)}
+            </button>
+          ))}
         </div>
-      </header>
+      </PortalCard>
 
-      <main className="mx-auto max-w-lg space-y-4 px-4 py-4 pb-12">
-        {error && <Alert tone="error">{error}</Alert>}
-        {success && <Alert tone="warning">{success}</Alert>}
-
-        <Card className="p-4">
-          <p className="text-sm font-medium text-zinc-900">{sq.myStatus}</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {EMPLOYEE_STATUSES.map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setStatus(s)}
-                className={`rounded-full px-3 py-1.5 text-sm ${
-                  myStatus === s
-                    ? "bg-zinc-900 text-white"
-                    : "bg-zinc-200 text-zinc-700"
-                }`}
-              >
-                {statusLabelSq(s)}
-              </button>
-            ))}
-          </div>
-        </Card>
-
-        {isDriver &&
-          truckGroups.map((truck) => (
-            <Card key={`${truck.vehicleId}-${truck.deliveryRound}`} className="p-4">
+      {isDriver &&
+        truckGroups.map((truck) => (
+          <PortalCard key={`${truck.vehicleId}-${truck.deliveryRound}`}>
               <p className="text-sm font-semibold text-zinc-900">
                 {truck.vehicleName} ({truck.plateNumber}) ·{" "}
                 {sq.roundLabel(truck.deliveryRound)}
@@ -366,13 +363,15 @@ export default function PortalPage() {
                     : sq.waitingAllLoaders}
                 </p>
               )}
-            </Card>
+            </PortalCard>
           ))}
 
-        <div>
-          <h2 className="mb-2 text-sm font-semibold text-zinc-900">{sq.myOrders}</h2>
+        <section>
+          <PortalSectionTitle className="mb-3">{sq.myOrders}</PortalSectionTitle>
           {orders.length === 0 ? (
-            <EmptyState title={sq.nothingToDo} />
+            <PortalCard>
+              <EmptyState title={sq.nothingToDo} />
+            </PortalCard>
           ) : (
             <div className="space-y-3">
               {orders.map((order) => {
@@ -380,7 +379,7 @@ export default function PortalPage() {
                 const driverPhases = driverPhasesForOrder(order);
 
                 return (
-                  <Card key={order.id} className="overflow-hidden p-4">
+                  <PortalCard key={order.id} className="overflow-hidden">
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <p className="font-semibold text-zinc-900">
@@ -412,17 +411,6 @@ export default function PortalPage() {
                           orderStatusLabelSq(order.status)}
                       </Badge>
                     </div>
-
-                    {order.loadStatus === "loaded" && !hasProof(order, "departed") && (
-                      <p className="mt-2 text-xs font-medium text-green-700">
-                        {isDriver ? sq.loadedOnTruckDriver : sq.loadedOnTruckPicker}
-                      </p>
-                    )}
-                    {order.loadStatus === "pending" && order.assignment && (
-                      <p className="mt-2 text-xs text-amber-700">
-                        {sq.waitingLoaderConfirm}
-                      </p>
-                    )}
 
                     {order.loadStatus === "load_skipped" && (
                       <p className="mt-2 rounded bg-red-50 px-2 py-1.5 text-xs text-red-800">
@@ -503,10 +491,6 @@ export default function PortalPage() {
                       </div>
                     )}
 
-                    {isDriver && order.loadStatus === "load_skipped" && (
-                      <p className="mt-3 text-xs text-zinc-500">{sq.notOnTruck}</p>
-                    )}
-
                     {driverPhases.length > 0 && (
                       <div className="mt-4 space-y-2">
                         {driverPhases.map((phase) => {
@@ -553,13 +537,12 @@ export default function PortalPage() {
                         })}
                       </div>
                     )}
-                  </Card>
+                  </PortalCard>
                 );
               })}
             </div>
           )}
-        </div>
-      </main>
-    </div>
+        </section>
+    </PortalShell>
   );
 }

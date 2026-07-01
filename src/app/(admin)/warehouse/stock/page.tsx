@@ -87,13 +87,26 @@ export default function WarehouseStockPage() {
   }
 
   return (
-    <AppShell title="Stock & locations">
+    <AppShell title="Stock & locations" description="On-hand balances by product and bin.">
       <Link href="/warehouse" className="mb-4 inline-block text-sm text-zinc-500">
         ← Warehouse
       </Link>
+      <Link
+        href="/warehouse/locations"
+        className="mb-4 ml-4 inline-block text-sm text-zinc-500"
+      >
+        Manage locations →
+      </Link>
 
       <Card className="mb-6 p-4">
-        <p className="mb-3 font-medium">New warehouse location</p>
+        <p className="mb-1 font-medium">New warehouse location</p>
+        <p className="mb-3 text-sm text-zinc-500">
+          Prefer adding locations on the{" "}
+          <Link href="/warehouse/locations" className="underline">
+            locations page
+          </Link>
+          .
+        </p>
         <form onSubmit={addLocation} className="flex flex-wrap gap-2">
           <Input
             placeholder="Code e.g. A-01"

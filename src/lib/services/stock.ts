@@ -1,4 +1,4 @@
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, ne } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { dbAll, dbOne } from "@/lib/db/query";
 import {
@@ -104,6 +104,101 @@ export async function createWarehouseLocation(input: {
       .from(warehouseLocations)
       .where(eq(warehouseLocations.id, inserted!.id))
   );
+}
+
+export async function updateWarehouseLocation(
+  id: number,
+  input: {
+    code?: string;
+    zone?: string | null;
+    label?: string | null;
+    notes?: string | null;
+  }
+) {
+  const existing = await getWarehouseLocation(id);
+  if (!existing) {
+    return { ok: false as const, error: "Location not found" };
+  }
+
+  const nextCode =
+    input.code !== undefined ? input.code.trim().toUpperCase() : undefined;
+  if (nextCode !== undefined && !nextCode) {
+    return { ok: false as const, error: "Code required" };
+  }
+
+  if (nextCode && nextCode !== existing.code) {
+    const db = await getDb();
+    const duplicate = await dbOne(
+      db
+        .select({ id: warehouseLocations.id })
+        .from(warehouseLocations)
+        .where(
+          and(eq(warehouseLocations.code, nextCode), ne(warehouseLocations.id, id))
+        )
+    );
+    if (duplicate) {
+      return {
+        ok: false as const,
+        error: "A location with this code already exists",
+      };
+    }
+  }
+
+  const db = await getDb();
+  await db
+    .update(warehouseLocations)
+    .set({
+      ...(nextCode !== undefined ? { code: nextCode } : {}),
+      ...(input.zone !== undefined ? { zone: input.zone?.trim() || null } : {}),
+      ...(input.label !== undefined ? { label: input.label?.trim() || null } : {}),
+      ...(input.notes !== undefined ? { notes: input.notes?.trim() || null } : {}),
+    })
+    .where(eq(warehouseLocations.id, id));
+
+  const location = await getWarehouseLocation(id);
+  await logActivity(
+    "update",
+    "warehouse_location",
+    id,
+    `Updated location: ${location!.code}`,
+    {
+      category: "system",
+      details: {
+        code: location!.code,
+        zone: location!.zone,
+        label: location!.label,
+      },
+    }
+  );
+
+  return { ok: true as const, location: location! };
+}
+
+export async function deleteWarehouseLocation(id: number) {
+  const existing = await getWarehouseLocation(id);
+  if (!existing) {
+    return { ok: false as const, error: "Location not found" };
+  }
+
+  const stock = await listStockAtLocation(id);
+  const db = await getDb();
+  await db.delete(warehouseLocations).where(eq(warehouseLocations.id, id));
+
+  await logActivity(
+    "delete",
+    "warehouse_location",
+    id,
+    `Deleted location: ${existing.code}`,
+    {
+      category: "system",
+      details: {
+        code: existing.code,
+        stockLinesRemoved: stock.length,
+      },
+    }
+  );
+
+  return { ok: true as const, removedStockLines: stock.length };
 }
 
 async function getOrCreateBalance(productId: number, locationId: number) {
@@ -222,6 +317,67 @@ export async function receiveStock(input: ReceiveStockInput) {
   };
 }
 
+/** Set stock balance to inventory count (adjustment, not additive receive). */
+export async function adjustStockToCount(input: {
+  productId: number;
+  locationId: number;
+  targetQuantityM2: number;
+  employeeId?: number;
+  notes?: string;
+  referenceType?: string;
+  referenceId?: number;
+}) {
+  const product = await getProduct(input.productId);
+  if (!product) {
+    return { ok: false as const, error: "Produkti nuk u gjet." };
+  }
+
+  const db = await getDb();
+  const now = new Date().toISOString();
+  const balance = await getOrCreateBalance(input.productId, input.locationId);
+  const currentM2 = balance!.quantityM2 ?? 0;
+  const delta = input.targetQuantityM2 - currentM2;
+
+  if (Math.abs(delta) < 0.0001) {
+    return { ok: true as const, skipped: true as const, delta: 0 };
+  }
+
+  const w = product.tileWidthCm ?? 60;
+  const h = product.tileHeightCm ?? 60;
+  const breakdown = computePickBreakdown(
+    Math.max(0, input.targetQuantityM2),
+    w,
+    h,
+    product.tileThicknessCm
+  );
+
+  await db
+    .update(stockBalances)
+    .set({
+      quantityM2: Math.max(0, input.targetQuantityM2),
+      fullPallets: breakdown.fullPallets,
+      loosePieces: breakdown.loosePieces,
+      updatedAt: now,
+    })
+    .where(eq(stockBalances.id, balance!.id));
+
+  await db.insert(stockMovements).values({
+    productId: input.productId,
+    locationId: input.locationId,
+    movementType: "inventory_adjust",
+    quantityM2: delta,
+    fullPallets: 0,
+    loosePieces: 0,
+    referenceType: input.referenceType ?? "inventory",
+    referenceId: input.referenceId ?? null,
+    employeeId: input.employeeId ?? null,
+    notes: input.notes?.trim() || null,
+    createdAt: now,
+  });
+
+  return { ok: true as const, skipped: false as const, delta };
+}
+
 export async function listStockSummary() {
   const db = await getDb();
   const rows = await dbAll(
@@ -251,6 +407,37 @@ export async function listStockSummary() {
       .orderBy(desc(stockBalances.updatedAt))
   );
   return rows;
+}
+
+export async function listStockAtLocation(locationId: number) {
+  const rows = await listStockSummary();
+  return rows.filter((row) => row.locationId === locationId);
+}
+
+export async function getWarehouseLocation(locationId: number) {
+  const db = await getDb();
+  return dbOne(
+    db
+      .select()
+      .from(warehouseLocations)
+      .where(eq(warehouseLocations.id, locationId))
+  );
+}
+
+export async function listLocationsWithStockSummary() {
+  const locations = await listWarehouseLocations();
+  const balances = await listStockSummary();
+
+  return locations.map((loc) => {
+    const atLoc = balances.filter((b) => b.locationId === loc.id);
+    return {
+      ...loc,
+      productCount: atLoc.length,
+      totalM2: atLoc.reduce((sum, row) => sum + row.quantityM2, 0),
+      totalPallets: atLoc.reduce((sum, row) => sum + row.fullPallets, 0),
+      totalLoosePieces: atLoc.reduce((sum, row) => sum + row.loosePieces, 0),
+    };
+  });
 }
 
 export async function listStockMovements(limit = 100) {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireApiSessionNoSalesWrite } from "@/lib/auth/api-guard";
 import { assignOrderToVehicle, unassignOrder } from "@/lib/services/orders";
 
 export const runtime = "nodejs";
@@ -7,6 +8,9 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireApiSessionNoSalesWrite(request.method);
+  if (!auth.ok) return auth.response;
+
   const { id } = await params;
   const body = await request.json();
   const vehicleId = Number(body.vehicleId);
@@ -37,6 +41,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireApiSessionNoSalesWrite(request.method);
+  if (!auth.ok) return auth.response;
+
   const { id } = await params;
   const sp = request.nextUrl.searchParams;
   const round = sp.get("round") ? Number(sp.get("round")) : undefined;

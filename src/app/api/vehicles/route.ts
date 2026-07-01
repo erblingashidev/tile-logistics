@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireApiSession } from "@/lib/auth/api-guard";
 import {
   listVehicles,
   createVehicle,
@@ -8,7 +9,16 @@ import {
 export const runtime = "nodejs";
 
 export async function GET() {
-  return NextResponse.json(await listVehicles());
+  const auth = await requireApiSession();
+  if (!auth.ok) return auth.response;
+
+  try {
+    return NextResponse.json(await listVehicles());
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Failed to load vehicles";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
 
 export async function POST(request: NextRequest) {

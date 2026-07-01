@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireApiSession } from "@/lib/auth/api-guard";
+import { requireApiSessionNoSalesWrite } from "@/lib/auth/api-guard";
 import { extractPdfText } from "@/lib/invoices/extract-pdf-text";
 import { importInvoiceFromText } from "@/lib/invoices/process-invoice-import";
+import {
+  SCANNED_PDF_CODE,
+  ScannedPdfError,
+} from "@/lib/invoices/scanned-pdf-error";
 
 export const runtime = "nodejs";
-
-const MAX_BYTES = 12 * 1024 * 1024;
 
 function jsonFromResult(
   result: Awaited<ReturnType<typeof importInvoiceFromText>>,
@@ -29,8 +31,11 @@ function jsonFromResult(
         order: result.order,
         parsed: result.parsed,
         form: result.form,
+        merged: result.merged ?? false,
+        multiple: result.multiple ?? false,
+        invoices: result.invoices,
       },
-      { status: 201 }
+      { status: result.merged ? 200 : 201 }
     );
   }
 
@@ -40,13 +45,29 @@ function jsonFromResult(
       form: result.form,
       payload: result.payload,
       duplicate: result.duplicate,
+      existingOrderId: result.existingOrderId,
+      multiple: result.multiple ?? false,
+      invoices: result.invoices,
     },
     { status: statusOk }
   );
 }
 
+function readImportOptions(body: Record<string, unknown>) {
+  const invoiceNumberOverride =
+    typeof body.invoiceNumberOverride === "string"
+      ? body.invoiceNumberOverride
+      : undefined;
+  const selectedInvoiceNumber =
+    typeof body.selectedInvoiceNumber === "string"
+      ? body.selectedInvoiceNumber
+      : undefined;
+  const mergeIntoExisting = body.merge === true || body.mergeIntoExisting === true;
+  return { invoiceNumberOverride, selectedInvoiceNumber, mergeIntoExisting };
+}
+
 export async function POST(request: NextRequest) {
-  const auth = await requireApiSession();
+  const auth = await requireApiSessionNoSalesWrite(request.method);
   if (!auth.ok) return auth.response;
 
   const contentType = request.headers.get("content-type") ?? "";
@@ -56,14 +77,10 @@ export async function POST(request: NextRequest) {
     const text = typeof body.text === "string" ? body.text : "";
     const preview = body.preview === true;
     const create = body.create === true;
-    const invoiceNumberOverride =
-      typeof body.invoiceNumberOverride === "string"
-        ? body.invoiceNumberOverride
-        : undefined;
     const result = await importInvoiceFromText(
       text,
       create ? "create" : "preview",
-      { invoiceNumberOverride }
+      readImportOptions(body as Record<string, unknown>)
     );
     return jsonFromResult(result, 200);
   }
@@ -74,24 +91,25 @@ export async function POST(request: NextRequest) {
   const preview = formData.get("preview") === "true";
   const create = formData.get("create") === "true";
   const invoiceNumberOverrideRaw = formData.get("invoiceNumberOverride");
+  const selectedInvoiceNumberRaw = formData.get("selectedInvoiceNumber");
+  const mergeRaw = formData.get("merge");
+
   const invoiceNumberOverride =
     typeof invoiceNumberOverrideRaw === "string" &&
     invoiceNumberOverrideRaw.trim()
       ? invoiceNumberOverrideRaw
       : undefined;
+  const selectedInvoiceNumber =
+    typeof selectedInvoiceNumberRaw === "string" &&
+    selectedInvoiceNumberRaw.trim()
+      ? selectedInvoiceNumberRaw
+      : invoiceNumberOverride;
 
   let text = "";
 
   if (typeof invoiceText === "string" && invoiceText.trim()) {
     text = invoiceText;
   } else if (file && file instanceof File) {
-    if (file.size > MAX_BYTES) {
-      return NextResponse.json(
-        { error: "File must be smaller than 12 MB" },
-        { status: 400 }
-      );
-    }
-
     const isPdf =
       file.type === "application/pdf" ||
       file.name.toLowerCase().endsWith(".pdf");
@@ -110,6 +128,12 @@ export async function POST(request: NextRequest) {
       const buffer = Buffer.from(await file.arrayBuffer());
       text = await extractPdfText(buffer);
     } catch (err) {
+      if (err instanceof ScannedPdfError) {
+        return NextResponse.json(
+          { error: err.message, code: SCANNED_PDF_CODE },
+          { status: 422 }
+        );
+      }
       const message =
         err instanceof Error ? err.message : "Failed to read invoice PDF";
       return NextResponse.json({ error: message }, { status: 500 });
@@ -134,7 +158,11 @@ export async function POST(request: NextRequest) {
   const result = await importInvoiceFromText(
     text,
     create ? "create" : "preview",
-    { invoiceNumberOverride }
+    {
+      invoiceNumberOverride,
+      selectedInvoiceNumber,
+      mergeIntoExisting: mergeRaw === "true",
+    }
   );
   return jsonFromResult(result, 200);
 }

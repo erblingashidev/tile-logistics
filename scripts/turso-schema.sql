@@ -54,6 +54,18 @@ CREATE TABLE IF NOT EXISTS vehicles (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS vehicle_maintenance_records (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  vehicle_id INTEGER NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+  performed_at TEXT NOT NULL,
+  next_due_at TEXT,
+  work_done TEXT NOT NULL,
+  cost REAL NOT NULL DEFAULT 0,
+  notes TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS assignments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
@@ -156,6 +168,57 @@ CREATE TABLE IF NOT EXISTS warehouse_locations (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS employee_warehouse_zones (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+  zone TEXT NOT NULL UNIQUE,
+  assigned_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS warehouse_reports (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+  report_type TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  zone TEXT,
+  report_week TEXT,
+  category TEXT NOT NULL,
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS warehouse_report_photos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  report_id INTEGER NOT NULL REFERENCES warehouse_reports(id) ON DELETE CASCADE,
+  photo_path TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS warehouse_report_tags (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  report_id INTEGER NOT NULL REFERENCES warehouse_reports(id) ON DELETE CASCADE,
+  tagged_employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS warehouse_report_zones (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  report_id INTEGER NOT NULL REFERENCES warehouse_reports(id) ON DELETE CASCADE,
+  zone TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS warehouse_report_edit_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  report_id INTEGER NOT NULL REFERENCES warehouse_reports(id) ON DELETE CASCADE,
+  employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+  proposed_body TEXT NOT NULL,
+  reason TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  admin_note TEXT,
+  created_at TEXT NOT NULL,
+  reviewed_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS stock_balances (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
@@ -201,9 +264,72 @@ CREATE TABLE IF NOT EXISTS inventory_lines (
   location_id INTEGER REFERENCES warehouse_locations(id) ON DELETE SET NULL,
   employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
   notes TEXT,
-  counted_at TEXT NOT NULL
+  counted_at TEXT NOT NULL,
+  zone TEXT,
+  sector_count_id INTEGER
 );
 
+CREATE TABLE IF NOT EXISTS inventory_sector_counts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id INTEGER NOT NULL REFERENCES inventory_sessions(id) ON DELETE CASCADE,
+  zone TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'counting',
+  started_at TEXT NOT NULL,
+  closed_at TEXT,
+  started_by_employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+  closed_by_employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS inventory_snapshots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id INTEGER NOT NULL REFERENCES inventory_sessions(id) ON DELETE CASCADE,
+  product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  location_id INTEGER NOT NULL REFERENCES warehouse_locations(id) ON DELETE CASCADE,
+  zone TEXT,
+  quantity_m2 REAL NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS inventory_variance_reports (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id INTEGER NOT NULL REFERENCES inventory_sessions(id) ON DELETE CASCADE,
+  previous_report_id INTEGER,
+  created_at TEXT NOT NULL,
+  applied_at TEXT,
+  total_lines INTEGER NOT NULL DEFAULT 0,
+  total_variance_m2 REAL NOT NULL DEFAULT 0,
+  notes TEXT
+);
+
+CREATE TABLE IF NOT EXISTS inventory_variance_lines (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  report_id INTEGER NOT NULL REFERENCES inventory_variance_reports(id) ON DELETE CASCADE,
+  product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+  ean TEXT,
+  location_id INTEGER REFERENCES warehouse_locations(id) ON DELETE SET NULL,
+  zone TEXT,
+  book_m2 REAL NOT NULL DEFAULT 0,
+  counted_m2 REAL NOT NULL DEFAULT 0,
+  difference_m2 REAL NOT NULL DEFAULT 0,
+  previous_counted_m2 REAL,
+  change_since_last_m2 REAL
+);
+
+CREATE INDEX IF NOT EXISTS idx_inventory_sector_session ON inventory_sector_counts(session_id);
+CREATE INDEX IF NOT EXISTS idx_inventory_variance_report ON inventory_variance_lines(report_id);
+
 CREATE INDEX IF NOT EXISTS idx_products_ean ON products(ean);
+CREATE INDEX IF NOT EXISTS idx_employee_warehouse_zones_employee
+  ON employee_warehouse_zones(employee_id);
+CREATE INDEX IF NOT EXISTS idx_warehouse_reports_week
+  ON warehouse_reports(report_week);
+CREATE INDEX IF NOT EXISTS idx_warehouse_reports_employee
+  ON warehouse_reports(employee_id);
+CREATE INDEX IF NOT EXISTS idx_warehouse_report_edit_requests_status
+  ON warehouse_report_edit_requests(status);
 CREATE INDEX IF NOT EXISTS idx_stock_balances_product ON stock_balances(product_id);
 CREATE INDEX IF NOT EXISTS idx_stock_movements_product ON stock_movements(product_id);
+CREATE INDEX IF NOT EXISTS idx_vehicle_maintenance_vehicle
+  ON vehicle_maintenance_records(vehicle_id);
+CREATE INDEX IF NOT EXISTS idx_vehicle_maintenance_next_due
+  ON vehicle_maintenance_records(next_due_at);

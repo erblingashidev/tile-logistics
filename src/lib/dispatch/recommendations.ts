@@ -235,8 +235,8 @@ async function buildRecommendation(
   if (!pick) return null;
 
   const check = checkVehicleCapacity(
-    [{ totalPallets: pick.usedPallets, totalWeightKg: pick.usedWeightKg, totalM2: 0, totalPieces: 0 }],
-    { totalPallets, totalWeightKg, totalM2: 0, totalPieces: 0 },
+    [{ totalPallets: pick.usedPallets, totalWeightKg: pick.usedWeightKg, totalM2: 0, totalPieces: 0, totalTruckPalletSlots: pick.usedPallets }],
+    { totalPallets, totalWeightKg, totalM2: 0, totalPieces: 0, totalTruckPalletSlots: totalPallets },
     pick.maxPallets,
     pick.maxWeightKg
   );

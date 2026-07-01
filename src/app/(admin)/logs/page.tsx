@@ -79,7 +79,7 @@ export default function LogsPage() {
   }, [logs]);
 
   return (
-    <AppShell title="Logs">
+    <AppShell title="Logs" description="System activity and changes.">
       <PageSection title="Filters">
         <Card className="p-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

@@ -1,3 +1,5 @@
+import { normalizeOrderUnit } from "@/lib/constants";
+
 /** Max pieces on a normal truck for jumbo / heavy-lift tile formats. */
 export const JUMBO_TILE_MAX_PIECES_STANDARD_TRUCK = 2;
 
@@ -18,7 +20,8 @@ export function jumboFormatLabel(widthCm: number, heightCm: number): string {
 }
 
 export interface TileLineCargo {
-  productType: string;
+  unit?: string | null;
+  productType?: string | null;
   tileWidthCm?: number | null;
   tileHeightCm?: number | null;
   pieceCount?: number | null;
@@ -44,7 +47,7 @@ export function analyzeOrderCargo(
   const reasons: string[] = [];
 
   for (const item of items) {
-    if (item.productType !== "tile") continue;
+    if (normalizeOrderUnit(item.unit ?? item.productType) !== "m2") continue;
     const w = item.tileWidthCm ?? 0;
     const h = item.tileHeightCm ?? 0;
     if (w <= 0 || h <= 0) continue;

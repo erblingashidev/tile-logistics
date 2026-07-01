@@ -16,6 +16,11 @@ import {
 import { logActivity } from "@/lib/logger";
 import { hashPassword } from "@/lib/auth/password";
 import {
+  clearEmployeeWarehouseZones,
+  getEmployeeWarehouseZones,
+  setEmployeeWarehouseZones,
+} from "@/lib/services/warehouse-zones";
+import {
   employeeCreatedMessage,
   employeeDeletedMessage,
   employeeStaffAssignedMessage,
@@ -33,6 +38,7 @@ export interface EmployeePayload {
   username?: string | null;
   password?: string | null;
   notes?: string;
+  warehouseZones?: string[];
 }
 
 async function enrichEmployeeRow(
@@ -70,6 +76,7 @@ async function enrichEmployeeRow(
     roles,
     assignedVehicle,
     assignments,
+    warehouseZones: await getEmployeeWarehouseZones(row.id),
     hasLogin: Boolean(row.username && row.passwordHash),
     username: row.username ?? null,
   };
@@ -237,6 +244,15 @@ export async function createEmployee(payload: EmployeePayload) {
   ) {
     await setDriverVehicle(id, payload.assignedVehicleId);
   }
+  if (payload.roles.includes("group_leader")) {
+    await setEmployeeWarehouseZones(
+      id,
+      payload.warehouseZones ?? [],
+      payload.name
+    );
+  } else {
+    await clearEmployeeWarehouseZones(id);
+  }
   await logActivity(
     "create",
     "employee",
@@ -304,6 +320,24 @@ export async function updateEmployee(id: number, payload: Partial<EmployeePayloa
     await setDriverVehicle(id, null);
   }
 
+  if (payload.roles) {
+    if (nextRoles.includes("group_leader")) {
+      await setEmployeeWarehouseZones(
+        id,
+        payload.warehouseZones ?? existing.warehouseZones ?? [],
+        existing.name
+      );
+    } else {
+      await clearEmployeeWarehouseZones(id);
+    }
+  } else if (payload.warehouseZones && nextRoles.includes("group_leader")) {
+    await setEmployeeWarehouseZones(
+      id,
+      payload.warehouseZones,
+      existing.name
+    );
+  }
+
   if (payload.status != null && payload.status !== existing.status) {
     await logActivity(
       "status_change",
@@ -346,6 +380,9 @@ export async function updateEmployee(id: number, payload: Partial<EmployeePayloa
     } else {
       changes.push("truck unassigned");
     }
+  }
+  if (payload.warehouseZones && nextRoles.includes("group_leader")) {
+    changes.push(`warehouse zones → ${payload.warehouseZones.join(", ") || "none"}`);
   }
 
   if (changes.length > 0) {

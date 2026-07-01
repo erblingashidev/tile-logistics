@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireApiSessionNoSalesWrite } from "@/lib/auth/api-guard";
 import { bulkClearOrderAssignments } from "@/lib/services/orders";
 import type { AssignmentClearScope } from "@/lib/services/orders";
 
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
+  const auth = await requireApiSessionNoSalesWrite(request.method);
+  if (!auth.ok) return auth.response;
+
   const body = await request.json();
   const orderIds = (body.orderIds as number[] | undefined)?.filter(Boolean) ?? [];
 

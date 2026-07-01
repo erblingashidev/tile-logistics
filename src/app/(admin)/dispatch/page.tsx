@@ -174,14 +174,10 @@ export default function DispatchPage() {
     : 0;
 
   return (
-    <AppShell title="Dispatch board">
-      <p className="mb-4 text-sm text-zinc-600">
-        See every truck, round, picker, and pallet load in one place. Urgent
-        orders are matched to nearby routes — not to trucks heading the opposite
-        direction (e.g. Ferizaj won&apos;t join a Mitrovica run unless distance
-        still fits).
-      </p>
-
+    <AppShell
+      title="Dispatch board"
+      description="Live trucks, rounds, pickers, and pallet load."
+    >
       {message && (
         <div className="mb-4">
           <Alert tone="warning">{message}</Alert>
@@ -380,11 +376,7 @@ export default function DispatchPage() {
                               Pickers: {round.pickerNames.join(", ")}
                             </p>
                           )}
-                          {round.orders.length === 0 ? (
-                            <p className="mt-3 text-xs text-zinc-400">
-                              Empty — available for new route
-                            </p>
-                          ) : (
+                          {round.orders.length === 0 ? null : (
                             <ul className="mt-3 space-y-1.5">
                               {round.orders.map((o) => (
                                 <li

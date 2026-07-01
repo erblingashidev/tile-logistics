@@ -95,7 +95,7 @@ export function employeeCanUseWms(
   session: Extract<SessionUser, { role: "employee" }>
 ) {
   return session.roles.some((r) =>
-    (["warehouse_admin", "picker", "unloader", "maintainer"] as EmployeeRole[]).includes(r)
+    (["warehouse_admin", "warehouse_reporter", "group_leader", "picker", "unloader", "maintainer"] as EmployeeRole[]).includes(r)
   );
 }
 

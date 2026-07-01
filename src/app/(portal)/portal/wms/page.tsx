@@ -1,47 +1,135 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Button, Card, Input, Select, Alert } from "@/components/ui";
+import {
+  PortalCard,
+  PortalShell,
+  PortalTabs,
+} from "@/components/portal/PortalShell";
+import { Badge, Button, Input, Select, Alert } from "@/components/ui";
 import { sq } from "@/lib/i18n/sq";
-import { BRAND } from "@/lib/brand";
+import type { EmployeeRole } from "@/lib/constants";
 
 interface Location {
   id: number;
   code: string;
   label: string | null;
+  zone: string | null;
+}
+
+interface ZoneStatus {
+  zone: string;
+  status: "pending" | "counting" | "closed";
+  sectorCountId: number | null;
+  lineCount: number;
+  totalM2: number;
 }
 
 export default function PortalWmsPage() {
   const router = useRouter();
   const [locations, setLocations] = useState<Location[]>([]);
+  const [zones, setZones] = useState<ZoneStatus[]>([]);
+  const [employeeName, setEmployeeName] = useState<string>();
+  const [roles, setRoles] = useState<EmployeeRole[]>([]);
   const [openSession, setOpenSession] = useState<{ id: number; name: string } | null>(
     null
   );
   const [tab, setTab] = useState<"receive" | "inventory">("receive");
+  const [activeSector, setActiveSector] = useState<{
+    id: number;
+    zone: string;
+  } | null>(null);
   const [form, setForm] = useState({ ean: "", quantityM2: "", locationId: "" });
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/wms");
-    if (res.status === 401) {
+    const [wmsRes, meRes] = await Promise.all([
+      fetch("/api/wms"),
+      fetch("/api/auth/me"),
+    ]);
+    if (wmsRes.status === 401 || meRes.status === 401) {
       router.push("/login");
       return;
     }
-    if (res.status === 403) {
+    if (wmsRes.status === 403) {
       setError(sq.noWmsAccess);
       return;
     }
-    const data = await res.json();
+    const data = await wmsRes.json();
+    const me = meRes.ok ? await meRes.json() : null;
     setLocations(data.locations ?? []);
     setOpenSession(data.openSession ?? null);
+    setZones(data.zones ?? []);
+    setEmployeeName(me?.user?.name);
+    setRoles(me?.user?.roles ?? []);
+
+    const counting = (data.zones as ZoneStatus[] | undefined)?.find(
+      (z) => z.status === "counting" && z.sectorCountId
+    );
+    if (counting?.sectorCountId) {
+      setActiveSector({ id: counting.sectorCountId, zone: counting.zone });
+      const locRes = await fetch(
+        `/api/wms?zone=${encodeURIComponent(counting.zone)}`
+      );
+      if (locRes.ok) {
+        const locData = await locRes.json();
+        setLocations(locData.locations ?? []);
+      }
+    } else {
+      setActiveSector(null);
+    }
   }, [router]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  async function startSector(zone: string) {
+    setError("");
+    const res = await fetch("/api/wms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "start_sector", zone }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data.error ?? sq.errors.generic);
+      return;
+    }
+    setActiveSector({ id: data.sector.id, zone: data.sector.zone });
+    const locRes = await fetch(`/api/wms?zone=${encodeURIComponent(zone)}`);
+    if (locRes.ok) {
+      const locData = await locRes.json();
+      setLocations(locData.locations ?? []);
+    }
+    setForm({ ean: "", quantityM2: "", locationId: "" });
+    await load();
+  }
+
+  async function closeSector() {
+    if (!activeSector) return;
+    setError("");
+    const res = await fetch("/api/wms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "close_sector",
+        sectorCountId: activeSector.id,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data.error ?? sq.errors.generic);
+      return;
+    }
+    setSuccess(sq.inventorySectorClosed);
+    setActiveSector(null);
+    setForm({ ean: "", quantityM2: "", locationId: "" });
+    setTimeout(() => setSuccess(""), 3000);
+    await load();
+  }
 
   async function submit(action: "receive" | "inventory") {
     setError("");
@@ -54,6 +142,8 @@ export default function PortalWmsPage() {
         ean: form.ean.trim(),
         quantityM2: Number(form.quantityM2),
         locationId: form.locationId ? Number(form.locationId) : undefined,
+        zone: activeSector?.zone,
+        sectorCountId: activeSector?.id,
       }),
     });
     const data = await res.json();
@@ -66,6 +156,7 @@ export default function PortalWmsPage() {
     );
     setForm({ ean: "", quantityM2: "", locationId: form.locationId });
     setTimeout(() => setSuccess(""), 3000);
+    if (action === "inventory") await load();
   }
 
   async function logout() {
@@ -74,70 +165,107 @@ export default function PortalWmsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-100">
-      <header className="sticky top-0 z-10 border-b border-zinc-200 bg-white px-4 py-3">
-        <div className="mx-auto flex max-w-lg items-center justify-between">
-          <div>
-            <p className="text-sm font-semibold">{sq.wmsTitle}</p>
-            <p className="text-xs text-zinc-500">{BRAND.shortName}</p>
-          </div>
-          <div className="flex gap-2">
-            <Link href="/portal" className="text-xs text-zinc-600 underline">
-              {sq.ordersLink}
-            </Link>
-            <Button variant="ghost" className="text-xs" onClick={logout}>
-              {sq.logout}
-            </Button>
-          </div>
-        </div>
-      </header>
+    <PortalShell
+      title={sq.wmsTitle}
+      subtitle={employeeName}
+      activeNav="wms"
+      showOrders
+      showWms
+      showReports={roles.some((r) =>
+        (["warehouse_admin", "warehouse_reporter", "group_leader"] as EmployeeRole[]).includes(r)
+      )}
+      onLogout={logout}
+    >
+      {error && <Alert tone="error">{error}</Alert>}
+      {success && <Alert tone="info">{success}</Alert>}
 
-      <main className="mx-auto max-w-lg space-y-4 px-4 py-4 pb-16">
-        {error && <Alert tone="error">{error}</Alert>}
-        {success && <Alert tone="warning">{success}</Alert>}
+      <PortalTabs
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          { id: "receive", label: sq.wmsReceive },
+          { id: "inventory", label: sq.wmsInventory, disabled: !openSession },
+        ]}
+      />
 
-        <div className="flex gap-2">
-          <button
-            type="button"
-            className={`flex-1 rounded-lg py-3 text-sm font-medium ${
-              tab === "receive"
-                ? "bg-zinc-900 text-white"
-                : "bg-white text-zinc-700"
-            }`}
-            onClick={() => setTab("receive")}
-          >
-            {sq.wmsReceive}
-          </button>
-          <button
-            type="button"
-            className={`flex-1 rounded-lg py-3 text-sm font-medium ${
-              tab === "inventory"
-                ? "bg-zinc-900 text-white"
-                : "bg-white text-zinc-700"
-            }`}
-            onClick={() => setTab("inventory")}
-            disabled={!openSession}
-          >
-            {sq.wmsInventory}
-          </button>
-        </div>
+      {tab === "inventory" && (
+        <PortalCard className="space-y-4">
+          {!openSession ? (
+            <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-100">
+              {sq.noOpenSession}
+            </p>
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm text-zinc-600">{sq.sessionOpen}</p>
+                <Badge tone="green">{openSession.name}</Badge>
+              </div>
 
-        {!openSession && tab === "inventory" && (
-          <p className="text-sm text-amber-800">{sq.noOpenSession}</p>
-        )}
-        {openSession && tab === "inventory" && (
-          <p className="text-sm text-green-800">
-            {sq.sessionOpen}: {openSession.name}
-          </p>
-        )}
+              {!activeSector ? (
+                <div className="space-y-3">
+                  <p className="text-sm font-medium text-zinc-900">
+                    {sq.inventoryPickZone}
+                  </p>
+                  <p className="text-xs text-zinc-500">{sq.inventoryPickZoneHint}</p>
+                  <div className="grid gap-2">
+                    {zones.map((zone) => (
+                      <button
+                        key={zone.zone}
+                        type="button"
+                        onClick={() => startSector(zone.zone)}
+                        className="flex items-center justify-between rounded-xl border border-zinc-200 bg-white px-4 py-3 text-left hover:border-zinc-400"
+                      >
+                        <span className="font-medium text-zinc-900">{zone.zone}</span>
+                        <Badge
+                          tone={
+                            zone.status === "closed"
+                              ? "green"
+                              : zone.status === "counting"
+                                ? "amber"
+                                : "slate"
+                          }
+                        >
+                          {zone.status === "closed"
+                            ? sq.inventoryZoneClosed
+                            : zone.status === "counting"
+                              ? sq.inventoryZoneCounting
+                              : sq.inventoryZonePending}
+                        </Badge>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3 rounded-xl bg-zinc-50 p-4 ring-1 ring-zinc-100">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-zinc-400">
+                        {sq.inventoryActiveZone}
+                      </p>
+                      <p className="text-lg font-semibold text-zinc-900">
+                        {activeSector.zone}
+                      </p>
+                    </div>
+                    <Button variant="secondary" onClick={closeSector}>
+                      {sq.inventoryCloseSector}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-zinc-500">{sq.inventoryCloseSectorHint}</p>
+                </div>
+              )}
+            </>
+          )}
+        </PortalCard>
+      )}
 
-        <Card className="space-y-4 p-4">
-          <p className="text-xs text-zinc-500">{sq.scanHint}</p>
+      {(tab === "receive" || (tab === "inventory" && activeSector)) && (
+        <PortalCard className="space-y-4">
+          <p className="text-sm text-zinc-500">{sq.scanHint}</p>
           <Input
             placeholder={sq.ean}
             value={form.ean}
             onChange={(e) => setForm({ ...form, ean: e.target.value })}
-            className="text-lg"
+            className="rounded-xl py-3 text-base"
           />
           <Input
             type="number"
@@ -145,34 +273,34 @@ export default function PortalWmsPage() {
             placeholder={sq.quantityM2}
             value={form.quantityM2}
             onChange={(e) => setForm({ ...form, quantityM2: e.target.value })}
-            className="text-lg"
+            className="rounded-xl py-3 text-base"
           />
-          {tab === "receive" && (
-            <Select
-              value={form.locationId}
-              onChange={(e) => setForm({ ...form, locationId: e.target.value })}
-            >
-              <option value="">{sq.selectLocation}</option>
-              {locations.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.code} {l.label ? `— ${l.label}` : ""}
-                </option>
-              ))}
-            </Select>
-          )}
+          <Select
+            label={sq.location}
+            value={form.locationId}
+            onChange={(e) => setForm({ ...form, locationId: e.target.value })}
+          >
+            <option value="">{sq.selectLocation}</option>
+            {locations.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.code} {l.label ? `— ${l.label}` : ""}
+              </option>
+            ))}
+          </Select>
           <Button
-            className="w-full py-4 text-lg"
+            className="w-full py-4 text-base font-semibold"
             disabled={
               !form.ean ||
               !form.quantityM2 ||
-              (tab === "receive" && !form.locationId)
+              !form.locationId ||
+              (tab === "inventory" && !activeSector)
             }
             onClick={() => submit(tab === "receive" ? "receive" : "inventory")}
           >
             {sq.save}
           </Button>
-        </Card>
-      </main>
-    </div>
+        </PortalCard>
+      )}
+    </PortalShell>
   );
 }

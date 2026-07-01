@@ -63,6 +63,45 @@ export function orderStageBadgeTone(
   return "slate";
 }
 
+const WAITING_STAGES = new Set<OrderDisplayStage>([
+  "pending",
+  "assigned",
+  "loaded",
+  "not_loaded",
+]);
+
+const ON_THE_WAY_STAGES = new Set<OrderDisplayStage>([
+  "in_transit",
+  "arrived",
+]);
+
+export function isOrderWaitingToSend(stage: OrderDisplayStage): boolean {
+  return WAITING_STAGES.has(stage);
+}
+
+export function isOrderOnTheWay(stage: OrderDisplayStage): boolean {
+  return ON_THE_WAY_STAGES.has(stage);
+}
+
+export function salesQueueCounts(
+  orders: Array<{ deliveryStage?: OrderDisplayStage }>
+) {
+  let waiting = 0;
+  let onTheWay = 0;
+  let delivered = 0;
+  let cancelled = 0;
+
+  for (const order of orders) {
+    const stage = order.deliveryStage ?? "pending";
+    if (stage === "delivered") delivered += 1;
+    else if (stage === "cancelled") cancelled += 1;
+    else if (isOrderOnTheWay(stage)) onTheWay += 1;
+    else if (isOrderWaitingToSend(stage)) waiting += 1;
+  }
+
+  return { waiting, onTheWay, delivered, cancelled, active: waiting + onTheWay };
+}
+
 export function latestProofPhase(
   proofPhases: DeliveryProofPhase[]
 ): DeliveryProofPhase | null {

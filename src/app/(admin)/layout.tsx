@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import {
   employeeLoginRedirect,
-  isSalesStaff,
 } from "@/lib/employee-categories";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +17,7 @@ export default async function AdminLayout({
     redirect("/login");
   }
 
-  if (session.role === "employee" && !isSalesStaff(session.roles)) {
+  if (session.role === "employee") {
     redirect(employeeLoginRedirect(session.roles));
   }
 

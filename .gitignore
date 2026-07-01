@@ -52,3 +52,11 @@ data/
 # generated seed bundles (legacy)
 scripts/*.cjs
 .tmp/
+.tmp-*/
+eng.traineddata
+.tmp-eng.traineddata
+tmp-*.txt
+scripts/test-parse-invoice.ts
+.tmp-ocr-run.mjs
+.tmp-parse-runner.ts
+.tmp-test-parse.mjs

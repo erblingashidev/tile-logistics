@@ -119,7 +119,7 @@ export function LocationPicker({
 
       <Input
         label="Delivery details"
-        hint="Street, village, neighborhood — shown only in order details"
+        hint="Street or village"
         list="location-detail-options"
         value={detailQuery}
         onChange={(e) => {
@@ -147,11 +147,6 @@ export function LocationPicker({
           </option>
         ))}
       </datalist>
-      {locationId && (
-        <p className="text-xs text-zinc-400">
-          Mapped on Kosovo OSM — coordinates saved for route planning
-        </p>
-      )}
     </div>
   );
 }

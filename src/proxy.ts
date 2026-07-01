@@ -7,6 +7,7 @@ import {
   isSalesStaff,
   isWarehouseStaff,
   WMS_STAFF_ROLES,
+  WAREHOUSE_REPORT_ROLES,
 } from "@/lib/employee-categories";
 
 const PUBLIC_PREFIXES = [
@@ -16,14 +17,7 @@ const PUBLIC_PREFIXES = [
   "/favicon.ico",
 ];
 
-const SALES_PREFIXES = [
-  "/orders",
-  "/dispatch",
-  "/api/orders",
-  "/api/locations",
-  "/api/dashboard",
-  "/api/dispatch",
-];
+const SALES_PREFIXES = ["/sales", "/api/sales"];
 
 function employeePathAllowed(pathname: string, roles: EmployeeRole[]) {
   if (pathname.startsWith("/api/auth")) return true;
@@ -39,6 +33,14 @@ function employeePathAllowed(pathname: string, roles: EmployeeRole[]) {
   if (
     (pathname.startsWith("/portal/wms") || pathname.startsWith("/api/wms")) &&
     roles.some((r) => WMS_STAFF_ROLES.includes(r))
+  ) {
+    return true;
+  }
+
+  if (
+    (pathname.startsWith("/portal/reports") ||
+      pathname.startsWith("/api/portal/warehouse-reports")) &&
+    roles.some((r) => WAREHOUSE_REPORT_ROLES.includes(r))
   ) {
     return true;
   }

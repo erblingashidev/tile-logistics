@@ -1,10 +1,11 @@
+import { normalizeOrderUnit } from "@/lib/constants";
 import type { listOrders } from "@/lib/services/orders";
 import { formatDeliverySchedule } from "@/lib/delivery-schedule";
 
 export type ExportOrder = Awaited<ReturnType<typeof listOrders>>[number];
 
 function formatDimensions(item: ExportOrder["items"][number]) {
-  if (item.productType !== "tile") return "";
+  if (normalizeOrderUnit(item.unit) !== "m2") return "";
   const w = item.tileWidthCm;
   const h = item.tileHeightCm;
   if (w == null || h == null) return "";
@@ -64,7 +65,7 @@ function orderHeaderFields(order: ExportOrder) {
 function emptyLineFields(): Record<string, string | number> {
   return {
     "Line #": "",
-    "Product type": "",
+    "Unit": "",
     "Product name": "",
     Dimensions: "",
     "Width (cm)": "",
@@ -85,7 +86,7 @@ function lineItemFields(
 ): Record<string, string | number> {
   return {
     "Line #": lineNumber,
-    "Product type": item.productType,
+    "Unit": normalizeOrderUnit(item.unit),
     "Product name": item.productName ?? "",
     Dimensions: formatDimensions(item),
     "Width (cm)": item.tileWidthCm ?? "",

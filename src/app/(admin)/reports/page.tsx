@@ -69,7 +69,7 @@ export default function ReportsPage() {
   }, [load]);
 
   return (
-    <AppShell title="Reports">
+    <AppShell title="Reports" description="Exports and summaries.">
       <PageSection title="Filters">
         <Card className="p-4">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

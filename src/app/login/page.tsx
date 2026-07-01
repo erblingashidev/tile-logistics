@@ -63,11 +63,6 @@ export default function LoginPage() {
             {loading ? "Signing in…" : "Sign in"}
           </Button>
         </form>
-
-        <p className="mt-6 text-center text-xs text-zinc-400">
-          Admin: <span className="font-mono">admin</span> /{" "}
-          <span className="font-mono">admin</span>
-        </p>
       </Card>
     </div>
   );

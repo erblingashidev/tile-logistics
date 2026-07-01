@@ -6,6 +6,8 @@ import {
 
 export const WAREHOUSE_ROLES: EmployeeRole[] = [
   "warehouse_admin",
+  "warehouse_reporter",
+  "group_leader",
   "picker",
   "driver",
   "unloader",
@@ -22,9 +24,17 @@ export const FACILITY_ROLES: EmployeeRole[] = ["cleaner"];
 
 export const WMS_STAFF_ROLES: EmployeeRole[] = [
   "warehouse_admin",
+  "warehouse_reporter",
+  "group_leader",
   "picker",
   "unloader",
   "maintainer",
+];
+
+export const WAREHOUSE_REPORT_ROLES: EmployeeRole[] = [
+  "group_leader",
+  "warehouse_reporter",
+  "warehouse_admin",
 ];
 
 const CATEGORY_ORDER: EmployeeCategoryId[] = [
@@ -61,6 +71,14 @@ export function isSalesStaff(roles: EmployeeRole[]): boolean {
   return roles.some((r) => SALES_ROLES.includes(r));
 }
 
+export function isSalesAdmin(roles: EmployeeRole[]): boolean {
+  return roles.includes("sales_admin");
+}
+
+export function isSalesAgent(roles: EmployeeRole[]): boolean {
+  return roles.includes("sales_agent");
+}
+
 export function isShowroomStaff(roles: EmployeeRole[]): boolean {
   return roles.includes("showroom_picker");
 }
@@ -69,8 +87,10 @@ export function usesAlbanianPortal(roles: EmployeeRole[]): boolean {
   return isWarehouseStaff(roles);
 }
 
+export const SALES_HOME = "/sales";
+
 export function employeeLoginRedirect(roles: EmployeeRole[]): string {
-  if (isSalesStaff(roles)) return "/orders";
+  if (isSalesStaff(roles)) return SALES_HOME;
   if (isWarehouseStaff(roles)) return "/portal";
   return "/portal/no-access";
 }

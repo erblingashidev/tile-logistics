@@ -6,11 +6,11 @@ import { Card, StatCard } from "@/components/ui";
 
 const modules = [
   { href: "/orders", label: "Orders", desc: "Invoices & deliveries" },
-  { href: "/routes", label: "Routes", desc: "Plan vehicle trips" },
+  { href: "/routes", label: "Routes", desc: "Trip planning" },
   { href: "/vehicles", label: "Vehicles", desc: "Fleet & capacity" },
-  { href: "/employees", label: "Employees", desc: "Team & assignments" },
+  { href: "/employees", label: "Employees", desc: "Team & access" },
   { href: "/logs", label: "Logs", desc: "Activity history" },
-  { href: "/reports", label: "Reports", desc: "Export & summaries" },
+  { href: "/reports", label: "Reports", desc: "Exports" },
 ];
 
 export const dynamic = "force-dynamic";
@@ -20,7 +20,7 @@ export default async function DashboardPage() {
   const wh = BRAND.warehouse;
 
   return (
-    <AppShell title="Dashboard">
+    <AppShell title="Dashboard" description="Overview and quick navigation.">
       <Card className="mb-6 p-4">
         <p className="text-sm font-medium text-zinc-900">{BRAND.name}</p>
         <p className="mt-1 text-sm text-zinc-600">{wh.address}, {wh.country}</p>

@@ -257,7 +257,6 @@ export function OrderAssignmentPanel({
         className="rounded border bg-white px-2 py-1 text-xs"
         value={draft.round}
         onChange={(e) => onDraftChange({ ...draft, round: e.target.value })}
-        title="Each round is one trip: morning first, then orders for when the truck comes back"
       >
         {deliveryRoundSelectOptions().map((option) => (
           <option key={option.value} value={option.value}>
@@ -265,9 +264,6 @@ export function OrderAssignmentPanel({
           </option>
         ))}
       </select>
-      <p className="text-[10px] leading-snug text-zinc-500">
-        Round 1 = first trip out. Round 2 = same truck after it returns.
-      </p>
 
       <Button
         className="w-full text-xs"
@@ -276,11 +272,6 @@ export function OrderAssignmentPanel({
       >
         {hasAssignment ? "Save assignment" : "Assign truck + picker"}
       </Button>
-      {hasAssignment && draft.vehicleId && (
-        <p className="text-[10px] leading-snug text-amber-800">
-          Changing truck here moves this order to another vehicle (keeps picker).
-        </p>
-      )}
 
       {!hasAssignment && (
         <Button
@@ -338,11 +329,6 @@ export function OrderAssignmentPanel({
         </Button>
       )}
 
-      <p className="text-[10px] leading-snug text-zinc-500">
-        Driver auto-fills from truck. Picker auto-fills from truck defaults
-        (Vehicles page). Helpers auto-join when picker is saved. Jumbo tiles
-        (&gt;2 pcs of 160×160, 120×280, etc.) require the crane truck.
-      </p>
     </div>
   );
 }

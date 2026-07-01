@@ -137,6 +137,25 @@ async function runMigrations(client: Client) {
     "CREATE INDEX IF NOT EXISTS idx_orders_requested_delivery ON orders(requested_delivery_date)"
   );
 
+  const orderCols2 = await tableColumns(client, "orders");
+  await addColumnIfMissing(
+    client,
+    "orders",
+    "sales_employee_id",
+    "sales_employee_id INTEGER REFERENCES employees(id)",
+    orderCols2
+  );
+  await addColumnIfMissing(
+    client,
+    "orders",
+    "sales_agent_name",
+    "sales_agent_name TEXT",
+    orderCols2
+  );
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_orders_sales_employee ON orders(sales_employee_id)"
+  );
+
   const assignCols = await tableColumns(client, "assignments");
   await addColumnIfMissing(
     client,
@@ -152,6 +171,13 @@ async function runMigrations(client: Client) {
     "employees",
     "assigned_vehicle_id",
     "assigned_vehicle_id INTEGER REFERENCES vehicles(id)",
+    empCols
+  );
+  await addColumnIfMissing(
+    client,
+    "employees",
+    "manager_employee_id",
+    "manager_employee_id INTEGER REFERENCES employees(id)",
     empCols
   );
   await addColumnIfMissing(
@@ -181,6 +207,13 @@ async function runMigrations(client: Client) {
     orderItemCols2
   );
 
+  await client.execute(
+    "UPDATE order_items SET product_type = 'm2' WHERE product_type = 'tile'"
+  );
+  await client.execute(
+    "UPDATE order_items SET product_type = 'kg' WHERE product_type = 'adhesive'"
+  );
+
   await client.execute(`
     CREATE TABLE IF NOT EXISTS products (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -207,6 +240,79 @@ async function runMigrations(client: Client) {
       notes TEXT,
       created_at TEXT NOT NULL
     )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS employee_warehouse_zones (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+      zone TEXT NOT NULL UNIQUE,
+      assigned_at TEXT NOT NULL
+    )
+  `);
+  await client.execute(`
+    CREATE INDEX IF NOT EXISTS idx_employee_warehouse_zones_employee
+      ON employee_warehouse_zones(employee_id)
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS warehouse_reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+      report_type TEXT NOT NULL,
+      scope TEXT NOT NULL,
+      zone TEXT,
+      report_week TEXT,
+      category TEXT NOT NULL,
+      body TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS warehouse_report_photos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      report_id INTEGER NOT NULL REFERENCES warehouse_reports(id) ON DELETE CASCADE,
+      photo_path TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS warehouse_report_tags (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      report_id INTEGER NOT NULL REFERENCES warehouse_reports(id) ON DELETE CASCADE,
+      tagged_employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS warehouse_report_zones (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      report_id INTEGER NOT NULL REFERENCES warehouse_reports(id) ON DELETE CASCADE,
+      zone TEXT NOT NULL
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS warehouse_report_edit_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      report_id INTEGER NOT NULL REFERENCES warehouse_reports(id) ON DELETE CASCADE,
+      employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+      proposed_body TEXT NOT NULL,
+      reason TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      admin_note TEXT,
+      created_at TEXT NOT NULL,
+      reviewed_at TEXT
+    )
+  `);
+  await client.execute(`
+    CREATE INDEX IF NOT EXISTS idx_warehouse_report_edit_requests_status
+      ON warehouse_report_edit_requests(status)
+  `);
+  await client.execute(`
+    CREATE INDEX IF NOT EXISTS idx_warehouse_reports_week
+      ON warehouse_reports(report_week)
+  `);
+  await client.execute(`
+    CREATE INDEX IF NOT EXISTS idx_warehouse_reports_employee
+      ON warehouse_reports(employee_id)
   `);
   await client.execute(`
     CREATE TABLE IF NOT EXISTS stock_balances (
@@ -257,12 +363,105 @@ async function runMigrations(client: Client) {
       location_id INTEGER REFERENCES warehouse_locations(id) ON DELETE SET NULL,
       employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
       notes TEXT,
-      counted_at TEXT NOT NULL
+      counted_at TEXT NOT NULL,
+      zone TEXT,
+      sector_count_id INTEGER
     )
   `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS inventory_sector_counts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER NOT NULL REFERENCES inventory_sessions(id) ON DELETE CASCADE,
+      zone TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'counting',
+      started_at TEXT NOT NULL,
+      closed_at TEXT,
+      started_by_employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+      closed_by_employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS inventory_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER NOT NULL REFERENCES inventory_sessions(id) ON DELETE CASCADE,
+      product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+      location_id INTEGER NOT NULL REFERENCES warehouse_locations(id) ON DELETE CASCADE,
+      zone TEXT,
+      quantity_m2 REAL NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS inventory_variance_reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER NOT NULL REFERENCES inventory_sessions(id) ON DELETE CASCADE,
+      previous_report_id INTEGER,
+      created_at TEXT NOT NULL,
+      applied_at TEXT,
+      total_lines INTEGER NOT NULL DEFAULT 0,
+      total_variance_m2 REAL NOT NULL DEFAULT 0,
+      notes TEXT
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS inventory_variance_lines (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      report_id INTEGER NOT NULL REFERENCES inventory_variance_reports(id) ON DELETE CASCADE,
+      product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+      ean TEXT,
+      location_id INTEGER REFERENCES warehouse_locations(id) ON DELETE SET NULL,
+      zone TEXT,
+      book_m2 REAL NOT NULL DEFAULT 0,
+      counted_m2 REAL NOT NULL DEFAULT 0,
+      difference_m2 REAL NOT NULL DEFAULT 0,
+      previous_counted_m2 REAL,
+      change_since_last_m2 REAL
+    )
+  `);
+  const inventoryLineCols = await tableColumns(client, "inventory_lines");
+  await addColumnIfMissing(
+    client,
+    "inventory_lines",
+    "zone",
+    "zone TEXT",
+    inventoryLineCols
+  );
+  await addColumnIfMissing(
+    client,
+    "inventory_lines",
+    "sector_count_id",
+    "sector_count_id INTEGER",
+    inventoryLineCols
+  );
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_inventory_sector_session ON inventory_sector_counts(session_id)"
+  );
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_inventory_variance_report ON inventory_variance_lines(report_id)"
+  );
   await client.execute(
     "CREATE INDEX IF NOT EXISTS idx_products_ean ON products(ean)"
   );
+
+  const productCols = await tableColumns(client, "products");
+  const productColumnMigrations: Array<[string, string]> = [
+    ["unit", "unit TEXT NOT NULL DEFAULT 'm2'"],
+    ["kg_per_pallet", "kg_per_pallet REAL"],
+    ["pieces_per_pack", "pieces_per_pack INTEGER"],
+    ["m2_per_pack", "m2_per_pack REAL"],
+    ["kg_per_pack", "kg_per_pack REAL"],
+    ["unit_weight_kg", "unit_weight_kg REAL"],
+    ["pallet_footprint_length_cm", "pallet_footprint_length_cm REAL"],
+    ["pallet_footprint_width_cm", "pallet_footprint_width_cm REAL"],
+    ["replaces_standard_pallets", "replaces_standard_pallets REAL DEFAULT 1"],
+  ];
+  for (const [name, definition] of productColumnMigrations) {
+    await addColumnIfMissing(client, "products", name, definition, productCols);
+  }
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_products_name ON products(product_name)"
+  );
+
   await client.execute(
     "CREATE INDEX IF NOT EXISTS idx_stock_balances_product ON stock_balances(product_id)"
   );
@@ -295,6 +494,10 @@ export async function getDb() {
       await clientInstance.execute("PRAGMA foreign_keys = ON");
       await runMigrations(clientInstance);
       dbInstance = drizzle(clientInstance, { schema });
+      const { backfillOrderSalesOwnership } = await import(
+        "@/lib/services/sales-portal"
+      );
+      await backfillOrderSalesOwnership();
       return dbInstance;
     })();
   }

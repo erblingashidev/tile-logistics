@@ -268,16 +268,23 @@ async function main() {
   await resetOperationalData();
 
   console.log("\nStep 2 — Staff…");
-  await ensureEmployee({
+  const salesAdminId = await ensureEmployee({
     name: "Elira Hoxha",
     username: "salesadmin",
     roles: ["sales_admin"],
   });
-  await ensureEmployee({
+  const salesAgentId = await ensureEmployee({
     name: "Arben Kelmendi",
     username: "agjenti",
     roles: ["sales_agent"],
   });
+  {
+    const db = await getDb();
+    await db
+      .update(employees)
+      .set({ managerEmployeeId: salesAdminId })
+      .where(eq(employees.id, salesAgentId));
+  }
   await ensureEmployee({
     name: "Arta Mustafa",
     username: "showroom",
@@ -459,7 +466,7 @@ async function main() {
       notes: spec.notes ?? "Demo order",
       items: [
         {
-          productType: "tile",
+          unit: "m2",
           productName: "AGIMI Porcelain 60×120",
           productEan: "3830061234567",
           tileWidthCm: 60,

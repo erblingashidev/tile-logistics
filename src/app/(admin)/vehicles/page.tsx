@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { Badge, Button, Card, EmptyState, Input, Select } from "@/components/ui";
 import { VEHICLE_STATUSES } from "@/lib/constants";
 import { DELIVERY_ROUND_SHORT_LABELS } from "@/lib/delivery-rounds";
+import { readJsonListWithError } from "@/lib/api/read-json-list";
 
 interface Vehicle {
   id: number;
@@ -45,7 +47,8 @@ export default function VehiclesPage() {
 
   const load = useCallback(async () => {
     const vehiclesRes = await fetch("/api/vehicles");
-    setVehicles(await vehiclesRes.json());
+    const payload = await readJsonListWithError<Vehicle>(vehiclesRes);
+    setVehicles(payload.data);
   }, []);
 
   useEffect(() => {
@@ -108,9 +111,16 @@ export default function VehiclesPage() {
   }
 
   return (
-    <AppShell title="Vehicles">
-      <div className="mb-4">
-        <Button onClick={() => setShowForm(true)}>Add vehicle</Button>
+    <AppShell title="Vehicles" description="Fleet capacity, drivers, and default crews.">
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+        <Button className="w-full sm:w-auto" onClick={() => setShowForm(true)}>
+          Add vehicle
+        </Button>
+        <Link href="/vehicles/maintenance" className="w-full sm:w-auto">
+          <Button variant="secondary" className="w-full">
+            Maintenance log
+          </Button>
+        </Link>
       </div>
 
       {showForm && (
@@ -218,16 +228,29 @@ export default function VehiclesPage() {
               ))}
             </div>
             <div className="mt-3 flex flex-wrap gap-1 border-t border-zinc-100 pt-3">
-              {VEHICLE_STATUSES.map((s) => (
-                <Button
-                  key={s}
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => quickStatus(v.id, s)}
-                >
-                  {s.replace("_", " ")}
-                </Button>
-              ))}
+              <Select
+                className="mb-2 w-full sm:hidden"
+                value={v.status}
+                onChange={(e) => quickStatus(v.id, e.target.value)}
+              >
+                {VEHICLE_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {s.replace("_", " ")}
+                  </option>
+                ))}
+              </Select>
+              <div className="hidden flex-wrap gap-1 sm:flex">
+                {VEHICLE_STATUSES.map((s) => (
+                  <Button
+                    key={s}
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => quickStatus(v.id, s)}
+                  >
+                    {s.replace("_", " ")}
+                  </Button>
+                ))}
+              </div>
               <Button variant="ghost" size="sm" onClick={() => startEdit(v)}>
                 Edit
               </Button>

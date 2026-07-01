@@ -12,6 +12,7 @@ import {
   Select,
 } from "@/components/ui";
 import { deliveryRoundSelectOptions } from "@/lib/delivery-rounds";
+import { readJsonList } from "@/lib/api/read-json-list";
 import { SmartDispatchPanel } from "@/components/SmartDispatchPanel";
 
 interface Vehicle {
@@ -70,8 +71,18 @@ export default function RoutesPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    fetch("/api/vehicles").then((r) => r.json()).then(setVehicles);
-    fetch("/api/employees").then((r) => r.json()).then(setEmployees);
+    void (async () => {
+      const [vehiclesRes, employeesRes] = await Promise.all([
+        fetch("/api/vehicles"),
+        fetch("/api/employees"),
+      ]);
+      setVehicles(await readJsonList<Vehicle>(vehiclesRes));
+      setEmployees(
+        await readJsonList<{ id: number; name: string; roles: string[] }>(
+          employeesRes
+        )
+      );
+    })();
     fetch("/api/locations")
       .then((r) => r.json())
       .then((d) => {
@@ -171,11 +182,13 @@ export default function RoutesPage() {
       return;
     }
     loadPlans();
-    fetch("/api/vehicles").then((r) => r.json()).then(setVehicles);
+    void fetch("/api/vehicles")
+      .then((r) => readJsonList<Vehicle>(r))
+      .then(setVehicles);
   }
 
   return (
-    <AppShell title="Route planning">
+    <AppShell title="Route planning" description="Suggested trips from mapped deliveries.">
       <PageSection title="Filters">
         <Card className="p-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -304,13 +317,9 @@ export default function RoutesPage() {
               Load for this trip: {roundLoad.totals.pallets}/
               {selectedVehicle.maxPallets} pallets ·{" "}
               {roundLoad.totals.weightKg.toFixed(0)}/
-              {selectedVehicle.maxWeightKg} kg (kg is advisory)
+              {selectedVehicle.maxWeightKg} kg
             </p>
           )}
-          <p className="mt-2 text-xs text-zinc-500">
-            Each round is one truck trip — morning first, then orders for when it
-            returns.
-          </p>
         </Card>
       </PageSection>
 
@@ -330,24 +339,20 @@ export default function RoutesPage() {
         regionFilter={filters.region || undefined}
         onApplied={() => {
           loadPlans();
-          fetch("/api/vehicles").then((r) => r.json()).then(setVehicles);
+          void fetch("/api/vehicles")
+            .then((r) => readJsonList<Vehicle>(r))
+            .then(setVehicles);
         }}
         onError={setError}
         onWarning={setWarning}
       />
 
       <PageSection title="Suggested routes">
-        <p className="mb-3 text-xs text-zinc-500">
-          Distances measured from AGIMI warehouse — Shkabaj, 10000 Prishtinë
-        </p>
         {loading ? (
           <p className="text-sm text-zinc-500">Loading…</p>
         ) : plans.length === 0 ? (
           <Card className="p-4">
-            <p className="text-sm text-zinc-500">
-              No route suggestions. Add orders with mapped locations, or widen
-              filters.
-            </p>
+            <p className="text-sm text-zinc-500">No routes match the current filters.</p>
           </Card>
         ) : (
           <div className="space-y-3">

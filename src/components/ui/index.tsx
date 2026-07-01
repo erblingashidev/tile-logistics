@@ -32,7 +32,7 @@ export function Button({
   };
   const sizes = {
     sm: "px-2.5 py-1 text-xs",
-    md: "px-3.5 py-2 text-sm",
+    md: "min-h-10 px-3.5 py-2 text-sm",
   };
   return (
     <button
@@ -89,6 +89,47 @@ export function Select({
         {children}
       </select>
     </label>
+  );
+}
+
+export function Textarea({
+  label,
+  hint,
+  className = "",
+  ...props
+}: React.TextareaHTMLAttributes<HTMLTextAreaElement> & {
+  label?: string;
+  hint?: string;
+}) {
+  return (
+    <label className="block">
+      {label && (
+        <span className="mb-1 block text-xs font-medium text-zinc-600">
+          {label}
+        </span>
+      )}
+      <textarea
+        className={`w-full rounded border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900 ${className}`}
+        {...props}
+      />
+      {hint && <span className="mt-1 block text-xs text-zinc-500">{hint}</span>}
+    </label>
+  );
+}
+
+export function ResponsiveTable({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`overflow-x-auto overscroll-x-contain rounded border border-zinc-200 bg-white ${className}`}
+    >
+      <div className="min-w-[640px]">{children}</div>
+    </div>
   );
 }
 

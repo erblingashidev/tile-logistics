@@ -158,12 +158,13 @@ export async function recommendUrgentPlacement(
       if (remaining < order.totalPallets) continue;
 
       const capacity = checkVehicleCapacity(
-        [{ totalPallets: load.totals.pallets, totalWeightKg: load.totals.weightKg, totalM2: 0, totalPieces: 0 }],
+        [{ totalPallets: load.totals.pallets, totalWeightKg: load.totals.weightKg, totalM2: 0, totalPieces: 0, totalTruckPalletSlots: load.totals.pallets }],
         {
           totalPallets: order.totalPallets,
           totalWeightKg: order.totalWeightKg,
           totalM2: 0,
           totalPieces: 0,
+          totalTruckPalletSlots: order.totalPallets,
         },
         dispatchV.maxPallets,
         dispatchV.maxWeightKg

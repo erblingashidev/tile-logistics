@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireApiSession } from "@/lib/auth/api-guard";
+import { requireApiSession, requireApiSessionNoSalesWrite } from "@/lib/auth/api-guard";
 import {
   listOrders,
   createOrder,
   type OrderPayload,
 } from "@/lib/services/orders";
+import { resolveSalesOwnership } from "@/lib/services/sales-portal";
 
 export const runtime = "nodejs";
 
@@ -55,7 +56,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireApiSession();
+  const auth = await requireApiSessionNoSalesWrite(request.method);
   if (!auth.ok) return auth.response;
 
   const body = (await request.json()) as OrderPayload;
@@ -72,11 +73,17 @@ export async function POST(request: NextRequest) {
     );
   }
   try {
+    const ownership = await resolveSalesOwnership({
+      salesAgentName: body.salesAgentName,
+      salesEmployeeId: body.salesEmployeeId,
+    });
     const order = await createOrder({
       ...body,
       location: body.location?.trim() || body.region || "—",
       orderDate: body.orderDate ?? new Date().toISOString().slice(0, 10),
       items: body.items ?? [],
+      salesEmployeeId: ownership.salesEmployeeId,
+      salesAgentName: ownership.salesAgentName,
     });
     return NextResponse.json(order, { status: 201 });
   } catch (err) {

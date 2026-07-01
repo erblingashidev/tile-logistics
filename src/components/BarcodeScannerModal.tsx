@@ -20,12 +20,12 @@ const VARIANT_COPY: Record<
   { title: string; hint: string }
 > = {
   invoiceNumber: {
-    title: "Scan invoice number barcode",
-    hint: "Point at the fiscal barcode on the top-right of the AGIMI invoice (e.g. 26-SHV01-001-6263). Hold steady in the box.",
+    title: "Scan invoice number",
+    hint: "Align the fiscal barcode in the frame.",
   },
   default: {
     title: "Scan barcode",
-    hint: "Align the barcode in the box. Supports Code 128, EAN, and QR.",
+    hint: "Hold the code steady in the frame.",
   },
 };
 
@@ -152,7 +152,9 @@ export function BarcodeScannerModal({
       <div className="w-full max-w-lg overflow-hidden rounded-xl bg-white shadow-xl">
         <div className="border-b border-zinc-200 px-4 py-3">
           <p className="font-semibold text-zinc-900">{title ?? copy.title}</p>
-          <p className="mt-1 text-xs text-zinc-500">{hint ?? copy.hint}</p>
+          {(hint ?? copy.hint) ? (
+            <p className="mt-1 text-xs text-zinc-500">{hint ?? copy.hint}</p>
+          ) : null}
         </div>
 
         <div className="relative bg-zinc-900 p-2">

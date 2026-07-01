@@ -3,15 +3,24 @@ import { formatDeliverySchedule } from "@/lib/delivery-schedule";
 import { formatDeliveryRound } from "@/lib/delivery-rounds";
 import { OrderAssignmentTimeline } from "@/components/OrderAssignmentTimeline";
 import { BRAND } from "@/lib/brand";
-import { EMPLOYEE_ROLE_LABELS, DELIVERY_PROOF_LABELS, type DeliveryProofPhase, type EmployeeRole } from "@/lib/constants";
+import {
+  normalizeOrderUnit,
+  ORDER_UNIT_LABELS,
+  EMPLOYEE_ROLE_LABELS,
+  DELIVERY_PROOF_LABELS,
+  type DeliveryProofPhase,
+  type EmployeeRole,
+} from "@/lib/constants";
 import {
   orderStageBadgeTone,
   type OrderDisplayStage,
 } from "@/lib/order-display";
 
 export interface OrderInvoiceItem {
-  productType: string;
+  unit?: string | null;
+  productType?: string | null;
   productName?: string | null;
+  productEan?: string | null;
   quantityM2?: number | null;
   pieceCount?: number | null;
   palletCount?: number | null;
@@ -42,6 +51,8 @@ export interface OrderInvoiceData {
   loadNotes?: string | null;
   price: number;
   notes?: string | null;
+  salesAgentName?: string | null;
+  salesAgentDisplayName?: string | null;
   totalM2: number;
   totalPieces: number;
   totalPallets: number;
@@ -74,19 +85,23 @@ function formatPrice(value: number) {
   }).format(value);
 }
 
+function parseReferentiFromNotes(notes?: string | null): string | null {
+  const match = notes?.match(/Referenti:\s*([^·\n]+)/i);
+  return match?.[1]?.trim() || null;
+}
+
 function itemDescription(item: OrderInvoiceItem) {
-  if (item.productType === "adhesive") {
-    return item.productName?.trim() || "Adhesive / grout";
-  }
   if (item.productName?.trim()) return item.productName.trim();
-  if (item.tileWidthCm != null && item.tileHeightCm != null) {
+  const unit = normalizeOrderUnit(item.unit ?? item.productType);
+  if (unit === "m2" && item.tileWidthCm != null && item.tileHeightCm != null) {
     return `Tile ${item.tileWidthCm}×${item.tileHeightCm} cm`;
   }
-  return "Tile";
+  return "Product";
 }
 
 function itemDimensions(item: OrderInvoiceItem) {
-  if (item.productType !== "tile") return "—";
+  const unit = normalizeOrderUnit(item.unit ?? item.productType);
+  if (unit !== "m2") return "—";
   if (item.tileWidthCm == null || item.tileHeightCm == null) return "—";
   const face = `${item.tileWidthCm} × ${item.tileHeightCm} cm`;
   if (item.tileThicknessCm != null) {
@@ -108,6 +123,10 @@ export function OrderInvoice({ order }: { order: OrderInvoiceData }) {
   const driverName =
     order.staff?.driver?.employeeName ?? order.assignment?.driverName ?? null;
   const pickerName = order.staff?.picker?.employeeName ?? null;
+  const referenti =
+    order.salesAgentName?.trim() ||
+    order.salesAgentDisplayName?.trim() ||
+    parseReferentiFromNotes(order.notes);
   const displayStage = (order.deliveryStage ??
     order.status) as OrderDisplayStage;
   const displayLabel =
@@ -154,12 +173,18 @@ export function OrderInvoice({ order }: { order: OrderInvoiceData }) {
         </div>
       </div>
 
-      <div className="mt-6 grid gap-6 sm:grid-cols-2">
+      <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         <div>
           <p className="text-xs font-medium uppercase tracking-wider text-zinc-400">
             Customer
           </p>
           <p className="mt-1 font-medium text-zinc-900">{order.customerName}</p>
+        </div>
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wider text-zinc-400">
+            Referenti Juaj
+          </p>
+          <p className="mt-1 font-medium text-zinc-900">{referenti || "—"}</p>
         </div>
         <div>
           <p className="text-xs font-medium uppercase tracking-wider text-zinc-400">
@@ -234,7 +259,8 @@ export function OrderInvoice({ order }: { order: OrderInvoiceData }) {
           <thead>
             <tr className="border-b-2 border-zinc-900 text-left text-xs uppercase tracking-wider text-zinc-500">
               <th className="py-2 pr-3 font-medium">#</th>
-              <th className="py-2 pr-3 font-medium">Product</th>
+              <th className="py-2 pr-3 font-medium">Kodi</th>
+              <th className="py-2 pr-3 font-medium">Emërtimi</th>
               <th className="py-2 pr-3 font-medium">Dimensions</th>
               <th className="py-2 pr-3 text-right font-medium">m²</th>
               <th className="py-2 pr-3 text-right font-medium">Pieces</th>
@@ -245,7 +271,7 @@ export function OrderInvoice({ order }: { order: OrderInvoiceData }) {
           <tbody>
             {order.items.length === 0 ? (
               <tr className="border-b border-zinc-100">
-                <td colSpan={7} className="py-4 text-center text-zinc-400">
+                <td colSpan={8} className="py-4 text-center text-zinc-400">
                   No line items
                 </td>
               </tr>
@@ -253,19 +279,22 @@ export function OrderInvoice({ order }: { order: OrderInvoiceData }) {
               order.items.map((item, i) => (
                 <tr key={i} className="border-b border-zinc-100">
                   <td className="py-3 pr-3 text-zinc-400">{i + 1}</td>
+                  <td className="py-3 pr-3 font-mono text-xs text-zinc-600">
+                    {item.productEan?.trim() || "—"}
+                  </td>
                   <td className="py-3 pr-3">
                     <p className="font-medium text-zinc-900">
                       {itemDescription(item)}
                     </p>
                     <p className="text-xs capitalize text-zinc-400">
-                      {item.productType}
+                      {ORDER_UNIT_LABELS[normalizeOrderUnit(item.unit ?? item.productType)]}
                     </p>
                   </td>
                   <td className="py-3 pr-3 text-zinc-600">
                     {itemDimensions(item)}
                   </td>
                   <td className="py-3 pr-3 text-right tabular-nums text-zinc-900">
-                    {item.productType === "tile"
+                    {normalizeOrderUnit(item.unit ?? item.productType) === "m2"
                       ? (item.quantityM2 ?? 0).toFixed(2)
                       : "—"}
                   </td>
@@ -286,7 +315,7 @@ export function OrderInvoice({ order }: { order: OrderInvoiceData }) {
           </tbody>
           <tfoot>
             <tr className="border-t-2 border-zinc-900 font-medium text-zinc-900">
-              <td colSpan={3} className="py-3 pr-3 text-right uppercase text-xs tracking-wider text-zinc-500">
+              <td colSpan={4} className="py-3 pr-3 text-right uppercase text-xs tracking-wider text-zinc-500">
                 Totals
               </td>
               <td className="py-3 pr-3 text-right tabular-nums">
@@ -304,7 +333,7 @@ export function OrderInvoice({ order }: { order: OrderInvoiceData }) {
             </tr>
             <tr>
               <td
-                colSpan={6}
+                colSpan={7}
                 className="py-3 pr-3 text-right text-sm text-zinc-500"
               >
                 Order value

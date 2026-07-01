@@ -2,11 +2,91 @@ import {
   getKgPerPalletForTile,
   getTilePalletSpec,
   inferPresetIdFromDimensions,
+  normalizeOrderUnit,
+  type OrderUnit,
   type TileSpecOptions,
   tileFaceAreaM2,
 } from "./constants";
+import {
+  calculateLineLogistics,
+  isUsablePalletSpec,
+  type ProductPalletSpec,
+} from "./product-pallet-spec";
 
-export type { TileSpecOptions };
+export type { ProductPalletSpec };
+
+export type { TileSpecOptions, OrderUnit };
+
+function parseWeightNumber(value: string): number {
+  const trimmed = value.trim().replace(",", ".");
+  return Number(trimmed) || 0;
+}
+
+/** Parse pack weight from product names like "H30 GEL 25KG" or "ARDEX G 10 anthrazit-5 kg". */
+export function parseUnitWeightKgFromName(productName: string): number | null {
+  const name = productName.trim();
+  if (!name) return null;
+
+  const patterns = [
+    /\(\s*(\d+(?:[.,]\d+)?)\s*kg\s*\)/i,
+    /(?:^|[\s(-])(\d+(?:[.,]\d+)?)\s*kg\b/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = name.match(pattern);
+    if (!match) continue;
+    const kg = parseWeightNumber(match[1]);
+    if (kg > 0 && kg <= 1000) return kg;
+  }
+
+  return null;
+}
+
+export function calculateWeightBasedPieces(
+  totalWeightKg: number,
+  unitWeightKg: number | null
+): {
+  calculatedPieces: number;
+  unitWeightKg: number | null;
+  note?: string;
+} {
+  if (!unitWeightKg || unitWeightKg <= 0) {
+    return {
+      calculatedPieces: 0,
+      unitWeightKg: null,
+      note:
+        "Add unit weight in the product name (e.g. 25 kg) to calculate pieces.",
+    };
+  }
+  if (totalWeightKg <= 0) {
+    return { calculatedPieces: 0, unitWeightKg, note: "Enter total kg." };
+  }
+  return {
+    calculatedPieces: Math.ceil(totalWeightKg / unitWeightKg),
+    unitWeightKg,
+  };
+}
+
+export interface WeightLineCalculation {
+  totalWeightKg: number;
+  unitWeightKg: number | null;
+  calculatedPieces: number;
+  note?: string;
+}
+
+export function calculateWeightLine(
+  totalWeightKg: number,
+  productName: string
+): WeightLineCalculation {
+  const unitWeightKg = parseUnitWeightKgFromName(productName);
+  const result = calculateWeightBasedPieces(totalWeightKg, unitWeightKg);
+  return {
+    totalWeightKg,
+    unitWeightKg: result.unitWeightKg,
+    calculatedPieces: result.calculatedPieces,
+    note: result.note,
+  };
+}
 
 export function tileSpecOptionsForItem(item: {
   tileWidthCm?: number;
@@ -112,8 +192,10 @@ export function calculateTileLine(
 }
 
 export interface OrderItemInput {
-  productType: "tile" | "adhesive";
+  unit: OrderUnit | string;
   productName?: string;
+  productId?: number;
+  productEan?: string;
   tileWidthCm?: number;
   tileHeightCm?: number;
   tileThicknessCm?: number;
@@ -121,10 +203,12 @@ export interface OrderItemInput {
   weightKg?: number;
   manualPallets?: number;
   manualPieces?: number;
+  /** When linked to catalog with pallet specs, orders use these for weight/space. */
+  catalogPallet?: ProductPalletSpec | null;
 }
 
 export interface EnrichedOrderItem {
-  productType: string;
+  unit: OrderUnit;
   productName: string | null;
   tileWidthCm: number | null;
   tileHeightCm: number | null;
@@ -142,6 +226,8 @@ export interface OrderTotals {
   totalPieces: number;
   totalPallets: number;
   totalWeightKg: number;
+  /** Pallet slots on truck (accounts for oversized pallets). Falls back to totalPallets when omitted. */
+  totalTruckPalletSlots?: number;
 }
 
 /** Display m² without rounding to one decimal (e.g. 9.36 stays 9.36, not 9.4). */
@@ -155,34 +241,68 @@ export function formatM2(value: number): string {
 
 export function formatOrderProductSummary(
   items: Array<{
-    productType: string;
+    unit?: string | null;
+    productType?: string | null;
     productName?: string | null;
     tileWidthCm?: number | null;
     tileHeightCm?: number | null;
     quantityM2?: number | null;
+    weightKg?: number | null;
+    pieceCount?: number | null;
   }>
 ): string {
   if (items.length === 0) return "—";
 
   return items
     .map((item) => {
-      const name =
-        item.productName?.trim() ||
-        (item.productType === "tile" ? "Tile" : "Adhesive");
+      const unit = normalizeOrderUnit(item.unit ?? item.productType);
+      const name = item.productName?.trim() || "Product";
       const size =
-        item.tileWidthCm && item.tileHeightCm
+        unit === "m2" && item.tileWidthCm && item.tileHeightCm
           ? ` ${item.tileWidthCm}×${item.tileHeightCm}`
           : "";
-      const qty =
-        item.quantityM2 != null ? ` · ${formatM2(item.quantityM2)} m²` : "";
-      return `${name}${size}${qty}`;
+      if (unit === "m2" && item.quantityM2 != null) {
+        return `${name}${size} · ${formatM2(item.quantityM2)} m²`;
+      }
+      if (unit === "kg" && item.weightKg != null) {
+        const pieces =
+          item.pieceCount != null ? ` · ${item.pieceCount} pcs` : "";
+        return `${name} · ${item.weightKg.toFixed(0)} kg${pieces}`;
+      }
+      if (unit === "piece" && item.pieceCount != null) {
+        return `${name} · ${item.pieceCount} pcs`;
+      }
+      return `${name}${size}`;
     })
     .join("; ");
 }
 
 export function enrichOrderItem(item: OrderItemInput): EnrichedOrderItem {
-  if (item.productType === "tile") {
+  const unit = normalizeOrderUnit(item.unit);
+
+  if (unit === "m2") {
     const m2 = item.quantityM2 ?? 0;
+
+    if (isUsablePalletSpec(item.catalogPallet)) {
+      const line = calculateLineLogistics(m2, item.catalogPallet, {
+        manualPieces: item.manualPieces,
+        manualPallets: item.manualPallets,
+      });
+      return {
+        unit,
+        productName: item.productName?.trim() || null,
+        tileWidthCm: item.tileWidthCm ?? null,
+        tileHeightCm: item.tileHeightCm ?? null,
+        tileThicknessCm: item.tileThicknessCm ?? null,
+        quantityM2: m2,
+        pieceCount: line.pieceCount,
+        palletCount: line.palletCount,
+        weightKg: line.weightKg > 0 ? line.weightKg : null,
+        calculatedPieces: line.calculatedPieces,
+        calculatedPallets: line.calculatedPallets,
+      };
+    }
+
     const w = item.tileWidthCm ?? 60;
     const h = item.tileHeightCm ?? 60;
     const specOptions = tileSpecOptionsForItem(item);
@@ -197,8 +317,13 @@ export function enrichOrderItem(item: OrderItemInput): EnrichedOrderItem {
         ? item.manualPallets
         : line.calculatedPallets;
 
+    const weightKg =
+      line.kgPerPallet > 0 && line.m2PerPallet > 0
+        ? (m2 / line.m2PerPallet) * line.kgPerPallet
+        : null;
+
     return {
-      productType: item.productType,
+      unit,
       productName: item.productName?.trim() || null,
       tileWidthCm: w,
       tileHeightCm: h,
@@ -206,22 +331,53 @@ export function enrichOrderItem(item: OrderItemInput): EnrichedOrderItem {
       quantityM2: m2,
       pieceCount,
       palletCount,
-      weightKg: null,
+      weightKg,
       calculatedPieces: line.calculatedPieces,
       calculatedPallets: line.calculatedPallets,
     };
   }
 
+  if (unit === "kg") {
+    const weightKg = item.weightKg ?? 0;
+    const weightLine = calculateWeightLine(weightKg, item.productName ?? "");
+    const calculatedPieces = weightLine.calculatedPieces;
+    const pieceCount =
+      item.manualPieces != null && item.manualPieces >= 0
+        ? item.manualPieces
+        : calculatedPieces > 0
+          ? calculatedPieces
+          : null;
+
+    return {
+      unit,
+      productName: item.productName?.trim() || null,
+      tileWidthCm: null,
+      tileHeightCm: null,
+      tileThicknessCm: null,
+      quantityM2: null,
+      pieceCount,
+      palletCount: null,
+      weightKg,
+      calculatedPieces: calculatedPieces > 0 ? calculatedPieces : null,
+      calculatedPallets: null,
+    };
+  }
+
+  const pieceCount =
+    item.manualPieces != null && item.manualPieces >= 0
+      ? item.manualPieces
+      : null;
+
   return {
-    productType: item.productType,
+    unit,
     productName: item.productName?.trim() || null,
     tileWidthCm: null,
     tileHeightCm: null,
     tileThicknessCm: null,
     quantityM2: null,
-    pieceCount: null,
+    pieceCount,
     palletCount: null,
-    weightKg: item.weightKg ?? 0,
+    weightKg: item.weightKg ?? null,
     calculatedPieces: null,
     calculatedPallets: null,
   };
@@ -232,19 +388,46 @@ export function calculateOrderTotals(items: OrderItemInput[]): OrderTotals {
   let totalPieces = 0;
   let totalPallets = 0;
   let totalWeightKg = 0;
+  let totalTruckPalletSlots = 0;
 
   for (const item of items) {
     const enriched = enrichOrderItem(item);
-    if (item.productType === "tile") {
-      const w = item.tileWidthCm ?? 60;
-      const h = item.tileHeightCm ?? 60;
-      const specOptions = tileSpecOptionsForItem(item);
-      const kgPerPallet = getKgPerPalletForTile(w, h, specOptions);
+    const unit = normalizeOrderUnit(item.unit);
+
+    if (unit === "m2") {
       totalM2 += enriched.quantityM2 ?? 0;
       totalPieces += enriched.pieceCount ?? 0;
       totalPallets += enriched.palletCount ?? 0;
-      totalWeightKg += (enriched.palletCount ?? 0) * kgPerPallet;
+
+      if (isUsablePalletSpec(item.catalogPallet)) {
+        const line = calculateLineLogistics(
+          item.quantityM2 ?? 0,
+          item.catalogPallet,
+          {
+            manualPieces: item.manualPieces,
+            manualPallets: item.manualPallets,
+          }
+        );
+        totalWeightKg += line.weightKg;
+        totalTruckPalletSlots += line.truckPalletSlots;
+      } else {
+        const w = item.tileWidthCm ?? 60;
+        const h = item.tileHeightCm ?? 60;
+        const specOptions = tileSpecOptionsForItem(item);
+        const kgPerPallet = getKgPerPalletForTile(w, h, specOptions);
+        const m2 = item.quantityM2 ?? 0;
+        const line = calculateTileLine(w, h, m2, specOptions);
+        totalWeightKg +=
+          line.kgPerPallet > 0 && line.m2PerPallet > 0
+            ? (m2 / line.m2PerPallet) * line.kgPerPallet
+            : (enriched.palletCount ?? 0) * kgPerPallet;
+        totalTruckPalletSlots += enriched.palletCount ?? 0;
+      }
+    } else if (unit === "kg") {
+      totalWeightKg += enriched.weightKg ?? 0;
+      totalPieces += enriched.pieceCount ?? 0;
     } else {
+      totalPieces += enriched.pieceCount ?? 0;
       totalWeightKg += enriched.weightKg ?? 0;
     }
   }
@@ -254,6 +437,7 @@ export function calculateOrderTotals(items: OrderItemInput[]): OrderTotals {
     totalPieces,
     totalPallets: Math.ceil(totalPallets),
     totalWeightKg,
+    totalTruckPalletSlots: Math.ceil(totalTruckPalletSlots),
   };
 }
 
@@ -275,10 +459,14 @@ export function checkVehicleCapacity(
   maxPallets: number,
   maxWeightKg: number
 ): CapacityUsage {
-  const usedPallets = existingOrders.reduce((s, o) => s + o.totalPallets, 0);
+  const usedPallets = existingOrders.reduce(
+    (s, o) => s + (o.totalTruckPalletSlots || o.totalPallets),
+    0
+  );
   const usedWeightKg = existingOrders.reduce((s, o) => s + o.totalWeightKg, 0);
 
-  const nextPallets = usedPallets + newOrder.totalPallets;
+  const newSlots = newOrder.totalTruckPalletSlots || newOrder.totalPallets;
+  const nextPallets = usedPallets + newSlots;
   const nextWeight = usedWeightKg + newOrder.totalWeightKg;
 
   const palletsOk = nextPallets <= maxPallets;

@@ -53,6 +53,8 @@ export const EMPLOYEE_CATEGORIES = [
     description: "Depot — loading, trucks, stock (Albanian mobile app)",
     roles: [
       "warehouse_admin",
+      "warehouse_reporter",
+      "group_leader",
       "picker",
       "driver",
       "unloader",
@@ -74,6 +76,12 @@ export const EMPLOYEE_ROLES = [
   { id: "sales_admin", label: "Sales admin (office)", category: "sales" as const },
   { id: "sales_agent", label: "Sales agent (field)", category: "sales" as const },
   { id: "warehouse_admin", label: "Warehouse admin", category: "warehouse" as const },
+  {
+    id: "warehouse_reporter",
+    label: "Warehouse reporter (whole depot)",
+    category: "warehouse" as const,
+  },
+  { id: "group_leader", label: "Group leader", category: "warehouse" as const },
   { id: "picker", label: "Picker (loader)", category: "warehouse" as const },
   { id: "driver", label: "Driver", category: "warehouse" as const },
   { id: "unloader", label: "Unloader / receiver", category: "warehouse" as const },
@@ -88,6 +96,44 @@ export const EMPLOYEE_ROLE_LABELS: Record<EmployeeRole, string> =
     EmployeeRole,
     string
   >;
+
+/** Suggested warehouse sectors (Depo 1–7). Also add custom zones on locations. */
+export const WAREHOUSE_ZONE_PRESETS = [
+  "Depo 1",
+  "Depo 2",
+  "Depo 3",
+  "Depo 4",
+  "Depo 5",
+  "Depo 6",
+  "Depo 7",
+] as const;
+
+export const WAREHOUSE_REPORT_TYPES = ["incident", "weekly"] as const;
+export type WarehouseReportType = (typeof WAREHOUSE_REPORT_TYPES)[number];
+
+export const WAREHOUSE_REPORT_SCOPES = ["zone", "warehouse"] as const;
+export type WarehouseReportScope = (typeof WAREHOUSE_REPORT_SCOPES)[number];
+
+export const WAREHOUSE_INCIDENT_CATEGORIES = [
+  "damage",
+  "stock_disorder",
+  "maintenance",
+  "safety",
+  "other",
+] as const;
+export type WarehouseIncidentCategory =
+  (typeof WAREHOUSE_INCIDENT_CATEGORIES)[number];
+
+export const WAREHOUSE_INCIDENT_CATEGORY_LABELS: Record<
+  WarehouseIncidentCategory,
+  string
+> = {
+  damage: "Damage",
+  stock_disorder: "Stock disorder",
+  maintenance: "Maintenance / equipment",
+  safety: "Safety",
+  other: "Other",
+};
 
 export const ORDER_STATUSES = [
   "pending",
@@ -156,8 +202,50 @@ export const DELIVERY_PROOF_LABELS: Record<DeliveryProofPhase, string> =
     DELIVERY_PROOF_PHASES.map((p) => [p.id, p.label])
   ) as Record<DeliveryProofPhase, string>;
 
-export const PRODUCT_TYPES = ["tile", "adhesive"] as const;
-export type ProductType = (typeof PRODUCT_TYPES)[number];
+export const ORDER_UNITS = ["m2", "kg", "piece"] as const;
+export type OrderUnit = (typeof ORDER_UNITS)[number];
+
+export const ORDER_UNIT_LABELS: Record<OrderUnit, string> = {
+  m2: "m² (tiles)",
+  kg: "kg (weight → pieces)",
+  piece: "pieces",
+};
+
+/** Legacy `tile` / `adhesive` values are normalized to current units. */
+export function normalizeOrderUnit(
+  value: string | null | undefined
+): OrderUnit {
+  const v = (value ?? "").trim().toLowerCase();
+  if (v === "tile" || v === "m2" || v === "m²") return "m2";
+  if (v === "adhesive" || v === "kg") return "kg";
+  if (
+    v === "piece" ||
+    v === "pieces" ||
+    v === "copë" ||
+    v === "cope" ||
+    v === "thas" ||
+    v === "pako"
+  ) {
+    return "piece";
+  }
+  if ((ORDER_UNITS as readonly string[]).includes(v)) return v as OrderUnit;
+  return "piece";
+}
+
+export function inferOrderUnitFromProductName(name: string): OrderUnit | null {
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+  if (/\d{2,3}\s*[xX×]\s*\d{2,3}/.test(trimmed)) return "m2";
+  if (/\d+(?:[.,]\d+)?\s*kg\b/i.test(trimmed) || /\(\s*\d+\s*kg\s*\)/i.test(trimmed)) {
+    return "kg";
+  }
+  return null;
+}
+
+/** @deprecated use ORDER_UNITS */
+export const PRODUCT_TYPES = ORDER_UNITS;
+/** @deprecated use OrderUnit */
+export type ProductType = OrderUnit;
 
 /** AGIMI standard pallet specs — face dimensions in cm, thickness in cm */
 export interface TilePalletStandard {

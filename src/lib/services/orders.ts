@@ -23,7 +23,10 @@ import {
   autoAssignPickerTeam,
 } from "@/lib/services/vehicle-defaults";
 import { deleteDeliveryProofsForOrder } from "@/lib/services/delivery-proofs";
-import { registerProductsFromOrder } from "@/lib/services/products";
+import {
+  registerProductsFromOrder,
+  resolveOrderItemCatalog,
+} from "@/lib/services/products";
 import { validateTruckForOrder } from "@/lib/dispatch/validate-assignment";
 import {
   isOrderReadyToShip,
@@ -46,7 +49,7 @@ import {
   formatM2,
   type OrderItemInput,
 } from "@/lib/calculations";
-import { MAX_DELIVERY_ROUNDS, type OrderStatus, type EmployeeRole } from "@/lib/constants";
+import { MAX_DELIVERY_ROUNDS, normalizeOrderUnit, type OrderStatus, type EmployeeRole } from "@/lib/constants";
 import { getLocationById, resolveLocation } from "@/lib/locations";
 import {
   suggestRoutes,
@@ -70,7 +73,8 @@ import {
 } from "@/lib/log-messages";
 
 export interface OrderItemPayload {
-  productType: "tile" | "adhesive";
+  unit: import("@/lib/constants").OrderUnit | string;
+  productId?: number;
   productName?: string;
   productEan?: string;
   tileWidthCm?: number;
@@ -98,6 +102,8 @@ export interface OrderPayload {
   status?: string;
   notes?: string;
   priority?: "normal" | "urgent";
+  salesEmployeeId?: number | null;
+  salesAgentName?: string | null;
   items: OrderItemPayload[];
 }
 
@@ -154,11 +160,11 @@ function resolveLocationFields(
   };
 }
 
-function enrichItems(items: OrderItemPayload[]) {
+function enrichItems(items: OrderItemInput[]) {
   return items.map((item) => {
     const enriched = enrichOrderItem(item);
     return {
-      productType: enriched.productType,
+      unit: enriched.unit,
       productName: enriched.productName,
       productEan: item.productEan?.trim() || null,
       tileWidthCm: enriched.tileWidthCm,
@@ -172,6 +178,17 @@ function enrichItems(items: OrderItemPayload[]) {
       weightKg: enriched.weightKg,
     };
   });
+}
+
+async function itemsWithCatalog(
+  items: OrderItemPayload[]
+): Promise<OrderItemInput[]> {
+  return Promise.all(
+    items.map(async (item) => ({
+      ...item,
+      catalogPallet: await resolveOrderItemCatalog(item),
+    }))
+  );
 }
 
 export async function listOrders(filters?: {
@@ -199,6 +216,7 @@ export async function listOrders(filters?: {
   hideDelivered?: boolean;
   readyToShip?: boolean;
   shipAsOfDate?: string;
+  salesEmployeeId?: number;
 }) {
   const db = await getDb();
   const conditions = [];
@@ -245,6 +263,9 @@ export async function listOrders(filters?: {
     );
   }
   if (filters?.status) conditions.push(eq(orders.status, filters.status));
+  if (filters?.salesEmployeeId != null) {
+    conditions.push(eq(orders.salesEmployeeId, filters.salesEmployeeId));
+  }
   if (filters?.unassigned) {
     conditions.push(
       sql`NOT EXISTS (SELECT 1 FROM assignments a WHERE a.order_id = ${orders.id})`
@@ -441,8 +462,9 @@ export async function createOrder(payload: OrderPayload) {
     throw new Error(scheduleError);
   }
 
-  const totals = calculateOrderTotals(payload.items as OrderItemInput[]);
-  const enriched = enrichItems(payload.items);
+  const itemsInput = await itemsWithCatalog(payload.items);
+  const totals = calculateOrderTotals(itemsInput);
+  const enriched = enrichItems(itemsInput);
   const locFields = resolveLocationFields(
     payload.location,
     payload.locationId,
@@ -475,6 +497,8 @@ export async function createOrder(payload: OrderPayload) {
         totalWeightKg: totals.totalWeightKg,
         notes: payload.notes ?? null,
         priority: payload.priority ?? "normal",
+        salesEmployeeId: payload.salesEmployeeId ?? null,
+        salesAgentName: payload.salesAgentName ?? null,
         createdAt: now,
         updatedAt: now,
       })
@@ -513,6 +537,73 @@ export async function createOrder(payload: OrderPayload) {
   return getOrder(orderId);
 }
 
+function mapStoredItemToPayload(item: {
+  unit: string;
+  productName: string | null;
+  productEan: string | null;
+  tileWidthCm: number | null;
+  tileHeightCm: number | null;
+  tileThicknessCm: number | null;
+  quantityM2: number | null;
+  weightKg: number | null;
+  palletCount: number | null;
+  pieceCount: number | null;
+}): OrderItemPayload {
+  return {
+    unit: normalizeOrderUnit(item.unit),
+    productName: item.productName ?? undefined,
+    productEan: item.productEan ?? undefined,
+    tileWidthCm: item.tileWidthCm ?? undefined,
+    tileHeightCm: item.tileHeightCm ?? undefined,
+    tileThicknessCm: item.tileThicknessCm ?? undefined,
+    quantityM2: item.quantityM2 ?? undefined,
+    weightKg: item.weightKg ?? undefined,
+    manualPallets: item.palletCount ?? undefined,
+    manualPieces: item.pieceCount ?? undefined,
+  };
+}
+
+/** Add imported line items to an existing order (same invoice number). */
+export async function appendOrderItems(
+  orderId: number,
+  newItems: OrderItemPayload[],
+  options?: { addPrice?: number; notesAppend?: string }
+) {
+  const existing = await getOrder(orderId);
+  if (!existing) {
+    throw new Error("Order not found");
+  }
+
+  const combinedItems: OrderItemPayload[] = [
+    ...existing.items.map((item) => mapStoredItemToPayload(item)),
+    ...newItems,
+  ];
+
+  const addPrice = options?.addPrice ?? 0;
+  const notes = [existing.notes, options?.notesAppend]
+    .filter(Boolean)
+    .join(" · ");
+
+  return updateOrder(orderId, {
+    invoiceNumber: existing.invoiceNumber,
+    customerName: existing.customerName,
+    location: existing.location,
+    locationId: existing.locationId ?? undefined,
+    region: existing.region ?? undefined,
+    city: existing.city ?? undefined,
+    lat: existing.lat ?? undefined,
+    lng: existing.lng ?? undefined,
+    price: existing.price + addPrice,
+    orderDate: existing.orderDate,
+    requestedDeliveryDate: existing.requestedDeliveryDate,
+    deliveryTimePreference: existing.deliveryTimePreference ?? undefined,
+    status: existing.status,
+    notes: notes || undefined,
+    priority: (existing.priority as "normal" | "urgent") ?? "normal",
+    items: combinedItems,
+  });
+}
+
 export async function updateOrder(id: number, payload: OrderPayload) {
   const db = await getDb();
   const existing = await getOrder(id);
@@ -531,8 +622,9 @@ export async function updateOrder(id: number, payload: OrderPayload) {
     throw new Error(scheduleError);
   }
 
-  const totals = calculateOrderTotals(payload.items as OrderItemInput[]);
-  const enriched = enrichItems(payload.items);
+  const itemsInput = await itemsWithCatalog(payload.items);
+  const totals = calculateOrderTotals(itemsInput);
+  const enriched = enrichItems(itemsInput);
   const locFields = resolveLocationFields(
     payload.location,
     payload.locationId,
@@ -564,6 +656,8 @@ export async function updateOrder(id: number, payload: OrderPayload) {
       totalWeightKg: totals.totalWeightKg,
       notes: payload.notes ?? null,
       priority: payload.priority ?? undefined,
+      salesEmployeeId: payload.salesEmployeeId ?? existing.salesEmployeeId,
+      salesAgentName: payload.salesAgentName ?? existing.salesAgentName,
       updatedAt: now,
     })
     .where(eq(orders.id, id));
