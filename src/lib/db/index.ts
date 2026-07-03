@@ -6,6 +6,7 @@ import {
   assertProductionSecrets,
   getDatabasePath,
   getTursoConfig,
+  isNetlify,
 } from "@/lib/config/env";
 import * as schema from "./schema";
 
@@ -470,6 +471,20 @@ async function runMigrations(client: Client) {
   );
 }
 
+/** Runtime migrations are for local/dev. On Netlify+Turso, apply schema via Turso CLI once. */
+function shouldRunRuntimeMigrations(): boolean {
+  if (process.env.SKIP_RUNTIME_MIGRATIONS === "true") return false;
+  if (process.env.SKIP_RUNTIME_MIGRATIONS === "false") return true;
+  if (isNetlify() && getTursoConfig()) return false;
+  return true;
+}
+
+function shouldRunStartupBackfill(): boolean {
+  if (process.env.SKIP_DB_BACKFILL === "true") return false;
+  if (isNetlify() && getTursoConfig()) return false;
+  return true;
+}
+
 function createDbClient(): Client {
   const turso = getTursoConfig();
   if (turso) {
@@ -492,12 +507,16 @@ export async function getDb() {
       assertProductionSecrets();
       clientInstance = createDbClient();
       await clientInstance.execute("PRAGMA foreign_keys = ON");
-      await runMigrations(clientInstance);
+      if (shouldRunRuntimeMigrations()) {
+        await runMigrations(clientInstance);
+      }
       dbInstance = drizzle(clientInstance, { schema });
-      const { backfillOrderSalesOwnership } = await import(
-        "@/lib/services/sales-portal"
-      );
-      await backfillOrderSalesOwnership();
+      if (shouldRunStartupBackfill()) {
+        const { backfillOrderSalesOwnership } = await import(
+          "@/lib/services/sales-portal"
+        );
+        await backfillOrderSalesOwnership();
+      }
       return dbInstance;
     })();
   }

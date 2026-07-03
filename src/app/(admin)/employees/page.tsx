@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
-import { Badge, Button, Card, EmptyState, Input, Select } from "@/components/ui";
+import { Badge, Button, Card, EmptyState, Input, LoadingState, Select } from "@/components/ui";
 import {
   EMPLOYEE_CATEGORIES,
   EMPLOYEE_ROLES,
@@ -63,10 +63,13 @@ const statusTone: Record<string, "green" | "amber" | "blue" | "red" | "slate"> =
 
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [loading, setLoading] = useState(true);
   const [vehicles, setVehicles] = useState<VehicleOption[]>([]);
   const [warehouseZones, setWarehouseZones] = useState<WarehouseZoneOption[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingHasLogin, setEditingHasLogin] = useState(false);
+  const [formError, setFormError] = useState("");
   const [form, setForm] = useState({
     name: "",
     status: "available",
@@ -75,18 +78,24 @@ export default function EmployeesPage() {
     warehouseZones: [] as string[],
     username: "",
     password: "",
+    removePortalLogin: false,
     notes: "",
   });
 
   const load = useCallback(async () => {
-    const [employeesRes, vehiclesRes, zonesRes] = await Promise.all([
-      fetch("/api/employees"),
-      fetch("/api/vehicles"),
-      fetch("/api/warehouse/zones"),
-    ]);
-    setEmployees(await employeesRes.json());
-    setVehicles(await vehiclesRes.json());
-    setWarehouseZones(await zonesRes.json());
+    setLoading(true);
+    try {
+      const [employeesRes, vehiclesRes, zonesRes] = await Promise.all([
+        fetch("/api/employees"),
+        fetch("/api/vehicles"),
+        fetch("/api/warehouse/zones"),
+      ]);
+      setEmployees(await employeesRes.json());
+      setVehicles(await vehiclesRes.json());
+      setWarehouseZones(await zonesRes.json());
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -124,16 +133,21 @@ export default function EmployeesPage() {
       warehouseZones: [],
       username: "",
       password: "",
+      removePortalLogin: false,
       notes: "",
     });
+    setEditingHasLogin(false);
+    setFormError("");
   }
 
   async function saveEmployee(e: React.FormEvent) {
     e.preventDefault();
     if (form.roles.length === 0) return;
+    setFormError("");
+
     const url = editingId ? `/api/employees/${editingId}` : "/api/employees";
     const method = editingId ? "PUT" : "POST";
-    await fetch(url, {
+    const res = await fetch(url, {
       method,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -148,20 +162,31 @@ export default function EmployeesPage() {
         warehouseZones: form.roles.includes("group_leader")
           ? form.warehouseZones
           : [],
-        username: form.username.trim() || null,
-        ...(form.password.trim()
-          ? { password: form.password.trim() }
-          : {}),
+        ...(form.removePortalLogin
+          ? { removePortalLogin: true }
+          : {
+              username: form.username.trim() || null,
+              ...(form.password.trim()
+                ? { password: form.password.trim() }
+                : {}),
+            }),
       }),
     });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setFormError(data.error ?? "Could not save employee");
+      return;
+    }
+
     setShowForm(false);
     setEditingId(null);
     resetForm();
     load();
   }
 
-  function startEdit(e: Employee) {
+  function startEdit(e: Employee, credentialsOnly = false) {
     setEditingId(e.id);
+    setEditingHasLogin(Boolean(e.hasLogin));
     setForm({
       name: e.name,
       status: e.status,
@@ -170,9 +195,18 @@ export default function EmployeesPage() {
       warehouseZones: e.warehouseZones ?? [],
       username: e.username ?? "",
       password: "",
+      removePortalLogin: false,
       notes: e.notes ?? "",
     });
+    setFormError("");
     setShowForm(true);
+    if (credentialsOnly) {
+      requestAnimationFrame(() => {
+        document
+          .getElementById("employee-portal-credentials")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
   }
 
   async function deleteEmployee(id: number) {
@@ -201,7 +235,12 @@ export default function EmployeesPage() {
           <h3 className="mb-4 text-sm font-semibold text-zinc-900">
             {editingId ? "Edit Employee" : "New Employee"}
           </h3>
-          <form onSubmit={saveEmployee} className="space-y-4">
+          <form onSubmit={saveEmployee} className="space-y-4" autoComplete="off">
+            {formError && (
+              <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {formError}
+              </p>
+            )}
             <div className="grid gap-3 sm:grid-cols-3">
               <Input
                 label="Name"
@@ -250,22 +289,70 @@ export default function EmployeesPage() {
                 </div>
               ))}
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Input
-                label="Portal username"
-                value={form.username}
-                onChange={(e) =>
-                  setForm({ ...form, username: e.target.value.toLowerCase() })
-                }
-                placeholder="e.g. besnik"
-              />
-              <Input
-                label={editingId ? "New password (optional)" : "Portal password"}
-                type="password"
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                placeholder={editingId ? "Leave blank to keep current" : ""}
-              />
+            <div
+              id="employee-portal-credentials"
+              className="rounded-lg border border-zinc-200 bg-zinc-50/80 p-4"
+            >
+              <p className="text-sm font-semibold text-zinc-900">Portal login</p>
+              <p className="mt-1 text-xs text-zinc-500">
+                Employees sign in at /login with this username and password. They
+                can change their own password from the portal after signing in.
+              </p>
+              {editingId && editingHasLogin && (
+                <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-red-700">
+                  <input
+                    type="checkbox"
+                    checked={form.removePortalLogin}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        removePortalLogin: e.target.checked,
+                        password: e.target.checked ? "" : form.password,
+                      })
+                    }
+                  />
+                  Remove portal login (employee cannot sign in)
+                </label>
+              )}
+              {!form.removePortalLogin && (
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <Input
+                    label="Portal username"
+                    value={form.username}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        username: e.target.value.toLowerCase(),
+                        removePortalLogin: false,
+                      })
+                    }
+                    placeholder="e.g. besnik"
+                    autoComplete="off"
+                    name="employee-portal-username"
+                  />
+                  <Input
+                    label={
+                      editingId
+                        ? editingHasLogin
+                          ? "New password (optional reset)"
+                          : "Portal password (required for new login)"
+                        : "Portal password"
+                    }
+                    type="password"
+                    value={form.password}
+                    onChange={(e) =>
+                      setForm({ ...form, password: e.target.value })
+                    }
+                    placeholder={
+                      editingId && editingHasLogin
+                        ? "Leave blank to keep current password"
+                        : ""
+                    }
+                    autoComplete="new-password"
+                    name="employee-portal-password"
+                  />
+                </div>
+              )}
             </div>
             {form.roles.includes("driver") && (
               <Select
@@ -349,7 +436,9 @@ export default function EmployeesPage() {
         </Card>
       )}
 
-      {employees.length === 0 ? (
+      {loading ? (
+        <LoadingState title="Loading employees…" />
+      ) : employees.length === 0 ? (
         <EmptyState title="No employees yet." />
       ) : (
         <div className="space-y-8">
@@ -372,17 +461,31 @@ export default function EmployeesPage() {
                           {e.username && (
                             <p className="text-xs text-zinc-500">@{e.username}</p>
                           )}
-                          <Badge tone={statusTone[e.status] ?? "slate"}>
-                            {e.status.replace(/_/g, " ")}
-                          </Badge>
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            <Badge tone={statusTone[e.status] ?? "slate"}>
+                              {e.status.replace(/_/g, " ")}
+                            </Badge>
+                            {e.hasLogin ? (
+                              <Badge tone="green">Portal login</Badge>
+                            ) : (
+                              <Badge tone="slate">No portal login</Badge>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex gap-1">
+                        <div className="flex flex-col gap-1">
                           <Button
                             variant="ghost"
                             className="text-xs"
                             onClick={() => startEdit(e)}
                           >
                             Edit
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            className="text-xs"
+                            onClick={() => startEdit(e, true)}
+                          >
+                            Credentials
                           </Button>
                           <Button
                             variant="ghost"

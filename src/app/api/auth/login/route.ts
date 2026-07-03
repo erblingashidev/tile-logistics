@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  createSessionToken,
+  sessionCookieOptions,
+} from "@/lib/auth/session";
+import {
   loginAdmin,
   loginEmployee,
-  setSessionCookie,
   employeeLoginRedirect,
 } from "@/lib/auth";
 
@@ -28,14 +31,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
   }
 
-  await setSessionCookie(user);
-
+  const token = await createSessionToken(user);
   const redirect =
-    user.role === "admin"
-      ? "/"
-      : employeeLoginRedirect(user.roles);
+    user.role === "admin" ? "/" : employeeLoginRedirect(user.roles);
 
-  return NextResponse.json({
+  const response = NextResponse.json({
     user: {
       role: user.role,
       name: user.name,
@@ -44,4 +44,12 @@ export async function POST(request: NextRequest) {
     },
     redirect,
   });
+
+  response.cookies.set(
+    sessionCookieOptions().name,
+    token,
+    sessionCookieOptions()
+  );
+
+  return response;
 }

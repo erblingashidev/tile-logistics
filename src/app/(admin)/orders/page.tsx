@@ -15,7 +15,7 @@ import { InvoiceImportPanel,
 } from "@/components/InvoiceImportPanel";
 import { InvoiceNumberField } from "@/components/InvoiceNumberField";
 import { ProductSearchField } from "@/components/ProductSearchField";
-import { Badge, Button, Card, Input, Select, Alert, PageSection, tableClass } from "@/components/ui";
+import { Badge, Button, Card, Input, Select, Alert, PageSection, tableClass, LoadingState } from "@/components/ui";
 import {
   orderListRowClass,
   orderStageBadgeTone,
@@ -176,6 +176,7 @@ function buildOrderNotes(salesAgent: string, customerPhone: string): string | un
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
   const [filters, setFilters] = useState({
@@ -228,29 +229,34 @@ export default function OrdersPage() {
   const [warning, setWarning] = useState("");
 
   const load = useCallback(async () => {
-    const params = new URLSearchParams();
-    Object.entries(filters).forEach(([k, v]) => v && params.set(k, v));
-    const [ordersRes, vehiclesRes, employeesRes] = await Promise.all([
-      fetch(`/api/orders?${params}`, { cache: "no-store" }),
-      fetch("/api/vehicles", { cache: "no-store" }),
-      fetch("/api/employees", { cache: "no-store" }),
-    ]);
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([k, v]) => v && params.set(k, v));
+      const [ordersRes, vehiclesRes, employeesRes] = await Promise.all([
+        fetch(`/api/orders?${params}`, { cache: "no-store" }),
+        fetch("/api/vehicles", { cache: "no-store" }),
+        fetch("/api/employees", { cache: "no-store" }),
+      ]);
 
-    const ordersPayload = await readJsonListWithError<Order>(ordersRes);
-    const vehiclesPayload = await readJsonListWithError<Vehicle>(vehiclesRes);
-    const employeesPayload = await readJsonListWithError<EmployeeOption>(
-      employeesRes
-    );
+      const ordersPayload = await readJsonListWithError<Order>(ordersRes);
+      const vehiclesPayload = await readJsonListWithError<Vehicle>(vehiclesRes);
+      const employeesPayload = await readJsonListWithError<EmployeeOption>(
+        employeesRes
+      );
 
-    setOrders(ordersPayload.data);
-    setVehicles(vehiclesPayload.data);
-    setEmployees(employeesPayload.data);
+      setOrders(ordersPayload.data);
+      setVehicles(vehiclesPayload.data);
+      setEmployees(employeesPayload.data);
 
-    const loadError =
-      ordersPayload.error ?? vehiclesPayload.error ?? employeesPayload.error;
-    setError(loadError ?? "");
+      const loadError =
+        ordersPayload.error ?? vehiclesPayload.error ?? employeesPayload.error;
+      setError(loadError ?? "");
 
-    setLastRefreshed(new Date());
+      setLastRefreshed(new Date());
+    } finally {
+      setLoading(false);
+    }
   }, [filters]);
 
   useEffect(() => {
@@ -1000,7 +1006,10 @@ export default function OrdersPage() {
             <Button variant="secondary" className="text-xs" onClick={load}>
               Refresh now
             </Button>
-            {lastRefreshed && (
+            {loading && (
+              <span className="animate-pulse text-xs text-zinc-500">Loading…</span>
+            )}
+            {lastRefreshed && !loading && (
               <span>Updated {lastRefreshed.toLocaleTimeString()}</span>
             )}
           </div>
@@ -1813,9 +1822,11 @@ export default function OrdersPage() {
               })}
             </tbody>
           </table>
-          {orders.length === 0 && (
+          {loading && orders.length === 0 ? (
+            <LoadingState title="Loading orders…" />
+          ) : orders.length === 0 ? (
             <p className="py-8 text-center text-slate-500">No orders yet.</p>
-          )}
+          ) : null}
         </div>
       </Card>
 

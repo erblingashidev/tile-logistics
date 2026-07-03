@@ -1,12 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button, Card, Input, Alert } from "@/components/ui";
 import { BRAND } from "@/lib/brand";
 
 export default function LoginPage() {
-  const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -27,8 +25,9 @@ export default function LoginPage() {
         setError(data.error ?? "Login failed");
         return;
       }
-      router.push(data.redirect ?? "/");
-      router.refresh();
+      // Full navigation so the session cookie is picked up before middleware runs.
+      window.location.href = data.redirect ?? "/";
+      return;
     } catch {
       setError("Could not connect. Try again.");
     } finally {
@@ -60,7 +59,7 @@ export default function LoginPage() {
           />
           {error && <Alert tone="error">{error}</Alert>}
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Signing in…" : "Sign in"}
+            {loading ? "Signing in… (first load may take a moment)" : "Sign in"}
           </Button>
         </form>
       </Card>

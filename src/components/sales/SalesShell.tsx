@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BRAND } from "@/lib/brand";
+import { ChangePasswordCard } from "@/components/portal/ChangePasswordCard";
 
 type SalesNav = "orders" | "stock";
 
@@ -58,6 +59,7 @@ export function SalesShell({
 
       <main className="safe-bottom mx-auto max-w-3xl space-y-4 px-4 py-5 pb-24">
         {children}
+        <ChangePasswordCard />
       </main>
 
       <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-zinc-200/80 bg-white/95 px-3 py-2 backdrop-blur-md">

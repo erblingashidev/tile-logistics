@@ -14,7 +14,7 @@ import {
   type EmployeeRole,
 } from "@/lib/constants";
 import { logActivity } from "@/lib/logger";
-import { hashPassword } from "@/lib/auth/password";
+import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import {
   clearEmployeeWarehouseZones,
   getEmployeeWarehouseZones,
@@ -37,8 +37,80 @@ export interface EmployeePayload {
   assignedVehicleId?: number | null;
   username?: string | null;
   password?: string | null;
+  removePortalLogin?: boolean;
   notes?: string;
   warehouseZones?: string[];
+}
+
+export const MIN_EMPLOYEE_PASSWORD_LENGTH = 6;
+
+export class EmployeeCredentialError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "EmployeeCredentialError";
+  }
+}
+
+async function assertUsernameAvailable(username: string, excludeId?: number) {
+  const normalized = username.trim().toLowerCase();
+  if (!normalized) {
+    throw new EmployeeCredentialError("Username is required for portal login");
+  }
+  const db = await getDb();
+  const existing = await dbOne(
+    db
+      .select({ id: employees.id })
+      .from(employees)
+      .where(eq(employees.username, normalized))
+  );
+  if (existing && existing.id !== excludeId) {
+    throw new EmployeeCredentialError("That username is already in use");
+  }
+}
+
+function validatePortalCredentials(
+  payload: Pick<EmployeePayload, "username" | "password">,
+  options: { isCreate: boolean; hasExistingLogin: boolean }
+) {
+  const username = payload.username?.trim().toLowerCase() || null;
+  const password = payload.password?.trim() || null;
+
+  if (options.isCreate) {
+    if (username && !password) {
+      throw new EmployeeCredentialError(
+        "Set a portal password when creating a username"
+      );
+    }
+    if (password && !username) {
+      throw new EmployeeCredentialError(
+        "Set a portal username when creating a password"
+      );
+    }
+    if (password && password.length < MIN_EMPLOYEE_PASSWORD_LENGTH) {
+      throw new EmployeeCredentialError(
+        `Password must be at least ${MIN_EMPLOYEE_PASSWORD_LENGTH} characters`
+      );
+    }
+    return;
+  }
+
+  if (password && password.length < MIN_EMPLOYEE_PASSWORD_LENGTH) {
+    throw new EmployeeCredentialError(
+      `Password must be at least ${MIN_EMPLOYEE_PASSWORD_LENGTH} characters`
+    );
+  }
+
+  if (!options.hasExistingLogin && username && !password) {
+    throw new EmployeeCredentialError(
+      "Set a portal password when enabling employee login"
+    );
+  }
+
+  if (username === "" && options.hasExistingLogin) {
+    throw new EmployeeCredentialError(
+      "Use “Remove portal login” to disable employee sign-in"
+    );
+  }
 }
 
 async function enrichEmployeeRow(
@@ -215,6 +287,12 @@ export async function listEmployeesByRole(role: EmployeeRole) {
 }
 
 export async function createEmployee(payload: EmployeePayload) {
+  validatePortalCredentials(payload, { isCreate: true, hasExistingLogin: false });
+  const username = payload.username?.trim().toLowerCase() || null;
+  if (username) {
+    await assertUsernameAvailable(username);
+  }
+
   const db = await getDb();
   const now = new Date().toISOString();
   const inserted = await dbOne(
@@ -224,9 +302,9 @@ export async function createEmployee(payload: EmployeePayload) {
         name: payload.name,
         status: payload.status ?? "available",
         roles: serializeEmployeeRoles(payload.roles),
-        username: payload.username?.trim().toLowerCase() || null,
+        username,
         passwordHash: payload.password
-          ? hashPassword(payload.password)
+          ? hashPassword(payload.password.trim())
           : null,
         notes: payload.notes ?? null,
         createdAt: now,
@@ -289,30 +367,77 @@ export async function updateEmployee(id: number, payload: Partial<EmployeePayloa
   const existing = await getEmployee(id);
   if (!existing) return null;
 
+  const hasExistingLogin = Boolean(existing.hasLogin);
+  const touchesCredentials =
+    payload.removePortalLogin ||
+    payload.username !== undefined ||
+    (payload.password != null && payload.password !== "");
+
+  if (touchesCredentials && !payload.removePortalLogin) {
+    validatePortalCredentials(
+      {
+        username:
+          payload.username !== undefined ? payload.username : existing.username,
+        password: payload.password,
+      },
+      { isCreate: false, hasExistingLogin }
+    );
+  }
+
   const now = new Date().toISOString();
   const nextRoles = payload.roles ?? existing.roles;
   const nextStatus = payload.status ?? existing.status;
   const isDriver = nextRoles.includes("driver");
-  const passwordHash =
-    payload.password != null && payload.password !== ""
-      ? hashPassword(payload.password)
-      : undefined;
 
-  await db
-    .update(employees)
-    .set({
-      name: payload.name ?? existing.name,
-      status: nextStatus,
-      roles: serializeEmployeeRoles(nextRoles),
-      notes: payload.notes ?? existing.notes,
-      username:
-        payload.username !== undefined
-          ? payload.username?.trim().toLowerCase() || null
-          : existing.username,
-      ...(passwordHash ? { passwordHash } : {}),
-      updatedAt: now,
-    })
-    .where(eq(employees.id, id));
+  let nextUsername = existing.username;
+  let nextPasswordHash: string | null | undefined;
+
+  if (payload.removePortalLogin) {
+    nextUsername = null;
+    nextPasswordHash = null;
+  } else {
+    if (payload.username !== undefined) {
+      nextUsername = payload.username?.trim().toLowerCase() || null;
+    }
+    if (nextUsername && nextUsername !== existing.username) {
+      await assertUsernameAvailable(nextUsername, id);
+    } else if (
+      nextUsername &&
+      !hasExistingLogin &&
+      payload.username !== undefined
+    ) {
+      await assertUsernameAvailable(nextUsername, id);
+    }
+
+    if (payload.password != null && payload.password !== "") {
+      nextPasswordHash = hashPassword(payload.password.trim());
+    }
+  }
+
+  const updateFields: {
+    name: string;
+    status: string;
+    roles: string;
+    notes: string | null;
+    updatedAt: string;
+    username?: string | null;
+    passwordHash?: string | null;
+  } = {
+    name: payload.name ?? existing.name,
+    status: nextStatus,
+    roles: serializeEmployeeRoles(nextRoles),
+    notes: payload.notes ?? existing.notes,
+    updatedAt: now,
+  };
+
+  if (touchesCredentials) {
+    updateFields.username = nextUsername;
+    if (nextPasswordHash !== undefined) {
+      updateFields.passwordHash = nextPasswordHash;
+    }
+  }
+
+  await db.update(employees).set(updateFields).where(eq(employees.id, id));
 
   if (payload.assignedVehicleId !== undefined) {
     await setDriverVehicle(id, isDriver ? payload.assignedVehicleId : null);
@@ -384,6 +509,20 @@ export async function updateEmployee(id: number, payload: Partial<EmployeePayloa
   if (payload.warehouseZones && nextRoles.includes("group_leader")) {
     changes.push(`warehouse zones → ${payload.warehouseZones.join(", ") || "none"}`);
   }
+  if (payload.removePortalLogin) {
+    changes.push("portal login removed");
+  } else if (touchesCredentials) {
+    if (payload.username !== undefined && nextUsername !== existing.username) {
+      changes.push(
+        nextUsername
+          ? `portal username → ${nextUsername}`
+          : "portal username cleared"
+      );
+    }
+    if (payload.password != null && payload.password !== "") {
+      changes.push("portal password reset (admin)");
+    }
+  }
 
   if (changes.length > 0) {
     await logActivity(
@@ -427,6 +566,47 @@ export async function updateEmployeeStatusSelf(
   const employee = await updateEmployee(employeeId, { status });
   if (!employee) return { ok: false as const, error: "Employee not found" };
   return { ok: true as const, employee };
+}
+
+export async function changeEmployeePassword(
+  employeeId: number,
+  currentPassword: string,
+  newPassword: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const trimmedNew = newPassword.trim();
+  if (trimmedNew.length < MIN_EMPLOYEE_PASSWORD_LENGTH) {
+    return {
+      ok: false,
+      error: `Password must be at least ${MIN_EMPLOYEE_PASSWORD_LENGTH} characters`,
+    };
+  }
+
+  const db = await getDb();
+  const row = await dbOne(
+    db.select().from(employees).where(eq(employees.id, employeeId))
+  );
+  if (!row?.passwordHash) {
+    return { ok: false, error: "No portal login is configured for this account" };
+  }
+  if (!verifyPassword(currentPassword, row.passwordHash)) {
+    return { ok: false, error: "Current password is incorrect" };
+  }
+
+  const now = new Date().toISOString();
+  await db
+    .update(employees)
+    .set({ passwordHash: hashPassword(trimmedNew), updatedAt: now })
+    .where(eq(employees.id, employeeId));
+
+  await logActivity(
+    "update",
+    "employee",
+    employeeId,
+    `${row.name}: portal password changed (self-service)`,
+    { category: "employees", details: { selfService: true } }
+  );
+
+  return { ok: true };
 }
 
 export async function getEmployeeByUsername(username: string) {

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
-import { Badge, Button, Card, EmptyState, Input, Select } from "@/components/ui";
+import { Badge, Button, Card, EmptyState, Input, LoadingState, Select } from "@/components/ui";
 import { VEHICLE_STATUSES } from "@/lib/constants";
 import { DELIVERY_ROUND_SHORT_LABELS } from "@/lib/delivery-rounds";
 import { readJsonListWithError } from "@/lib/api/read-json-list";
@@ -34,6 +34,7 @@ const statusTone: Record<string, "green" | "amber" | "blue" | "red" | "slate"> =
 
 export default function VehiclesPage() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({
@@ -46,9 +47,14 @@ export default function VehiclesPage() {
   });
 
   const load = useCallback(async () => {
-    const vehiclesRes = await fetch("/api/vehicles");
-    const payload = await readJsonListWithError<Vehicle>(vehiclesRes);
-    setVehicles(payload.data);
+    setLoading(true);
+    try {
+      const vehiclesRes = await fetch("/api/vehicles");
+      const payload = await readJsonListWithError<Vehicle>(vehiclesRes);
+      setVehicles(payload.data);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -194,6 +200,9 @@ export default function VehiclesPage() {
         </Card>
       )}
 
+      {loading && vehicles.length === 0 ? (
+        <LoadingState title="Loading vehicles…" />
+      ) : (
       <div className="grid gap-4 md:grid-cols-2">
         {vehicles.map((v) => (
           <Card key={v.id} className="p-4">
@@ -266,7 +275,8 @@ export default function VehiclesPage() {
           </Card>
         ))}
       </div>
-      {vehicles.length === 0 && (
+      )}
+      {!loading && vehicles.length === 0 && (
         <Card className="p-4">
           <EmptyState title="No vehicles." />
         </Card>

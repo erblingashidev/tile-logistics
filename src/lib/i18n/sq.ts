@@ -148,6 +148,15 @@ export const sq = {
   reportsEditSuccess: "Kërkesa për ndryshim u dërgua",
   reportsRemovePhoto: "Hiq",
   reportsCancel: "Anulo",
+
+  changePasswordTitle: "Ndrysho fjalëkalimin",
+  currentPassword: "Fjalëkalimi aktual",
+  newPassword: "Fjalëkalimi i ri",
+  confirmPassword: "Përsërit fjalëkalimin",
+  updatePassword: "Përditëso fjalëkalimin",
+  passwordUpdated: "Fjalëkalimi u përditësua",
+  showPassword: "Shfaq",
+  hidePassword: "Fshih",
 } as const;
 
 export function statusLabelSq(status: string): string {

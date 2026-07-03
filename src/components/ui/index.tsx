@@ -181,6 +181,14 @@ export function EmptyState({ title }: { title: string }) {
   );
 }
 
+export function LoadingState({ title = "Loading…" }: { title?: string }) {
+  return (
+    <p className="py-10 text-center text-sm text-zinc-500 animate-pulse">
+      {title}
+    </p>
+  );
+}
+
 export function PageSection({
   title,
   children,
