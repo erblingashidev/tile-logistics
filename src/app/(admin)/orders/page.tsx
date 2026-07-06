@@ -712,7 +712,19 @@ export default function OrdersPage() {
   });
 
   function openAssignPanel(orderId: number) {
-    setExpandedAssignId((current) => (current === orderId ? null : orderId));
+    setExpandedAssignId((current) => {
+      const next = current === orderId ? null : orderId;
+      if (next != null) setExpandedOrderId(null);
+      return next;
+    });
+  }
+
+  function openOrderDetail(orderId: number) {
+    setExpandedOrderId((current) => {
+      const next = current === orderId ? null : orderId;
+      if (next != null) setExpandedAssignId(null);
+      return next;
+    });
   }
 
   function openFormFromInvoice(importForm: InvoiceImportFormState) {
@@ -1747,6 +1759,7 @@ export default function OrdersPage() {
               orders={visibleOrders}
               selectedOrderIds={selectedOrderIds}
               expandedAssignId={expandedAssignId}
+              expandedDetailId={expandedOrderId}
               assignState={assignState}
               vehicles={vehicles}
               pickers={pickers}
@@ -1762,6 +1775,7 @@ export default function OrdersPage() {
                 setSelectedOrderIds(next);
               }}
               onToggleAssign={openAssignPanel}
+              onToggleDetail={openOrderDetail}
               onEdit={(boardOrder) => {
                 const full = visibleOrders.find((o) => o.id === boardOrder.id);
                 if (full) startEdit(full);

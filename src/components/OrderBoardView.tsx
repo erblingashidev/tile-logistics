@@ -13,6 +13,7 @@ import {
 } from "@/lib/order-display";
 import { isOrderUrgent } from "@/lib/order-priority";
 import type { OrderListCardOrder } from "@/components/OrderListCard";
+import { OrderBoardDetail } from "@/components/OrderBoardDetail";
 
 interface VehicleOption {
   id: number;
@@ -90,6 +91,7 @@ interface OrderBoardViewProps {
   orders: OrderListCardOrder[];
   selectedOrderIds: Set<number>;
   expandedAssignId: number | null;
+  expandedDetailId: number | null;
   assignState: Record<number, AssignmentDraft>;
   vehicles: VehicleOption[];
   pickers: PickerOption[];
@@ -100,6 +102,7 @@ interface OrderBoardViewProps {
   focusVehicleId?: string;
   onSelectChange: (orderId: number, selected: boolean) => void;
   onToggleAssign: (orderId: number) => void;
+  onToggleDetail: (orderId: number) => void;
   onEdit: (order: OrderListCardOrder) => void;
   onDelete: (orderId: number) => void;
   onDraftChange: (orderId: number, draft: AssignmentDraft) => void;
@@ -113,6 +116,7 @@ function OrderRow({
   order,
   selected,
   assignOpen,
+  detailOpen,
   draft,
   vehicles,
   pickers,
@@ -123,6 +127,7 @@ function OrderRow({
   focusVehicleId,
   onSelectChange,
   onToggleAssign,
+  onToggleDetail,
   onEdit,
   onDelete,
   onDraftChange,
@@ -135,6 +140,7 @@ function OrderRow({
   order: OrderListCardOrder;
   selected: boolean;
   assignOpen: boolean;
+  detailOpen: boolean;
   draft: AssignmentDraft;
   vehicles: VehicleOption[];
   pickers: PickerOption[];
@@ -145,6 +151,7 @@ function OrderRow({
   focusVehicleId?: string;
   onSelectChange: (selected: boolean) => void;
   onToggleAssign: () => void;
+  onToggleDetail: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onDraftChange: (draft: AssignmentDraft) => void;
@@ -182,9 +189,16 @@ function OrderRow({
               aria-label={`Select ${order.invoiceNumber}`}
             />
             <div className="min-w-0 flex-1">
-              <p className="truncate font-semibold text-zinc-900">
+              <button
+                type="button"
+                onClick={onToggleDetail}
+                className={`truncate text-left font-semibold transition hover:text-blue-700 hover:underline ${
+                  detailOpen ? "text-blue-700" : "text-zinc-900"
+                }`}
+                title="View order details"
+              >
                 {order.invoiceNumber}
-              </p>
+              </button>
               <p className="truncate text-sm text-zinc-700">
                 {order.customerName}
               </p>
@@ -220,6 +234,11 @@ function OrderRow({
             </Button>
           </div>
         </div>
+        {detailOpen && (
+          <div className="border-t border-zinc-100 bg-zinc-50/80 p-3">
+            <OrderBoardDetail order={order} />
+          </div>
+        )}
         {assignOpen && !isComplete && (
           <div className="border-t border-zinc-100 bg-zinc-50 p-3">
             <OrderAssignmentPanel
@@ -255,9 +274,16 @@ function OrderRow({
         />
         <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-[minmax(7rem,1fr)_minmax(8rem,1.2fr)_minmax(6rem,1fr)_minmax(5rem,0.7fr)_minmax(8rem,1fr)] sm:items-center sm:gap-3">
           <div className="min-w-0">
-            <p className="truncate font-semibold text-zinc-900">
+            <button
+              type="button"
+              onClick={onToggleDetail}
+              className={`truncate text-left font-semibold transition hover:text-blue-700 hover:underline ${
+                detailOpen ? "text-blue-700" : "text-zinc-900"
+              }`}
+              title="View order details"
+            >
               {order.invoiceNumber}
-            </p>
+            </button>
             {isOrderUrgent(order) && (
               <span className="text-[10px] font-medium text-red-600">
                 URGENT
@@ -306,6 +332,11 @@ function OrderRow({
           </Button>
         </div>
       </div>
+      {detailOpen && (
+        <div className="border-t border-zinc-100 bg-zinc-50/80 px-3 py-3">
+          <OrderBoardDetail order={order} />
+        </div>
+      )}
       {assignOpen && !isComplete && (
         <div className="border-t border-zinc-100 bg-zinc-50 px-3 py-3">
           <OrderAssignmentPanel
@@ -340,6 +371,7 @@ export function OrderBoardView({
   orders,
   selectedOrderIds,
   expandedAssignId,
+  expandedDetailId,
   assignState,
   vehicles,
   pickers,
@@ -350,6 +382,7 @@ export function OrderBoardView({
   focusVehicleId,
   onSelectChange,
   onToggleAssign,
+  onToggleDetail,
   onEdit,
   onDelete,
   onDraftChange,
@@ -394,7 +427,7 @@ export function OrderBoardView({
             {mode === "list" && (
               <div className="hidden border-b border-zinc-100 bg-zinc-50/80 px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-400 sm:grid sm:grid-cols-[auto_minmax(7rem,1fr)_minmax(8rem,1.2fr)_minmax(6rem,1fr)_minmax(5rem,0.7fr)_minmax(8rem,1fr)_auto] sm:items-center sm:gap-3">
                 <span />
-                <span>Invoice</span>
+                <span>Invoice (click)</span>
                 <span>Customer</span>
                 <span>Location</span>
                 <span>Load</span>
@@ -430,6 +463,7 @@ export function OrderBoardView({
                     order={order}
                     selected={selectedOrderIds.has(order.id!)}
                     assignOpen={expandedAssignId === order.id}
+                    detailOpen={expandedDetailId === order.id}
                     draft={draft}
                     vehicles={vehicles}
                     pickers={pickers}
@@ -442,6 +476,7 @@ export function OrderBoardView({
                       onSelectChange(order.id!, checked)
                     }
                     onToggleAssign={() => onToggleAssign(order.id!)}
+                    onToggleDetail={() => onToggleDetail(order.id!)}
                     onEdit={() => onEdit(order)}
                     onDelete={() => onDelete(order.id!)}
                     onDraftChange={(next) => onDraftChange(order.id!, next)}
