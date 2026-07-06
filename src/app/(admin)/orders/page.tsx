@@ -21,6 +21,7 @@ import { InvoiceNumberField } from "@/components/InvoiceNumberField";
 import { ProductSearchField } from "@/components/ProductSearchField";
 import { Badge, Button, Card, Input, Select, Alert, PageSection, LoadingState } from "@/components/ui";
 import {
+  ORDER_STAGE_LEGEND,
   type OrderDisplayStage,
 } from "@/lib/order-display";
 import {
@@ -175,6 +176,27 @@ function buildOrderNotes(salesAgent: string, customerPhone: string): string | un
   return parts.length > 0 ? parts.join(" · ") : undefined;
 }
 
+function createEmptyOrderForm() {
+  return {
+    invoiceNumber: "",
+    customerName: "",
+    customerPhone: "",
+    salesAgent: "",
+    region: "",
+    location: "",
+    locationId: "" as string | undefined,
+    city: "" as string | undefined,
+    lat: undefined as number | undefined,
+    lng: undefined as number | undefined,
+    price: "",
+    orderDate: new Date().toISOString().slice(0, 10),
+    requestedDeliveryDate: "",
+    deliveryTimePreference: "flexible" as "flexible" | "morning" | "afternoon",
+    priority: "normal" as "normal" | "urgent",
+    items: [emptyItem()] as OrderItem[],
+  };
+}
+
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -207,24 +229,7 @@ export default function OrdersPage() {
   >("all");
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState({
-    invoiceNumber: "",
-    customerName: "",
-    customerPhone: "",
-    salesAgent: "",
-    region: "",
-    location: "",
-    locationId: "" as string | undefined,
-    city: "" as string | undefined,
-    lat: undefined as number | undefined,
-    lng: undefined as number | undefined,
-    price: "",
-    orderDate: new Date().toISOString().slice(0, 10),
-    requestedDeliveryDate: "",
-    deliveryTimePreference: "flexible" as "flexible" | "morning" | "afternoon",
-    priority: "normal" as "normal" | "urgent",
-    items: [emptyItem()] as OrderItem[],
-  });
+  const [form, setForm] = useState(createEmptyOrderForm);
   const [assignState, setAssignState] = useState<
     Record<number, AssignmentDraft>
   >({});
@@ -364,25 +369,25 @@ export default function OrdersPage() {
     }
     setShowForm(false);
     setEditingId(null);
-    setForm({
-      invoiceNumber: "",
-      customerName: "",
-      customerPhone: "",
-      salesAgent: "",
-      region: "",
-      location: "",
-      locationId: undefined,
-      city: undefined,
-      lat: undefined,
-      lng: undefined,
-      price: "",
-      orderDate: new Date().toISOString().slice(0, 10),
-      requestedDeliveryDate: "",
-      deliveryTimePreference: "flexible" as "flexible" | "morning" | "afternoon",
-      priority: "normal" as "normal" | "urgent",
-      items: [emptyItem()],
-    });
+    setForm(createEmptyOrderForm());
     load();
+  }
+
+  function openNewOrder() {
+    setEditingId(null);
+    setError("");
+    setForm(createEmptyOrderForm());
+    setShowForm(true);
+  }
+
+  function closeOrderForm() {
+    setShowForm(false);
+    setEditingId(null);
+    setForm(createEmptyOrderForm());
+  }
+
+  function toggleOrderForm() {
+    setShowForm((open) => !open);
   }
 
   function startEdit(order: Order) {
@@ -705,6 +710,7 @@ export default function OrdersPage() {
 
   const assignedCount = orders.filter((o) => o.assignment).length;
   const unassignedCount = orders.length - assignedCount;
+  const preparedCount = orders.filter((o) => o.deliveryStage === "loaded").length;
   const visibleOrders = orders.filter((order) => {
     if (assignmentFilter === "assigned") return Boolean(order.assignment);
     if (assignmentFilter === "unassigned") return !order.assignment;
@@ -811,7 +817,7 @@ export default function OrdersPage() {
     >
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2">
-          <Button onClick={() => setShowForm(true)}>New order</Button>
+          <Button onClick={openNewOrder}>New order</Button>
           <Button
             variant="secondary"
             onClick={() => {
@@ -1047,14 +1053,14 @@ export default function OrdersPage() {
             Hide completed deliveries
           </label>
           <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-500">
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-sm bg-amber-200 ring-1 ring-amber-300" />
-              In transit
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-sm bg-green-200 ring-1 ring-green-300" />
-              Delivered
-            </span>
+            {ORDER_STAGE_LEGEND.map((item) => (
+              <span key={item.stage} className="inline-flex items-center gap-1.5">
+                <span
+                  className={`h-2.5 w-2.5 rounded-sm ${item.swatchClass}`}
+                />
+                {item.label}
+              </span>
+            ))}
             <Button variant="secondary" className="text-xs" onClick={load}>
               Refresh now
             </Button>
@@ -1076,11 +1082,36 @@ export default function OrdersPage() {
         onWarning={setWarning}
       />
 
-      {showForm && (
-        <Card className="mb-6 p-4">
-          <h3 className="mb-4 text-sm font-semibold text-zinc-900">
-            {editingId ? "Edit Order" : "New Order / Invoice"}
-          </h3>
+      <Card className="mb-6 overflow-hidden">
+        <button
+          type="button"
+          onClick={toggleOrderForm}
+          aria-expanded={showForm}
+          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-zinc-50"
+        >
+          <div>
+            <p className="text-sm font-semibold text-zinc-900">
+              {editingId
+                ? `Edit order — ${form.invoiceNumber || "…"}`
+                : "New order / invoice"}
+            </p>
+            <p className="text-xs text-zinc-500">
+              {showForm
+                ? "Click to collapse the form"
+                : "Click to expand and add or edit an order"}
+            </p>
+          </div>
+          <span
+            className={`shrink-0 text-sm text-zinc-400 transition-transform ${
+              showForm ? "rotate-180" : ""
+            }`}
+            aria-hidden
+          >
+            ▼
+          </span>
+        </button>
+        {showForm && (
+          <div className="border-t border-zinc-200 p-4">
           <form onSubmit={saveOrder} className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <InvoiceNumberField
@@ -1507,20 +1538,14 @@ export default function OrdersPage() {
 
             <div className="flex gap-2">
               <Button type="submit">Save</Button>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => {
-                  setShowForm(false);
-                  setEditingId(null);
-                }}
-              >
+              <Button type="button" variant="ghost" onClick={closeOrderForm}>
                 Cancel
               </Button>
             </div>
           </form>
-        </Card>
-      )}
+          </div>
+        )}
+      </Card>
 
       <Card>
         {selectedOrderIds.size > 0 && (
@@ -1671,7 +1696,7 @@ export default function OrdersPage() {
           <div className="text-right text-xs text-zinc-500">
             <p className="font-medium text-zinc-700">
               {visibleOrders.length} shown · {assignedCount} assigned ·{" "}
-              {unassignedCount} open
+              {preparedCount} prepared · {unassignedCount} open
             </p>
             {lastRefreshed && (
               <p>Updated {lastRefreshed.toLocaleTimeString()}</p>

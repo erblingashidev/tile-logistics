@@ -9,6 +9,8 @@ import { formatM2 } from "@/lib/calculations";
 import { formatDeliveryRound } from "@/lib/delivery-rounds";
 import {
   orderListRowClass,
+  orderStageBadgeTone,
+  ORDER_STAGE_LABELS,
   type OrderDisplayStage,
 } from "@/lib/order-display";
 import { isOrderUrgent } from "@/lib/order-priority";
@@ -72,6 +74,15 @@ function groupByRegion(orders: OrderListCardOrder[]) {
         return a.invoiceNumber.localeCompare(b.invoiceNumber);
       }),
     }));
+}
+
+function StageBadge({ order }: { order: OrderListCardOrder }) {
+  const stage = (order.deliveryStage ?? order.status) as OrderDisplayStage;
+  return (
+    <Badge tone={orderStageBadgeTone(stage)}>
+      {order.deliveryStageLabel ?? ORDER_STAGE_LABELS[stage] ?? stage}
+    </Badge>
+  );
 }
 
 function AssignmentBadge({ order }: { order: OrderListCardOrder }) {
@@ -168,12 +179,8 @@ function OrderRow({
     order.assignment?.deliveryRound === focusRound;
   const isComplete = stage === "delivered" || stage === "arrived";
 
-  const shellClass = `overflow-hidden rounded-lg border transition ${orderListRowClass(stage)} ${
-    onFocusTruck
-      ? "border-blue-400 ring-1 ring-blue-300"
-      : order.assignment
-        ? "border-emerald-200"
-        : "border-amber-200"
+  const shellClass = `overflow-hidden rounded-lg border border-zinc-200/80 transition ${orderListRowClass(stage)} ${
+    onFocusTruck ? "ring-2 ring-blue-400 ring-offset-1" : ""
   }`;
 
   if (compact === "grid") {
@@ -208,6 +215,7 @@ function OrderRow({
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
+            <StageBadge order={order} />
             <AssignmentBadge order={order} />
             {isOrderUrgent(order) && <Badge tone="red">URGENT</Badge>}
           </div>
@@ -272,7 +280,7 @@ function OrderRow({
           onChange={(e) => onSelectChange(e.target.checked)}
           aria-label={`Select ${order.invoiceNumber}`}
         />
-        <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-[minmax(7rem,1fr)_minmax(8rem,1.2fr)_minmax(6rem,1fr)_minmax(5rem,0.7fr)_minmax(8rem,1fr)] sm:items-center sm:gap-3">
+        <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-[minmax(7rem,1fr)_minmax(8rem,1.2fr)_minmax(6rem,1fr)_minmax(5rem,0.7fr)_minmax(9rem,1.1fr)] sm:items-center sm:gap-3">
           <div className="min-w-0">
             <button
               type="button"
@@ -302,7 +310,10 @@ function OrderRow({
           <p className="text-sm tabular-nums text-zinc-700">
             {order.totalPallets} plt
           </p>
-          <AssignmentBadge order={order} />
+          <div className="flex min-w-0 flex-wrap items-center gap-1">
+            <StageBadge order={order} />
+            <AssignmentBadge order={order} />
+          </div>
         </div>
         <div className="flex shrink-0 flex-wrap gap-1 sm:justify-end">
           {onQuickAssignToFocus && (
@@ -425,13 +436,13 @@ export function OrderBoardView({
             </div>
 
             {mode === "list" && (
-              <div className="hidden border-b border-zinc-100 bg-zinc-50/80 px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-400 sm:grid sm:grid-cols-[auto_minmax(7rem,1fr)_minmax(8rem,1.2fr)_minmax(6rem,1fr)_minmax(5rem,0.7fr)_minmax(8rem,1fr)_auto] sm:items-center sm:gap-3">
+              <div className="hidden border-b border-zinc-100 bg-zinc-50/80 px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-400 sm:grid sm:grid-cols-[auto_minmax(7rem,1fr)_minmax(8rem,1.2fr)_minmax(6rem,1fr)_minmax(5rem,0.7fr)_minmax(9rem,1.1fr)_auto] sm:items-center sm:gap-3">
                 <span />
                 <span>Invoice (click)</span>
                 <span>Customer</span>
                 <span>Location</span>
                 <span>Load</span>
-                <span>Truck</span>
+                <span>Status</span>
                 <span className="text-right">Actions</span>
               </div>
             )}

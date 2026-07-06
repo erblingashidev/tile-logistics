@@ -11,15 +11,79 @@ export type OrderDisplayStage =
   | "cancelled";
 
 export const ORDER_STAGE_LABELS: Record<OrderDisplayStage, string> = {
-  pending: "Pending",
+  pending: "Open",
   assigned: "Assigned",
-  loaded: "Loaded at warehouse",
-  not_loaded: "Not loaded (explained)",
+  loaded: "Prepared",
+  not_loaded: "Not loaded",
   in_transit: "On the way",
   arrived: "Arrived",
   delivered: "Delivered",
   cancelled: "Cancelled",
 };
+
+/** Left-border + background tints for order lists (admin + portal). */
+export function orderListRowClass(stage: OrderDisplayStage): string {
+  switch (stage) {
+    case "delivered":
+    case "arrived":
+      return "bg-green-50/95 border-l-4 border-l-green-500";
+    case "in_transit":
+      return "bg-indigo-50/95 border-l-4 border-l-indigo-500";
+    case "loaded":
+      return "bg-cyan-50/95 border-l-4 border-l-cyan-500";
+    case "assigned":
+      return "bg-amber-50/95 border-l-4 border-l-amber-400";
+    case "not_loaded":
+      return "bg-red-50/80 border-l-4 border-l-red-400";
+    case "cancelled":
+      return "bg-zinc-100/90 border-l-4 border-l-zinc-400";
+    default:
+      return "bg-white border-l-4 border-l-zinc-200";
+  }
+}
+
+export const ORDER_STAGE_LEGEND: Array<{
+  stage: OrderDisplayStage;
+  label: string;
+  swatchClass: string;
+}> = [
+  { stage: "pending", label: "Open", swatchClass: "bg-white ring-1 ring-zinc-300" },
+  {
+    stage: "assigned",
+    label: "Assigned",
+    swatchClass: "bg-amber-200 ring-1 ring-amber-400",
+  },
+  {
+    stage: "loaded",
+    label: "Prepared",
+    swatchClass: "bg-cyan-200 ring-1 ring-cyan-500",
+  },
+  {
+    stage: "in_transit",
+    label: "On the way",
+    swatchClass: "bg-indigo-200 ring-1 ring-indigo-400",
+  },
+  {
+    stage: "delivered",
+    label: "Delivered",
+    swatchClass: "bg-green-200 ring-1 ring-green-400",
+  },
+  {
+    stage: "not_loaded",
+    label: "Not loaded",
+    swatchClass: "bg-red-200 ring-1 ring-red-400",
+  },
+];
+
+export function orderStageBadgeTone(
+  stage: OrderDisplayStage
+): "green" | "amber" | "slate" | "red" | "blue" {
+  if (stage === "arrived" || stage === "delivered") return "green";
+  if (stage === "loaded") return "blue";
+  if (stage === "assigned" || stage === "in_transit") return "amber";
+  if (stage === "cancelled" || stage === "not_loaded") return "red";
+  return "slate";
+}
 
 /** Combines DB status + employee proof steps for admin list display. */
 export function computeOrderDisplayStage(
@@ -36,31 +100,6 @@ export function computeOrderDisplayStage(
   if (status === "assigned") return "assigned";
   if (status === "pending") return "pending";
   return "pending";
-}
-
-export function orderListRowClass(stage: OrderDisplayStage): string {
-  if (stage === "arrived" || stage === "delivered") {
-    return "bg-green-50/90 border-l-4 border-l-green-500";
-  }
-  if (stage === "assigned" || stage === "in_transit" || stage === "loaded") {
-    return "bg-amber-50/90 border-l-4 border-l-amber-400";
-  }
-  if (stage === "not_loaded") {
-    return "bg-red-50/60 border-l-4 border-l-red-300";
-  }
-  return "border-l-4 border-l-transparent";
-}
-
-export function orderStageBadgeTone(
-  stage: OrderDisplayStage
-): "green" | "amber" | "slate" | "red" {
-  if (stage === "arrived" || stage === "delivered") return "green";
-  if (stage === "assigned" || stage === "in_transit" || stage === "loaded") {
-    return "amber";
-  }
-  if (stage === "cancelled") return "red";
-  if (stage === "not_loaded") return "red";
-  return "slate";
 }
 
 const WAITING_STAGES = new Set<OrderDisplayStage>([
