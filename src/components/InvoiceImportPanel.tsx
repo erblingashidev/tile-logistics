@@ -165,6 +165,13 @@ export function InvoiceImportPanel({
     InvoiceImportPreviewItem[]
   >([]);
   const [previewInvoiceNumber, setPreviewInvoiceNumber] = useState("");
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (busy || preview) {
+      setExpanded(true);
+    }
+  }, [busy, preview]);
 
   useEffect(() => {
     return () => {
@@ -515,17 +522,38 @@ export function InvoiceImportPanel({
 
   return (
     <Card className="mb-4 overflow-hidden p-0">
-      <div className="border-b border-zinc-200 bg-zinc-50 px-5 py-4">
-        <p className="text-base font-semibold text-zinc-900">
-          Import AGIMI document
-        </p>
-        <p className="mt-1 text-sm text-zinc-500">
+      <button
+        type="button"
+        onClick={() => setExpanded((open) => !open)}
+        aria-expanded={expanded}
+        className="flex w-full items-center justify-between gap-3 border-b border-zinc-200 bg-zinc-50 px-5 py-4 text-left transition hover:bg-zinc-100/80"
+      >
+        <div>
+          <p className="text-base font-semibold text-zinc-900">
+            Import AGIMI document
+          </p>
+          <p className="mt-1 text-sm text-zinc-500">
+            {expanded
+              ? "Photo or PDF — click to collapse"
+              : "Photo or PDF — click to expand and import"}
+          </p>
+        </div>
+        <span
+          className={`shrink-0 text-sm text-zinc-400 transition-transform ${
+            expanded ? "rotate-180" : ""
+          }`}
+          aria-hidden
+        >
+          ▼
+        </span>
+      </button>
+
+      {expanded && (
+      <div className="space-y-4 p-5">
+        <p className="text-xs text-zinc-500">
           Pro-faturë, Faturë, or Fletë dërgese. PDF exported from Pro-Data on PC
           gives the cleanest import; photos need sharp focus and strong contrast.
         </p>
-      </div>
-
-      <div className="space-y-4 p-5">
         {panelError && (
           <Alert tone="error">
             <p>{panelError}</p>
@@ -874,6 +902,7 @@ export function InvoiceImportPanel({
           </div>
         )}
       </div>
+      )}
     </Card>
   );
 }

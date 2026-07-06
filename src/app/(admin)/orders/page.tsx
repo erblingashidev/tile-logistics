@@ -386,10 +386,6 @@ export default function OrdersPage() {
     setForm(createEmptyOrderForm());
   }
 
-  function toggleOrderForm() {
-    setShowForm((open) => !open);
-  }
-
   function startEdit(order: Order) {
     setEditingId(order.id);
     setForm({
@@ -1082,36 +1078,11 @@ export default function OrdersPage() {
         onWarning={setWarning}
       />
 
-      <Card className="mb-6 overflow-hidden">
-        <button
-          type="button"
-          onClick={toggleOrderForm}
-          aria-expanded={showForm}
-          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-zinc-50"
-        >
-          <div>
-            <p className="text-sm font-semibold text-zinc-900">
-              {editingId
-                ? `Edit order — ${form.invoiceNumber || "…"}`
-                : "New order / invoice"}
-            </p>
-            <p className="text-xs text-zinc-500">
-              {showForm
-                ? "Click to collapse the form"
-                : "Click to expand and add or edit an order"}
-            </p>
-          </div>
-          <span
-            className={`shrink-0 text-sm text-zinc-400 transition-transform ${
-              showForm ? "rotate-180" : ""
-            }`}
-            aria-hidden
-          >
-            ▼
-          </span>
-        </button>
-        {showForm && (
-          <div className="border-t border-zinc-200 p-4">
+      {showForm && (
+        <Card className="mb-6 p-4">
+          <h3 className="mb-4 text-sm font-semibold text-zinc-900">
+            {editingId ? "Edit Order" : "New Order / Invoice"}
+          </h3>
           <form onSubmit={saveOrder} className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <InvoiceNumberField
@@ -1543,9 +1514,8 @@ export default function OrdersPage() {
               </Button>
             </div>
           </form>
-          </div>
-        )}
-      </Card>
+        </Card>
+      )}
 
       <Card>
         {selectedOrderIds.size > 0 && (
