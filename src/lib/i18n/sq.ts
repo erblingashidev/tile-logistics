@@ -129,6 +129,8 @@ export const sq = {
   reportsNotWednesday:
     "Raporti zyrtar javor bëhet të mërkurën, por mund ta dërgosh edhe tani.",
   reportsSuccess: "Raporti u ruaj",
+  reportsPhotoWarning:
+    "Disa foto nuk u ruajtën — raporti u dërgua pa to.",
   reportsNoAccess: "Nuk keni qasje për raporte depo.",
   reportsSelectZone: "Zgjidh zonën",
   reportsRecent: "Raportet e fundit",

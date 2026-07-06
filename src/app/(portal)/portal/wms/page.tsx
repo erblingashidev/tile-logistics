@@ -10,6 +10,7 @@ import {
 import { Badge, Button, Input, Select, Alert } from "@/components/ui";
 import { sq } from "@/lib/i18n/sq";
 import type { EmployeeRole } from "@/lib/constants";
+import { WAREHOUSE_REPORT_ROLES } from "@/lib/employee-categories";
 
 interface Location {
   id: number;
@@ -171,9 +172,7 @@ export default function PortalWmsPage() {
       activeNav="wms"
       showOrders
       showWms
-      showReports={roles.some((r) =>
-        (["warehouse_admin", "warehouse_reporter", "group_leader"] as EmployeeRole[]).includes(r)
-      )}
+      showReports={roles.some((r) => WAREHOUSE_REPORT_ROLES.includes(r))}
       onLogout={logout}
     >
       {error && <Alert tone="error">{error}</Alert>}

@@ -35,6 +35,14 @@ export const WAREHOUSE_REPORT_ROLES: EmployeeRole[] = [
   "group_leader",
   "warehouse_reporter",
   "warehouse_admin",
+  "picker",
+  "unloader",
+];
+
+export const WAREHOUSE_WEEKLY_REPORT_ROLES: EmployeeRole[] = [
+  "group_leader",
+  "warehouse_reporter",
+  "warehouse_admin",
 ];
 
 const CATEGORY_ORDER: EmployeeCategoryId[] = [

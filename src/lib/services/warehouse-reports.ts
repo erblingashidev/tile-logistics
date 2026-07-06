@@ -54,8 +54,13 @@ export interface SubmitWarehouseReportInput {
 
 function ensureReportUploadDir(reportId: number) {
   const dir = path.join(UPLOAD_ROOT, "warehouse-reports", String(reportId));
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
+  try {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+  } catch (err) {
+    console.error("[upload] ensureReportUploadDir failed:", err);
+    throw err;
   }
   return dir;
 }
@@ -65,21 +70,37 @@ export function saveWarehouseReportPhoto(
   file: Buffer,
   mimeType: string,
   index: number
-) {
-  const ext =
-    mimeType === "image/png"
-      ? "png"
-      : mimeType === "image/webp"
-        ? "webp"
-        : "jpg";
-  const filename = `${Date.now()}-${index}.${ext}`;
-  const dir = ensureReportUploadDir(reportId);
-  const fullPath = path.join(dir, filename);
-  fs.writeFileSync(fullPath, file);
-  return path.join("warehouse-reports", String(reportId), filename);
+): string | null {
+  try {
+    const ext =
+      mimeType === "image/png"
+        ? "png"
+        : mimeType === "image/webp"
+          ? "webp"
+          : "jpg";
+    const filename = `${Date.now()}-${index}.${ext}`;
+    const dir = ensureReportUploadDir(reportId);
+    const fullPath = path.join(dir, filename);
+    fs.writeFileSync(fullPath, file);
+    return path.join("warehouse-reports", String(reportId), filename);
+  } catch (err) {
+    console.error("[upload] saveWarehouseReportPhoto failed:", err);
+    return null;
+  }
 }
 
 function canSubmitReports(roles: EmployeeRole[]) {
+  return roles.some(
+    (r) =>
+      r === "group_leader" ||
+      r === "warehouse_reporter" ||
+      r === "warehouse_admin" ||
+      r === "picker" ||
+      r === "unloader"
+  );
+}
+
+function canSubmitWeeklyReports(roles: EmployeeRole[]) {
   return roles.some(
     (r) =>
       r === "group_leader" ||
@@ -121,6 +142,7 @@ export async function getWarehouseReportPortalContext(employeeId: number) {
     isWednesday: isWednesday(),
     wednesdayLabel: wednesdayLabel(reportWeek),
     canReport: canSubmitReports(employee.roles),
+    canSubmitWeekly: canSubmitWeeklyReports(employee.roles),
     canReportWholeWarehouse: isWarehouseReporter(employee.roles),
     isGroupLeader: isGroupLeader(employee.roles),
     incidentCategories: WAREHOUSE_INCIDENT_CATEGORIES,
@@ -268,7 +290,7 @@ export async function submitWarehouseReport(input: SubmitWarehouseReportInput) {
           error: "No warehouse zones assigned to you yet.",
         };
       }
-    } else {
+    } else if (!canSubmitWeeklyReports(input.employeeRoles)) {
       return {
         ok: false as const,
         error: "Weekly reports require group leader or warehouse reporter role.",
@@ -359,6 +381,7 @@ export async function submitWarehouseReport(input: SubmitWarehouseReportInput) {
     }
   }
 
+  let photosSkipped = 0;
   if (input.photos?.length) {
     for (let i = 0; i < input.photos.length; i++) {
       const photo = input.photos[i];
@@ -368,6 +391,10 @@ export async function submitWarehouseReport(input: SubmitWarehouseReportInput) {
         photo.mimeType,
         i
       );
+      if (!photoPath) {
+        photosSkipped++;
+        continue;
+      }
       await db.insert(warehouseReportPhotos).values({
         reportId,
         photoPath,
@@ -395,7 +422,18 @@ export async function submitWarehouseReport(input: SubmitWarehouseReportInput) {
   );
 
   const saved = await getReportRow(reportId);
-  return { ok: true as const, report: await enrichReport(saved!) };
+  return {
+    ok: true as const,
+    report: await enrichReport(saved!),
+    ...(photosSkipped > 0
+      ? {
+          photoWarning:
+            photosSkipped === 1
+              ? "Report saved but one photo could not be stored."
+              : `Report saved but ${photosSkipped} photos could not be stored.`,
+        }
+      : {}),
+  };
 }
 
 async function getReportRow(id: number) {
@@ -530,6 +568,7 @@ export async function updateWarehouseReportAdmin(
         photo.mimeType,
         existingPhotos.length + i
       );
+      if (!photoPath) continue;
       await db.insert(warehouseReportPhotos).values({
         reportId: id,
         photoPath,

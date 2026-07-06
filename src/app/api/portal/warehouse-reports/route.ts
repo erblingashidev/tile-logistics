@@ -9,6 +9,12 @@ import type { WarehouseReportType } from "@/lib/constants";
 
 export const runtime = "nodejs";
 
+function apiError(error: unknown, fallback: string, status = 500) {
+  console.error("[warehouse-reports]", error);
+  const message = error instanceof Error ? error.message : fallback;
+  return NextResponse.json({ error: message }, { status });
+}
+
 export async function GET() {
   try {
     const session = await requireEmployee();
@@ -22,8 +28,11 @@ export async function GET() {
     }
 
     return NextResponse.json(context);
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    return apiError(error, "Could not load warehouse reports.");
   }
 }
 
@@ -81,7 +90,10 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(result);
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    return apiError(error, "Could not submit warehouse report.");
   }
 }

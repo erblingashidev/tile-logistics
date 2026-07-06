@@ -34,7 +34,13 @@ export async function POST(
     }
 
     return NextResponse.json(result);
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  } catch (error) {
+    console.error("[warehouse-reports/edit-request]", error);
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const message =
+      error instanceof Error ? error.message : "Could not submit edit request.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

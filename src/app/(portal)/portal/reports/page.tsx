@@ -47,6 +47,7 @@ interface PortalContext {
   isWednesday: boolean;
   wednesdayLabel: string;
   canReportWholeWarehouse: boolean;
+  canSubmitWeekly: boolean;
   isGroupLeader: boolean;
   recentReports: ReportItem[];
 }
@@ -178,7 +179,11 @@ export default function PortalReportsPage() {
       return;
     }
 
-    setSuccess(sq.reportsSuccess);
+    setSuccess(
+      data.photoWarning
+        ? `${sq.reportsSuccess} ${sq.reportsPhotoWarning}`
+        : sq.reportsSuccess
+    );
     setBody("");
     setPhotos([]);
     setTaggedLeaderIds([]);
@@ -234,7 +239,9 @@ export default function PortalReportsPage() {
             onChange={setTab}
             tabs={[
               { id: "incident", label: sq.reportsIncident },
-              { id: "weekly", label: sq.reportsWeekly },
+              ...(ctx.canSubmitWeekly
+                ? [{ id: "weekly" as const, label: sq.reportsWeekly }]
+                : []),
             ]}
           />
 

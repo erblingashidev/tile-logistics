@@ -19,6 +19,7 @@ import {
   type DeliveryProofPhase,
   type EmployeeRole,
 } from "@/lib/constants";
+import { WAREHOUSE_REPORT_ROLES } from "@/lib/employee-categories";
 import { BRAND } from "@/lib/brand";
 import {
   orderStatusLabelSq,
@@ -259,9 +260,7 @@ export default function PortalPage() {
       (["warehouse_admin", "warehouse_reporter", "group_leader", "picker", "unloader", "maintainer"] as EmployeeRole[]).includes(r)
     ) ?? false;
   const showReportsLink =
-    employee?.roles.some((r) =>
-      (["warehouse_admin", "warehouse_reporter", "group_leader"] as EmployeeRole[]).includes(r)
-    ) ?? false;
+    employee?.roles.some((r) => WAREHOUSE_REPORT_ROLES.includes(r)) ?? false;
 
   function loaderPhasesForOrder(order: PortalOrder) {
     if (!isLoader) return [];
