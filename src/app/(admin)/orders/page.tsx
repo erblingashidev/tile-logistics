@@ -10,6 +10,10 @@ import {
 import { TruckFocusBar } from "@/components/TruckFocusBar";
 import { SmartDispatchPanel } from "@/components/SmartDispatchPanel";
 import { OrderListCard } from "@/components/OrderListCard";
+import {
+  OrderBoardView,
+  type OrderBoardViewMode,
+} from "@/components/OrderBoardView";
 import { InvoiceImportPanel,
   type InvoiceImportFormState,
 } from "@/components/InvoiceImportPanel";
@@ -194,6 +198,13 @@ export default function OrdersPage() {
   });
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [expandedOrderId, setExpandedOrderId] = useState<number | null>(null);
+  const [expandedAssignId, setExpandedAssignId] = useState<number | null>(null);
+  const [orderViewMode, setOrderViewMode] = useState<
+    "cards" | OrderBoardViewMode
+  >("list");
+  const [assignmentFilter, setAssignmentFilter] = useState<
+    "all" | "assigned" | "unassigned"
+  >("all");
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({
@@ -691,6 +702,18 @@ export default function OrdersPage() {
   const focusPalletsRemaining = focusVehicle
     ? Math.max(0, focusVehicle.maxPallets - focusPalletsOnTruck)
     : 0;
+
+  const assignedCount = orders.filter((o) => o.assignment).length;
+  const unassignedCount = orders.length - assignedCount;
+  const visibleOrders = orders.filter((order) => {
+    if (assignmentFilter === "assigned") return Boolean(order.assignment);
+    if (assignmentFilter === "unassigned") return !order.assignment;
+    return true;
+  });
+
+  function openAssignPanel(orderId: number) {
+    setExpandedAssignId((current) => (current === orderId ? null : orderId));
+  }
 
   function openFormFromInvoice(importForm: InvoiceImportFormState) {
     setEditingId(null);
@@ -1563,41 +1586,98 @@ export default function OrdersPage() {
           </div>
         )}
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 bg-zinc-50/80 px-4 py-3">
-          <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-700">
-            <input
-              type="checkbox"
-              aria-label="Select all orders"
-              checked={
-                orders.length > 0 && selectedOrderIds.size === orders.length
-              }
-              onChange={(e) => {
-                if (e.target.checked) {
-                  setSelectedOrderIds(new Set(orders.map((o) => o.id)));
-                } else {
-                  setSelectedOrderIds(new Set());
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-700">
+              <input
+                type="checkbox"
+                aria-label="Select all orders"
+                checked={
+                  visibleOrders.length > 0 &&
+                  visibleOrders.every((o) => selectedOrderIds.has(o.id))
                 }
-              }}
-            />
-            Select all
-          </label>
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setSelectedOrderIds(
+                      new Set(visibleOrders.map((o) => o.id))
+                    );
+                  } else {
+                    setSelectedOrderIds(new Set());
+                  }
+                }}
+              />
+              Select all
+            </label>
+            <div className="flex flex-wrap gap-1">
+              {(
+                [
+                  ["list", "List"],
+                  ["grid", "Grid"],
+                  ["cards", "Cards"],
+                ] as const
+              ).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setOrderViewMode(mode)}
+                  className={`rounded-md border px-2.5 py-1 text-xs font-medium transition ${
+                    orderViewMode === mode
+                      ? "border-zinc-900 bg-zinc-900 text-white"
+                      : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {(
+                [
+                  ["all", "All"],
+                  ["unassigned", "Open"],
+                  ["assigned", "Assigned"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setAssignmentFilter(value)}
+                  className={`rounded-md border px-2.5 py-1 text-xs font-medium transition ${
+                    assignmentFilter === value
+                      ? value === "assigned"
+                        ? "border-emerald-600 bg-emerald-600 text-white"
+                        : value === "unassigned"
+                          ? "border-amber-500 bg-amber-500 text-white"
+                          : "border-zinc-900 bg-zinc-900 text-white"
+                      : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="text-right text-xs text-zinc-500">
             <p className="font-medium text-zinc-700">
-              {orders.length} order{orders.length === 1 ? "" : "s"}
+              {visibleOrders.length} shown · {assignedCount} assigned ·{" "}
+              {unassignedCount} open
             </p>
             {lastRefreshed && (
-              <p>
-                Updated {lastRefreshed.toLocaleTimeString()}
-              </p>
+              <p>Updated {lastRefreshed.toLocaleTimeString()}</p>
             )}
           </div>
         </div>
-        <div className="max-h-[min(72vh,880px)] space-y-4 overflow-y-auto overscroll-y-contain bg-zinc-50/40 p-3 sm:p-4">
+        <div className="max-h-[min(72vh,880px)] overflow-y-auto overscroll-y-contain bg-zinc-50/40 p-3 sm:p-4">
           {loading && orders.length === 0 ? (
             <LoadingState title="Loading orders…" />
-          ) : orders.length === 0 ? (
-            <p className="py-8 text-center text-slate-500">No orders yet.</p>
-          ) : (
-            orders.map((order) => {
+          ) : visibleOrders.length === 0 ? (
+            <p className="py-8 text-center text-slate-500">
+              {orders.length === 0
+                ? "No orders yet."
+                : "No orders match this filter."}
+            </p>
+          ) : orderViewMode === "cards" ? (
+            <div className="space-y-4">
+            {visibleOrders.map((order) => {
               const draft: AssignmentDraft = assignState[order.id] ?? {
                 vehicleId: filters.vehicleId ?? "",
                 round: filters.deliveryRound || "1",
@@ -1638,7 +1718,7 @@ export default function OrdersPage() {
                   onEdit={() => startEdit(order)}
                   onDelete={() => deleteOrder(order.id)}
                   onDraftChange={(next) =>
-                    setAssignState({ ...assignState, [order.id]: next })
+                    setAssignState((prev) => ({ ...prev, [order.id]: next }))
                   }
                   onSaved={load}
                   onError={setError}
@@ -1659,7 +1739,48 @@ export default function OrdersPage() {
                   }
                 />
               );
-            })
+            })}
+            </div>
+          ) : (
+            <OrderBoardView
+              mode={orderViewMode}
+              orders={visibleOrders}
+              selectedOrderIds={selectedOrderIds}
+              expandedAssignId={expandedAssignId}
+              assignState={assignState}
+              vehicles={vehicles}
+              pickers={pickers}
+              preferredVehicleId={filters.vehicleId || undefined}
+              focusVehicleName={focusVehicle?.name}
+              focusDeliveryRound={filters.deliveryRound}
+              focusRound={focusRound}
+              focusVehicleId={filters.vehicleId || undefined}
+              onSelectChange={(orderId, checked) => {
+                const next = new Set(selectedOrderIds);
+                if (checked) next.add(orderId);
+                else next.delete(orderId);
+                setSelectedOrderIds(next);
+              }}
+              onToggleAssign={openAssignPanel}
+              onEdit={(boardOrder) => {
+                const full = visibleOrders.find((o) => o.id === boardOrder.id);
+                if (full) startEdit(full);
+              }}
+              onDelete={deleteOrder}
+              onDraftChange={(orderId, next) =>
+                setAssignState((prev) => ({ ...prev, [orderId]: next }))
+              }
+              onSaved={load}
+              onError={setError}
+              onWarning={(msg) => {
+                setWarning(msg);
+                setTimeout(() => setWarning(""), 3000);
+              }}
+              onQuickAssignToFocus={(boardOrder) => {
+                const full = visibleOrders.find((o) => o.id === boardOrder.id);
+                if (full) void quickAssignOrderToFocus(full);
+              }}
+            />
           )}
         </div>
       </Card>

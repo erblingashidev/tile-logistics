@@ -60,6 +60,7 @@ export interface OrderInvoiceData {
   totalWeightKg: number;
   items: OrderInvoiceItem[];
   assignment?: {
+    vehicleId?: number;
     vehicleName: string;
     plateNumber?: string;
     deliveryRound: number;
