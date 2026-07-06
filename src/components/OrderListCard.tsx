@@ -55,6 +55,9 @@ export interface OrderListCardProps {
   expanded: boolean;
   highlightFocus?: boolean;
   highlightAvailable?: boolean;
+  preferredVehicleId?: string;
+  focusVehicleName?: string;
+  focusDeliveryRound?: string;
   draft: AssignmentDraft;
   vehicles: VehicleOption[];
   pickers: PickerOption[];
@@ -67,6 +70,7 @@ export interface OrderListCardProps {
   onError: (message: string) => void;
   onWarning: (message: string) => void;
   onSuggestUrgentRoute: () => void;
+  onQuickAssignToFocus?: () => void;
 }
 
 function MetaItem({ label, value }: { label: string; value: string }) {
@@ -119,6 +123,9 @@ export function OrderListCard({
   expanded,
   highlightFocus,
   highlightAvailable,
+  preferredVehicleId,
+  focusVehicleName,
+  focusDeliveryRound,
   draft,
   vehicles,
   pickers,
@@ -131,6 +138,7 @@ export function OrderListCard({
   onError,
   onWarning,
   onSuggestUrgentRoute,
+  onQuickAssignToFocus,
 }: OrderListCardProps) {
   const stage = (order.deliveryStage ?? order.status) as OrderDisplayStage;
   const isComplete = stage === "delivered" || stage === "arrived";
@@ -197,6 +205,17 @@ export function OrderListCard({
           </div>
 
           <div className="flex shrink-0 flex-wrap gap-1 sm:justify-end">
+            {onQuickAssignToFocus &&
+              preferredVehicleId &&
+              !order.assignment && (
+                <Button
+                  className="text-xs"
+                  onClick={onQuickAssignToFocus}
+                >
+                  → {focusVehicleName ?? "Focus truck"}
+                  {focusDeliveryRound ? ` R${focusDeliveryRound}` : ""}
+                </Button>
+              )}
             <Button variant="secondary" className="text-xs" onClick={onToggleExpand}>
               {expanded ? "Hide invoice" : "View invoice"}
             </Button>
@@ -358,11 +377,13 @@ export function OrderListCard({
           <OrderAssignmentPanel
             orderId={order.id!}
             invoiceNumber={order.invoiceNumber}
+            orderPallets={order.totalPallets}
             hasAssignment={hasAnyAssignment}
             hasProgress={hasProgress}
             draft={draft}
             vehicles={vehicles}
             pickers={pickers}
+            preferredVehicleId={preferredVehicleId}
             onDraftChange={onDraftChange}
             onSaved={onSaved}
             onError={onError}

@@ -7,6 +7,7 @@ import { LocationPicker } from "@/components/LocationPicker";
 import {
   type AssignmentDraft,
 } from "@/components/OrderAssignmentPanel";
+import { TruckFocusBar } from "@/components/TruckFocusBar";
 import { SmartDispatchPanel } from "@/components/SmartDispatchPanel";
 import { OrderListCard } from "@/components/OrderListCard";
 import { InvoiceImportPanel,
@@ -637,6 +638,39 @@ export default function OrdersPage() {
     load();
   }
 
+  async function quickAssignOrderToFocus(order: Order) {
+    if (!filters.vehicleId) {
+      setError("Choose a focus truck first.");
+      return;
+    }
+    if (
+      order.assignment?.vehicleId === Number(filters.vehicleId) &&
+      order.assignment?.deliveryRound === focusRound
+    ) {
+      return;
+    }
+    setError("");
+    const res = await fetch(`/api/orders/${order.id}/assign-bundle`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        vehicleId: Number(filters.vehicleId),
+        deliveryRound: focusRound,
+        pickerId: null,
+        autoAssignTeam: true,
+        ignoreWeightWarning: true,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data.error ?? "Could not assign order");
+      return;
+    }
+    setWarning(`Assigned ${order.invoiceNumber} → ${focusVehicle?.name ?? "truck"}`);
+    setTimeout(() => setWarning(""), 3000);
+    load();
+  }
+
   const pickers = employees.filter((e) => e.roles.includes("picker"));
   const drivers = employees.filter((e) => e.roles.includes("driver"));
 
@@ -785,76 +819,62 @@ export default function OrdersPage() {
       <PageSection title="Truck workspace">
         <Card className="border-blue-200 bg-gradient-to-br from-blue-50/80 to-white p-4">
           <p className="mb-3 text-sm text-zinc-500">
-            Focus a truck and round to filter the order list.
+            Click a truck to focus the list — then assign orders with one click per
+            truck chip on each card.
           </p>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Select
-              label="Focus truck"
-              value={filters.vehicleId}
-              onChange={(e) =>
-                setFilters({
-                  ...filters,
-                  vehicleId: e.target.value,
-                })
-              }
-            >
-              <option value="">All trucks</option>
-              {vehicles.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.name} ({v.plateNumber})
-                  {v.assignedDriver ? ` — ${v.assignedDriver.name}` : ""}
-                </option>
+          <TruckFocusBar
+            vehicles={vehicles}
+            selectedVehicleId={filters.vehicleId}
+            deliveryRound={filters.deliveryRound}
+            onSelectVehicle={(vehicleId) =>
+              setFilters({
+                ...filters,
+                vehicleId,
+                vehicleScope: vehicleId ? filters.vehicleScope : "workspace",
+              })
+            }
+            onSelectRound={(deliveryRound) =>
+              setFilters({ ...filters, deliveryRound })
+            }
+            onClear={() =>
+              setFilters({
+                ...filters,
+                vehicleId: "",
+                vehicleScope: "workspace",
+              })
+            }
+          />
+          {filters.vehicleId && (
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <span className="text-xs font-medium text-zinc-500">Show:</span>
+              {(
+                [
+                  ["workspace", "On truck + available"],
+                  ["on_truck", "On truck only"],
+                  ["unassigned", "Available only"],
+                ] as const
+              ).map(([value, label]) => (
+                <label
+                  key={value}
+                  className={`inline-flex cursor-pointer items-center rounded-md border px-2.5 py-1 text-xs font-medium transition ${
+                    filters.vehicleScope === value
+                      ? "border-blue-600 bg-blue-600 text-white"
+                      : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    className="sr-only"
+                    checked={filters.vehicleScope === value}
+                    onChange={() =>
+                      setFilters({ ...filters, vehicleScope: value })
+                    }
+                  />
+                  {label}
+                </label>
               ))}
-            </Select>
-            <Select
-              label="Delivery round"
-              value={filters.deliveryRound}
-              onChange={(e) =>
-                setFilters({ ...filters, deliveryRound: e.target.value })
-              }
-              disabled={!filters.vehicleId}
-            >
-              {deliveryRoundSelectOptions().map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </Select>
-            <Select
-              label="Show orders"
-              value={filters.vehicleScope}
-              onChange={(e) =>
-                setFilters({
-                  ...filters,
-                  vehicleScope: e.target.value as
-                    | "workspace"
-                    | "on_truck"
-                    | "unassigned",
-                })
-              }
-              disabled={!filters.vehicleId}
-            >
-              <option value="workspace">On truck + available to assign</option>
-              <option value="on_truck">On this truck only</option>
-              <option value="unassigned">Available to assign only</option>
-            </Select>
-            <div className="flex items-end">
-              <Button
-                variant="ghost"
-                className="w-full text-sm"
-                disabled={!filters.vehicleId}
-                onClick={() =>
-                  setFilters({
-                    ...filters,
-                    vehicleId: "",
-                    vehicleScope: "workspace",
-                  })
-                }
-              >
-                Clear truck focus
-              </Button>
             </div>
-          </div>
+          )}
           {focusVehicle && (
             <div className="mt-4 rounded-lg border border-blue-100 bg-white/80 px-3 py-2 text-sm">
               <p className="font-medium text-zinc-900">
@@ -1601,6 +1621,9 @@ export default function OrdersPage() {
                   expanded={expandedOrderId === order.id}
                   highlightFocus={onFocusTruck}
                   highlightAvailable={availableForFocus}
+                  preferredVehicleId={filters.vehicleId || undefined}
+                  focusVehicleName={focusVehicle?.name}
+                  focusDeliveryRound={filters.deliveryRound}
                   draft={draft}
                   vehicles={vehicles}
                   pickers={pickers}
@@ -1627,6 +1650,16 @@ export default function OrdersPage() {
                     setTimeout(() => setWarning(""), 3000);
                   }}
                   onSuggestUrgentRoute={() => suggestUrgentRoute(order)}
+                  onQuickAssignToFocus={
+                    filters.vehicleId &&
+                    !(
+                      order.assignment?.vehicleId ===
+                        Number(filters.vehicleId) &&
+                      order.assignment?.deliveryRound === focusRound
+                    )
+                      ? () => quickAssignOrderToFocus(order)
+                      : undefined
+                  }
                 />
               );
             })
