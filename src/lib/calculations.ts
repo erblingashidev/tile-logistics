@@ -201,6 +201,7 @@ export interface OrderItemInput {
   tileThicknessCm?: number;
   quantityM2?: number;
   weightKg?: number;
+  lengthM?: number;
   manualPallets?: number;
   manualPieces?: number;
   /** When linked to catalog with pallet specs, orders use these for weight/space. */
@@ -217,6 +218,7 @@ export interface EnrichedOrderItem {
   pieceCount: number | null;
   palletCount: number | null;
   weightKg: number | null;
+  lengthM: number | null;
   calculatedPieces: number | null;
   calculatedPallets: number | null;
 }
@@ -248,6 +250,7 @@ export function formatOrderProductSummary(
     tileHeightCm?: number | null;
     quantityM2?: number | null;
     weightKg?: number | null;
+    lengthM?: number | null;
     pieceCount?: number | null;
   }>
 ): string {
@@ -271,6 +274,9 @@ export function formatOrderProductSummary(
       }
       if (unit === "piece" && item.pieceCount != null) {
         return `${name} · ${item.pieceCount} pcs`;
+      }
+      if (unit === "meter" && item.lengthM != null) {
+        return `${name} · ${item.lengthM} m`;
       }
       return `${name}${size}`;
     })
@@ -298,6 +304,7 @@ export function enrichOrderItem(item: OrderItemInput): EnrichedOrderItem {
         pieceCount: line.pieceCount,
         palletCount: line.palletCount,
         weightKg: line.weightKg > 0 ? line.weightKg : null,
+        lengthM: null,
         calculatedPieces: line.calculatedPieces,
         calculatedPallets: line.calculatedPallets,
       };
@@ -332,6 +339,7 @@ export function enrichOrderItem(item: OrderItemInput): EnrichedOrderItem {
       pieceCount,
       palletCount,
       weightKg,
+      lengthM: null,
       calculatedPieces: line.calculatedPieces,
       calculatedPallets: line.calculatedPallets,
     };
@@ -358,7 +366,26 @@ export function enrichOrderItem(item: OrderItemInput): EnrichedOrderItem {
       pieceCount,
       palletCount: null,
       weightKg,
+      lengthM: null,
       calculatedPieces: calculatedPieces > 0 ? calculatedPieces : null,
+      calculatedPallets: null,
+    };
+  }
+
+  if (unit === "meter") {
+    const lengthM = item.lengthM ?? 0;
+    return {
+      unit,
+      productName: item.productName?.trim() || null,
+      tileWidthCm: null,
+      tileHeightCm: null,
+      tileThicknessCm: null,
+      quantityM2: null,
+      pieceCount: lengthM > 0 ? 1 : null,
+      palletCount: null,
+      weightKg: null,
+      lengthM: lengthM > 0 ? lengthM : null,
+      calculatedPieces: null,
       calculatedPallets: null,
     };
   }
@@ -378,6 +405,7 @@ export function enrichOrderItem(item: OrderItemInput): EnrichedOrderItem {
     pieceCount,
     palletCount: null,
     weightKg: item.weightKg ?? null,
+    lengthM: null,
     calculatedPieces: null,
     calculatedPallets: null,
   };

@@ -82,6 +82,7 @@ function normalizeOcrInvoiceText(text: string): string {
       .replace(/Telefon[1lI]/gi, "Telefoni")
       .replace(/Emertim[1lI]/gi, "Emertimi")
       .replace(/Emërtim[1lI]/gi, "Emërtimi")
+      .replace(/Barkod[1lI]/gi, "Barkodi")
       .replace(/Referenti\s+Juaj/gi, "Referenti Juaj")
       .replace(/Pro\s*fatur[ëe]/gi, "Pro-faturë")
       .replace(/_—«/g, " ")
@@ -134,6 +135,11 @@ const SALES_AGENT_HEADER_TOKENS =
   /^(?:Lokacioni|Referenca|User|Kushtet|Data fatura|Data e skadimit|Referenti juaj)$/i;
 
 function parseSalesAgentFromProDataPdfRow(text: string): string | null {
+  const spaced = text.match(
+    /(\d{2}\.\d{2}\.\d{4})\s+(\d{2}\.\d{2}\.\d{4})\s+([A-Z]{2,})\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\s.-]{1,40}?)\s+(\d{3})\b/
+  );
+  if (spaced) return cleanSalesAgentName(spaced[4]);
+
   const match = text.match(
     /(\d{2}\.\d{2}\.\d{4})(\d{2}\.\d{2}\.\d{4})([A-Z]+(?=[A-Z][a-z]))([A-Z][a-zA-ZëçÇ]+(?:\s+[A-Z][a-zA-ZëçÇ]+)*)(\d{3})\b/
   );
@@ -145,10 +151,20 @@ function parseSalesAgent(text: string): string | null {
   const fromPdfRow = parseSalesAgentFromProDataPdfRow(text);
   if (fromPdfRow) return fromPdfRow;
 
-  const referenti = text.match(/Referenti\s+[Jj]uaj\s*:?\s*([^\n|]+)/i);
+  const referenti = text.match(/Referenti\s+(?:Juaj\s*)?:?\s*([^\n|]+)/i);
   if (referenti) {
     const cleaned = cleanSalesAgentName(referenti[1]);
     if (cleaned && !SALES_AGENT_HEADER_TOKENS.test(cleaned)) return cleaned;
+  }
+
+  for (const line of text.split("\n")) {
+    const row = line.match(
+      /\d{2}\.\d{2}\.\d{4}\s+\d{2}\.\d{2}\.\d{4}\s+[A-Z]{2,}\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\s.-]{2,40}?)\s+\d{3}\b/
+    );
+    if (row) {
+      const cleaned = cleanSalesAgentName(row[1]);
+      if (cleaned) return cleaned;
+    }
   }
 
   for (const match of text.matchAll(
@@ -874,7 +890,8 @@ function parseAgimiLineQuantity(raw: string, unitToken: string): number {
   return qty;
 }
 
-const AGIMI_UNIT_PATTERN = "M2|KG|PAKO|THAS|Copé|Copë|Cope|Cop[ée]";
+const AGIMI_UNIT_PATTERN =
+  "M2|KG|MTR|MET|Metër|Meter|M(?!2\\b)|PAKO|THAS|Copé|Copë|Cope|Cop[ée]";
 
 function isPlausibleQuantityUnit(
   cleaned: string,
@@ -904,7 +921,10 @@ function extractAgimiRowTail(trimmed: string): RegExpMatchArray | null {
     "\\d{1,3}(?:[.,]\\d{3})*(?:[.,]\\d{1,3})?|\\d+(?:[.,]\\d{1,3})?";
 
   const compactTail = cleaned.match(
-    new RegExp(`^(${qty})(M2|KG|PAKO|THAS|Copé|Copë|Cope)(?=[\\d.,])`, "i")
+    new RegExp(
+      `^(${qty})(M2|KG|MTR|MET|Metër|Meter|M(?!2)|PAKO|THAS|Copé|Copë|Cope)(?=[\\d.,])`,
+      "i"
+    )
   );
   if (compactTail) {
     const synthetic = [
@@ -1051,6 +1071,9 @@ function normalizeAgimiUnitToken(raw: string): string {
   if (t === "pako") return "PAKO";
   if (t === "thas") return "THAS";
   if (t.startsWith("cop")) return "COPE";
+  if (t === "m" || t === "mtr" || t === "met" || t === "meter" || t === "metër") {
+    return "METER";
+  }
   return raw.toUpperCase();
 }
 
@@ -1107,13 +1130,6 @@ function isAgimiTableContinuationLine(line: string): boolean {
   return /[A-Za-z]{2,}/.test(trimmed);
 }
 
-function findAgimiTableStartLine(lines: string[]): number {
-  for (let i = 0; i < lines.length; i++) {
-    if (parseAgimiTableRowLine(lines[i])) return i;
-  }
-  return 0;
-}
-
 function collectPreTableProductLines(lines: string[], tableStart: number): string[] {
   const title = findPreTableProductTitle(lines, tableStart);
   return title ? [title] : [];
@@ -1145,6 +1161,15 @@ function tableRowToOrderItem(row: ParsedAgimiTableRow): OrderItemPayload {
     };
   }
 
+  if (row.unitToken === "METER") {
+    return {
+      unit: "meter",
+      productName,
+      productEan,
+      lengthM: row.quantity,
+    };
+  }
+
   return {
     unit: "piece",
     productName,
@@ -1153,11 +1178,54 @@ function tableRowToOrderItem(row: ParsedAgimiTableRow): OrderItemPayload {
   };
 }
 
-const PRODATA_PDF_ROW_HEAD_RE = /^(\d{1,2}?)(\d{9,13})$/;
+const PRODATA_PDF_ROW_HEAD_RE = /^(\d{1,2})(\d{9,13})$/;
+const SPACED_TABLE_ROW_HEAD_RE = /^(\d{1,2})\s+(\d{9,13})$/;
+
+function matchTableRowHeadLine(line: string): { lineNumber: string; ean: string } | null {
+  const trimmed = line.trim();
+  let match = trimmed.match(PRODATA_PDF_ROW_HEAD_RE);
+  if (match) return { lineNumber: match[1], ean: match[2] };
+  match = trimmed.match(SPACED_TABLE_ROW_HEAD_RE);
+  if (match) return { lineNumber: match[1], ean: match[2] };
+  return null;
+}
+
+function countProductRowHeadsInText(text: string): number {
+  let count = 0;
+  for (const rawLine of text.split("\n")) {
+    const line = rawLine.replace(/^[\s|;:]+/, "").trim();
+    if (!line || isProductNoiseLine(line) || isAgimiTableFooterLine(line)) continue;
+    if (matchTableRowHeadLine(line)) {
+      count++;
+      continue;
+    }
+    if (/^\d{1,2}\s+\d{9,13}\b/.test(line)) count++;
+    else if (parseAgimiTableRowLine(rawLine)) count++;
+  }
+  return count;
+}
+
+function dedupeOrderItems(items: OrderItemPayload[]): OrderItemPayload[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = [
+      item.productEan ?? "",
+      item.productName ?? "",
+      item.unit,
+      item.quantityM2 ?? "",
+      item.weightKg ?? "",
+      item.lengthM ?? "",
+      item.manualPieces ?? "",
+    ].join("|");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 
 function isProDataPdfRowTailLine(line: string): boolean {
   const trimmed = line.trim();
-  return /^[\d.,]+(?:M2(?=[\d.,])|KG(?=[\d.,])|PAKO(?=[\d.,])|THAS(?=[\d.,])|Cop[ée](?=[\d.,])|Cope(?=[\d.,]))/i.test(
+  return /^[\d.,]+(?:M2(?=[\d.,])|KG(?=[\d.,])|MTR(?=[\d.,])|MET(?=[\d.,])|Metër(?=[\d.,])|Meter(?=[\d.,])|M(?!2)(?=[\d.,])|PAKO(?=[\d.,])|THAS(?=[\d.,])|Cop[ée](?=[\d.,])|Cope(?=[\d.,]))/i.test(
     trimmed
   );
 }
@@ -1165,7 +1233,9 @@ function isProDataPdfRowTailLine(line: string): boolean {
 function parseProDataPdfRowTail(line: string): { quantity: number; unitToken: string } | null {
   const match = line
     .trim()
-    .match(/^([\d.,]+)(M2|KG|PAKO|THAS|Copé|Copë|Cope)(?=[\d.,])/i);
+    .match(
+      /^([\d.,]+)(M2|KG|MTR|MET|Metër|Meter|M(?!2)|PAKO|THAS|Copé|Copë|Cope)(?=[\d.,])/i
+    );
   if (!match) return null;
   const unitToken = normalizeAgimiUnitToken(match[2]);
   return {
@@ -1176,8 +1246,9 @@ function parseProDataPdfRowTail(line: string): { quantity: number; unitToken: st
 
 function isProDataPdfTableLine(line: string): boolean {
   return (
-    PRODATA_PDF_ROW_HEAD_RE.test(line.trim()) ||
+    matchTableRowHeadLine(line) !== null ||
     isProDataPdfRowTailLine(line) ||
+    /No\.?\s*(?:Kodi|Barkodi|Emertimi)/i.test(line) ||
     /NoKodiEmertimi/i.test(line)
   );
 }
@@ -1191,15 +1262,26 @@ function parseProDataPdfTableLineItems(text: string): OrderItemPayload[] {
 
   if (!lines.some(isProDataPdfTableLine)) return [];
 
-  let start = lines.findIndex((line) => /NoKodiEmertimi/i.test(line));
+  let start = lines.findIndex((line) =>
+    /No\.?\s*(?:Kodi|Barkodi|Emertimi)/i.test(line)
+  );
   if (start >= 0) {
     const firstRow = lines.findIndex(
-      (line, idx) => idx > start && PRODATA_PDF_ROW_HEAD_RE.test(line)
+      (line, idx) => idx > start && matchTableRowHeadLine(line)
     );
     start = firstRow;
   }
   if (start < 0) {
-    start = lines.findIndex((line) => PRODATA_PDF_ROW_HEAD_RE.test(line));
+    start = lines.findIndex((line) => /NoKodiEmertimi/i.test(line));
+    if (start >= 0) {
+      const firstRow = lines.findIndex(
+        (line, idx) => idx > start && matchTableRowHeadLine(line)
+      );
+      start = firstRow;
+    }
+  }
+  if (start < 0) {
+    start = lines.findIndex((line) => matchTableRowHeadLine(line));
   }
   if (start < 0) return [];
 
@@ -1212,8 +1294,8 @@ function parseProDataPdfTableLineItems(text: string): OrderItemPayload[] {
   const rows: ParsedAgimiTableRow[] = [];
 
   for (let i = 0; i < tableLines.length; i++) {
-    const headMatch = tableLines[i].match(PRODATA_PDF_ROW_HEAD_RE);
-    if (!headMatch) continue;
+    const head = matchTableRowHeadLine(tableLines[i]);
+    if (!head) continue;
 
     const nameParts: string[] = [];
     let quantity = 0;
@@ -1222,7 +1304,7 @@ function parseProDataPdfTableLineItems(text: string): OrderItemPayload[] {
 
     for (; j < tableLines.length; j++) {
       const line = tableLines[j];
-      if (PRODATA_PDF_ROW_HEAD_RE.test(line)) break;
+      if (matchTableRowHeadLine(line)) break;
 
       const tail = parseProDataPdfRowTail(line);
       if (tail) {
@@ -1232,16 +1314,32 @@ function parseProDataPdfTableLineItems(text: string): OrderItemPayload[] {
         break;
       }
 
+      const inlineRow = parseAgimiTableRowLine(line);
+      if (inlineRow) {
+        rows.push({
+          lineIndex: i,
+          lineNumber: head.lineNumber,
+          ean: head.ean,
+          name: mergeProductNameParts([...nameParts, inlineRow.name]),
+          quantity: inlineRow.quantity,
+          unitToken: inlineRow.unitToken,
+        });
+        i = j;
+        quantity = 0;
+        break;
+      }
+
       if (isAgimiTableFooterLine(line) || isProductNoiseLine(line)) continue;
       nameParts.push(line);
     }
 
-    if (quantity <= 0 || nameParts.length === 0) continue;
+    if (quantity <= 0) continue;
+    if (nameParts.length === 0) continue;
 
     rows.push({
       lineIndex: i,
-      lineNumber: headMatch[1],
-      ean: headMatch[2],
+      lineNumber: head.lineNumber,
+      ean: head.ean,
       name: mergeProductNameParts(nameParts),
       quantity,
       unitToken,
@@ -1253,8 +1351,26 @@ function parseProDataPdfTableLineItems(text: string): OrderItemPayload[] {
   return rows.map(tableRowToOrderItem);
 }
 
-/** Parse AGIMI pro-forma / faturë product table — one order line per row. */
-export function parseAgimiTableLineItems(text: string): OrderItemPayload[] {
+function findAgimiTableStartLine(lines: string[]): number {
+  for (let i = 0; i < lines.length; i++) {
+    if (/^No\.?\s*(?:Kodi|Barkodi|Emertimi)/i.test(lines[i].trim())) {
+      for (let j = i + 1; j < lines.length; j++) {
+        if (parseAgimiTableRowLine(lines[j]) || matchTableRowHeadLine(lines[j])) {
+          return j;
+        }
+      }
+    }
+  }
+  for (let i = 0; i < lines.length; i++) {
+    if (parseAgimiTableRowLine(lines[i]) || matchTableRowHeadLine(lines[i])) {
+      return i;
+    }
+  }
+  return 0;
+}
+
+/** Parse AGIMI product table rows on single lines (qty + unit + prices on same line). */
+function parseAgimiStandardTableLineItems(text: string): OrderItemPayload[] {
   const lines = text.split("\n").map((line) => line.replace(/\r/g, ""));
   const tableStart = findAgimiTableStartLine(lines);
   const preTablePrefixes = collectPreTableProductLines(lines, tableStart);
@@ -1273,10 +1389,6 @@ export function parseAgimiTableLineItems(text: string): OrderItemPayload[] {
     rows.push({ lineIndex: i, ...parsed });
   }
 
-  if (rows.length === 0) {
-    return parseProDataPdfTableLineItems(text);
-  }
-
   for (let r = 0; r < rows.length; r++) {
     const row = rows[r];
     const nextRowStart =
@@ -1290,7 +1402,7 @@ export function parseAgimiTableLineItems(text: string): OrderItemPayload[] {
 
     let suffixCount = 0;
     if (shouldAttachSuffix(row.name)) {
-      for (let i = row.lineIndex + 1; i < nextRowStart && suffixCount < 1; i++) {
+      for (let i = row.lineIndex + 1; i < nextRowStart && suffixCount < 3; i++) {
         const line = scanLines[i]?.replace(/^[\s|;:]+/, "").trim();
         if (!line || !isProductNameContinuationLine(line)) continue;
         parts.push(line);
@@ -1302,6 +1414,28 @@ export function parseAgimiTableLineItems(text: string): OrderItemPayload[] {
   }
 
   return rows.map(tableRowToOrderItem);
+}
+
+/** Parse AGIMI pro-forma / faturë product table — one order line per row. */
+export function parseAgimiTableLineItems(text: string): OrderItemPayload[] {
+  const standardItems = parseAgimiStandardTableLineItems(text);
+  const splitItems = parseProDataPdfTableLineItems(text);
+  const likelyRows = countProductRowHeadsInText(text);
+
+  if (splitItems.length === 0) return standardItems;
+  if (standardItems.length === 0) return splitItems;
+
+  if (splitItems.length > standardItems.length) return dedupeOrderItems(splitItems);
+  if (standardItems.length < likelyRows && splitItems.length >= likelyRows) {
+    return dedupeOrderItems(splitItems);
+  }
+  if (splitItems.length >= likelyRows && standardItems.length < splitItems.length) {
+    return dedupeOrderItems(splitItems);
+  }
+
+  return dedupeOrderItems(
+    standardItems.length >= splitItems.length ? standardItems : splitItems
+  );
 }
 
 function resolveDeliveryLocation(cityRaw: string, address: string): {
@@ -1611,6 +1745,7 @@ export function parsedInvoiceToFormState(parsed: ParsedAgimiInvoice) {
             tileHeightCm: item.tileHeightCm ?? undefined,
             quantityM2: item.quantityM2 ?? 0,
             weightKg: item.weightKg ?? 0,
+            lengthM: item.lengthM ?? 0,
             manualPieces: item.manualPieces ?? undefined,
           }))
         : [{ unit: "m2" as const, productName: "", tileWidthCm: 60, tileHeightCm: 120, quantityM2: 0 }],

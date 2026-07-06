@@ -202,13 +202,14 @@ export const DELIVERY_PROOF_LABELS: Record<DeliveryProofPhase, string> =
     DELIVERY_PROOF_PHASES.map((p) => [p.id, p.label])
   ) as Record<DeliveryProofPhase, string>;
 
-export const ORDER_UNITS = ["m2", "kg", "piece"] as const;
+export const ORDER_UNITS = ["m2", "kg", "piece", "meter"] as const;
 export type OrderUnit = (typeof ORDER_UNITS)[number];
 
 export const ORDER_UNIT_LABELS: Record<OrderUnit, string> = {
   m2: "m² (tiles)",
   kg: "kg (weight → pieces)",
   piece: "pieces",
+  meter: "meters (length)",
 };
 
 /** Legacy `tile` / `adhesive` values are normalized to current units. */
@@ -227,6 +228,17 @@ export function normalizeOrderUnit(
     v === "pako"
   ) {
     return "piece";
+  }
+  if (
+    v === "meter" ||
+    v === "meters" ||
+    v === "m" ||
+    v === "met" ||
+    v === "mtr" ||
+    v === "metër" ||
+    v === "metra"
+  ) {
+    return "meter";
   }
   if ((ORDER_UNITS as readonly string[]).includes(v)) return v as OrderUnit;
   return "piece";

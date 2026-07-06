@@ -45,6 +45,7 @@ type FormState = {
     tileHeightCm?: number;
     quantityM2?: number;
     weightKg?: number;
+    lengthM?: number;
     manualPieces?: number;
   }>;
 };
@@ -502,6 +503,9 @@ export function InvoiceImportPanel({
     }
     if (unit === "kg" && item.weightKg != null) {
       return `${item.weightKg} kg`;
+    }
+    if (unit === "meter" && item.lengthM != null) {
+      return `${item.lengthM} m`;
     }
     if (item.manualPieces != null) {
       return `${item.manualPieces} copë`;

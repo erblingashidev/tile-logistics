@@ -67,6 +67,7 @@ interface OrderItem {
   thicknessOverride?: boolean;
   quantityM2?: number;
   weightKg?: number;
+  lengthM?: number;
   manualPallets?: number;
   manualPieces?: number;
   catalogPallet?: ProductPalletSpec | null;
@@ -103,6 +104,7 @@ interface Order {
     productEan?: string | null;
     productName?: string | null;
     quantityM2?: number | null;
+    lengthM?: number | null;
     pieceCount?: number | null;
     palletCount?: number | null;
     weightKg?: number | null;
@@ -173,6 +175,26 @@ function buildOrderNotes(salesAgent: string, customerPhone: string): string | un
   ].filter(Boolean);
   return parts.length > 0 ? parts.join(" · ") : undefined;
 }
+
+function orderReferentiDisplay(order: Order): string {
+  return (
+    order.salesAgentName?.trim() ||
+    parseReferentiFromNotes(order.notes) ||
+    ""
+  );
+}
+
+function stickyRowBg(stage: OrderDisplayStage): string {
+  if (stage === "arrived" || stage === "delivered") return "bg-green-50/90";
+  if (stage === "assigned" || stage === "in_transit" || stage === "loaded") {
+    return "bg-amber-50/90";
+  }
+  if (stage === "not_loaded") return "bg-red-50/60";
+  return "bg-white";
+}
+
+const stickyActionClass =
+  "sticky right-0 z-10 px-2 py-3 shadow-[-8px_0_12px_-6px_rgba(0,0,0,0.1)]";
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -441,6 +463,8 @@ export default function OrdersPage() {
                 item.manualPieces = hasManualPieces
                   ? (i.pieceCount ?? undefined)
                   : undefined;
+              } else if (unit === "meter") {
+                item.lengthM = i.lengthM ?? undefined;
               } else {
                 item.manualPieces = i.pieceCount ?? undefined;
               }
@@ -687,6 +711,8 @@ export default function OrdersPage() {
         tileHeightCm: item.tileHeightCm ?? 120,
         quantityM2: item.quantityM2 ?? 0,
         weightKg: item.weightKg ?? 0,
+        lengthM: item.lengthM ?? 0,
+        manualPieces: item.manualPieces,
       })),
     });
     setShowForm(true);
@@ -1346,6 +1372,18 @@ export default function OrdersPage() {
                         }}
                       />
                     </>
+                  ) : unit === "meter" ? (
+                    <Input
+                      label="Length (meters)"
+                      type="number"
+                      step="0.01"
+                      value={item.lengthM ?? 0}
+                      onChange={(e) => {
+                        const items = [...form.items];
+                        items[idx].lengthM = Number(e.target.value);
+                        setForm({ ...form, items });
+                      }}
+                    />
                   ) : (
                     <>
                       <Input
@@ -1533,11 +1571,11 @@ export default function OrdersPage() {
             </Button>
           </div>
         )}
-        <div className="overflow-x-auto">
-          <table className={tableClass}>
-            <thead>
+        <div className="relative max-h-[min(72vh,880px)] overflow-auto rounded-lg border border-zinc-200">
+          <table className={`${tableClass} min-w-max`}>
+            <thead className="sticky top-0 z-20 bg-white">
               <tr>
-                <th className="w-8">
+                <th className="w-8 bg-white">
                   <input
                     type="checkbox"
                     aria-label="Select all"
@@ -1554,20 +1592,21 @@ export default function OrdersPage() {
                     }}
                   />
                 </th>
-                <th>Invoice</th>
-                <th>Customer</th>
-                <th>Products</th>
-                <th>Region</th>
-                <th>Date</th>
-                <th>Delivery</th>
-                <th>m²</th>
-                <th>Pieces</th>
-                <th>Pallets</th>
-                <th>Kg</th>
-                <th>Price</th>
-                <th>Status</th>
-                <th>Assign</th>
-                <th>Actions</th>
+                <th className="bg-white">Invoice</th>
+                <th className="bg-white">Customer</th>
+                <th className="bg-white">Referenti</th>
+                <th className="bg-white">Products</th>
+                <th className="bg-white">Region</th>
+                <th className="bg-white">Date</th>
+                <th className="bg-white">Delivery</th>
+                <th className="bg-white">m²</th>
+                <th className="bg-white">Pieces</th>
+                <th className="bg-white">Pallets</th>
+                <th className="bg-white">Kg</th>
+                <th className="bg-white">Price</th>
+                <th className="bg-white">Status</th>
+                <th className="bg-white">Assign</th>
+                <th className={`${stickyActionClass} bg-white`}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -1590,6 +1629,7 @@ export default function OrdersPage() {
                   pickerId: "",
                 };
 
+                const rowBg = stickyRowBg(stage);
                 const onFocusTruck =
                   filters.vehicleId &&
                   order.assignment?.vehicleId === Number(filters.vehicleId) &&
@@ -1629,6 +1669,11 @@ export default function OrdersPage() {
                     )}
                   </td>
                   <td className="px-2 py-3">{order.customerName}</td>
+                  <td className="max-w-[120px] px-2 py-3 text-xs text-zinc-600">
+                    {orderReferentiDisplay(order) || (
+                      <span className="text-zinc-400">—</span>
+                    )}
+                  </td>
                   <td className="max-w-[240px] px-2 py-3">
                     {order.items.length === 0 ? (
                       <span className="text-zinc-400">—</span>
@@ -1660,6 +1705,12 @@ export default function OrdersPage() {
                                 {item.pieceCount != null
                                   ? ` · ${item.pieceCount} pcs`
                                   : ""}
+                              </span>
+                            ) : null}
+                            {unit === "meter" && item.lengthM != null ? (
+                              <span className="text-zinc-600">
+                                {" "}
+                                · {item.lengthM} m
                               </span>
                             ) : null}
                             {unit === "piece" && item.pieceCount != null ? (
@@ -1780,7 +1831,7 @@ export default function OrdersPage() {
                       />
                     )}
                   </td>
-                  <td className="px-2 py-3">
+                  <td className={`${stickyActionClass} ${rowBg}`}>
                     <div className="flex flex-col gap-1">
                       <Button
                         variant="ghost"
@@ -1812,7 +1863,7 @@ export default function OrdersPage() {
                 </tr>
                 {expandedOrderId === order.id && (
                   <tr key={`${order.id}-details`} className="border-b bg-zinc-100/80">
-                    <td colSpan={13} className="px-4 py-6">
+                    <td colSpan={16} className="px-4 py-6">
                       <OrderInvoice order={order} />
                     </td>
                   </tr>

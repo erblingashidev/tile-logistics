@@ -48,6 +48,7 @@ export const orderItems = sqliteTable("order_items", {
   calculatedPieces: integer("calculated_pieces"),
   calculatedPallets: real("calculated_pallets"),
   weightKg: real("weight_kg"),
+  lengthM: real("length_m"),
 });
 
 export const vehicles = sqliteTable("vehicles", {

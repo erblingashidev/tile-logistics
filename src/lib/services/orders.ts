@@ -82,6 +82,7 @@ export interface OrderItemPayload {
   tileThicknessCm?: number;
   quantityM2?: number;
   weightKg?: number;
+  lengthM?: number;
   manualPallets?: number;
   manualPieces?: number;
 }
@@ -176,6 +177,7 @@ function enrichItems(items: OrderItemInput[]) {
       calculatedPieces: enriched.calculatedPieces,
       calculatedPallets: enriched.calculatedPallets,
       weightKg: enriched.weightKg,
+      lengthM: enriched.lengthM,
     };
   });
 }
@@ -546,6 +548,7 @@ function mapStoredItemToPayload(item: {
   tileThicknessCm: number | null;
   quantityM2: number | null;
   weightKg: number | null;
+  lengthM: number | null;
   palletCount: number | null;
   pieceCount: number | null;
 }): OrderItemPayload {
@@ -558,6 +561,7 @@ function mapStoredItemToPayload(item: {
     tileThicknessCm: item.tileThicknessCm ?? undefined,
     quantityM2: item.quantityM2 ?? undefined,
     weightKg: item.weightKg ?? undefined,
+    lengthM: item.lengthM ?? undefined,
     manualPallets: item.palletCount ?? undefined,
     manualPieces: item.pieceCount ?? undefined,
   };
