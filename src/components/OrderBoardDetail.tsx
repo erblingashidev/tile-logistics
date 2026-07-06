@@ -1,8 +1,12 @@
 "use client";
 
 import { Badge } from "@/components/ui";
-import { formatM2 } from "@/lib/calculations";
-import { normalizeOrderUnit } from "@/lib/constants";
+import {
+  formatM2,
+  kgPerM2FromPalletSpec,
+  tileSpecOptionsForItem,
+} from "@/lib/calculations";
+import { getTilePalletSpec, normalizeOrderUnit } from "@/lib/constants";
 import {
   deliveryScheduleBadgeTone,
   formatDeliverySchedule,
@@ -73,6 +77,8 @@ export function OrderBoardDetail({ order }: { order: OrderListCardOrder }) {
     order.lat != null && order.lng != null
       ? `${order.lat.toFixed(5)}, ${order.lng.toFixed(5)}`
       : null;
+  const orderKgPerM2 =
+    order.totalM2 > 0 ? order.totalWeightKg / order.totalM2 : 0;
 
   return (
     <div className="space-y-4 text-sm">
@@ -98,7 +104,11 @@ export function OrderBoardDetail({ order }: { order: OrderListCardOrder }) {
         <DetailField label="Price" value={`€${order.price.toFixed(2)}`} />
         <DetailField
           label="Load"
-          value={`${order.totalPallets} plt · ${formatM2(order.totalM2)} m² · ${order.totalWeightKg.toFixed(0)} kg`}
+          value={`${order.totalPallets} plt · ${formatM2(order.totalM2)} m² · ${order.totalWeightKg.toFixed(0)} kg${
+            orderKgPerM2 > 0
+              ? ` (~${orderKgPerM2.toFixed(1)} kg/m²)`
+              : ""
+          }`}
         />
       </div>
 
@@ -128,7 +138,45 @@ export function OrderBoardDetail({ order }: { order: OrderListCardOrder }) {
             Products ({order.items.length})
           </p>
           <ul className="divide-y divide-zinc-100 rounded-lg border border-zinc-200 bg-white">
-            {order.items.map((item, idx) => (
+            {order.items.map((item, idx) => {
+              const unit = normalizeOrderUnit(item.unit);
+              const lineWeight =
+                unit === "m2" && (item.weightKg ?? 0) > 0
+                  ? item.weightKg!
+                  : unit === "kg"
+                    ? item.weightKg ?? 0
+                    : 0;
+              const lineKgPerM2 =
+                unit === "m2" &&
+                (item.quantityM2 ?? 0) > 0 &&
+                lineWeight > 0
+                  ? lineWeight / (item.quantityM2 ?? 1)
+                  : unit === "m2" &&
+                      item.tileWidthCm &&
+                      item.tileHeightCm
+                    ? kgPerM2FromPalletSpec(
+                        getTilePalletSpec(
+                          item.tileWidthCm,
+                          item.tileHeightCm,
+                          tileSpecOptionsForItem({
+                            tileWidthCm: item.tileWidthCm,
+                            tileHeightCm: item.tileHeightCm,
+                            tileThicknessCm: item.tileThicknessCm,
+                          })
+                        ).kgPerPallet,
+                        getTilePalletSpec(
+                          item.tileWidthCm,
+                          item.tileHeightCm,
+                          tileSpecOptionsForItem({
+                            tileWidthCm: item.tileWidthCm,
+                            tileHeightCm: item.tileHeightCm,
+                            tileThicknessCm: item.tileThicknessCm,
+                          })
+                        ).m2PerPallet
+                      )
+                    : 0;
+
+              return (
               <li
                 key={idx}
                 className="flex flex-wrap items-baseline justify-between gap-2 px-3 py-2"
@@ -140,12 +188,31 @@ export function OrderBoardDetail({ order }: { order: OrderListCardOrder }) {
                   {item.productEan && (
                     <p className="text-xs text-zinc-500">{item.productEan}</p>
                   )}
+                  {unit === "m2" &&
+                    item.tileWidthCm &&
+                    item.tileHeightCm && (
+                      <p className="text-xs text-zinc-500">
+                        {item.tileWidthCm}×{item.tileHeightCm} cm
+                        {item.tileThicknessCm
+                          ? ` · ${(item.tileThicknessCm * 10).toFixed(0)} mm`
+                          : ""}
+                        {lineKgPerM2 > 0
+                          ? ` · ~${lineKgPerM2.toFixed(1)} kg/m²`
+                          : ""}
+                      </p>
+                    )}
                 </div>
-                <p className="shrink-0 tabular-nums text-zinc-600">
-                  {formatItemQty(item)}
-                </p>
+                <div className="shrink-0 text-right tabular-nums text-zinc-600">
+                  <p>{formatItemQty(item)}</p>
+                  {lineWeight > 0 && (
+                    <p className="text-xs text-zinc-500">
+                      ~{lineWeight.toFixed(0)} kg
+                    </p>
+                  )}
+                </div>
               </li>
-            ))}
+              );
+            })}
           </ul>
         </div>
       )}

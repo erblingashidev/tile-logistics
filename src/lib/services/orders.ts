@@ -45,9 +45,12 @@ import {
 } from "@/lib/order-display";
 import {
   calculateOrderTotals,
+  calculateTileLine,
+  calculateWeightLine,
   enrichOrderItem,
   checkVehicleCapacity,
   formatM2,
+  tileSpecOptionsForItem,
   type OrderItemInput,
 } from "@/lib/calculations";
 import { MAX_DELIVERY_ROUNDS, normalizeOrderUnit, type OrderStatus, type EmployeeRole } from "@/lib/constants";
@@ -558,8 +561,9 @@ function mapStoredItemToPayload(item: {
   palletCount: number | null;
   pieceCount: number | null;
 }): OrderItemPayload {
-  return {
-    unit: normalizeOrderUnit(item.unit),
+  const unit = normalizeOrderUnit(item.unit);
+  const payload: OrderItemPayload = {
+    unit,
     productName: item.productName ?? undefined,
     productEan: item.productEan ?? undefined,
     tileWidthCm: item.tileWidthCm ?? undefined,
@@ -568,9 +572,43 @@ function mapStoredItemToPayload(item: {
     quantityM2: item.quantityM2 ?? undefined,
     weightKg: item.weightKg ?? undefined,
     lengthM: item.lengthM ?? undefined,
-    manualPallets: item.palletCount ?? undefined,
-    manualPieces: item.pieceCount ?? undefined,
   };
+
+  if (unit === "m2") {
+    const w = item.tileWidthCm ?? 60;
+    const h = item.tileHeightCm ?? 60;
+    const m2 = item.quantityM2 ?? 0;
+    const specOptions = tileSpecOptionsForItem({
+      tileWidthCm: w,
+      tileHeightCm: h,
+      tileThicknessCm: item.tileThicknessCm ?? undefined,
+    });
+    const line = calculateTileLine(w, h, m2, specOptions);
+    if (
+      item.palletCount != null &&
+      item.palletCount !== line.calculatedPallets
+    ) {
+      payload.manualPallets = item.palletCount;
+    }
+    if (item.pieceCount != null && item.pieceCount !== line.calculatedPieces) {
+      payload.manualPieces = item.pieceCount;
+    }
+  } else if (unit === "kg") {
+    const weightLine = calculateWeightLine(
+      item.weightKg ?? 0,
+      item.productName ?? ""
+    );
+    if (
+      item.pieceCount != null &&
+      item.pieceCount !== weightLine.calculatedPieces
+    ) {
+      payload.manualPieces = item.pieceCount;
+    }
+  } else if (unit !== "meter" && item.pieceCount != null) {
+    payload.manualPieces = item.pieceCount;
+  }
+
+  return payload;
 }
 
 /** Add imported line items to an existing order (same invoice number). */

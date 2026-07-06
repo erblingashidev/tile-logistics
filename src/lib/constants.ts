@@ -375,6 +375,13 @@ export interface ResolvedTilePalletSpec {
   adjustedForThickness: boolean;
 }
 
+/** When several thicknesses share the same face (e.g. 60×120×9 and ×20), pick the lighter floor-tile default. */
+function pickDefaultStandardForFace(
+  matches: TilePalletStandard[]
+): TilePalletStandard {
+  return [...matches].sort((a, b) => b.m2PerPallet - a.m2PerPallet)[0];
+}
+
 function findStandardByFace(
   widthCm: number,
   heightCm: number
@@ -383,7 +390,9 @@ function findStandardByFace(
   const matches = TILE_PALLET_STANDARDS.filter(
     (s) => tileSizeKey(s.widthCm, s.heightCm) === key
   );
-  return matches.length === 1 ? matches[0] : undefined;
+  if (matches.length === 1) return matches[0];
+  if (matches.length > 1) return pickDefaultStandardForFace(matches);
+  return undefined;
 }
 
 function resolveStandard(
@@ -489,7 +498,7 @@ export function inferPresetIdFromDimensions(
     )[0];
     return best.id;
   }
-  return null;
+  return pickDefaultStandardForFace(matches).id;
 }
 
 export function getM2PerPalletForTile(

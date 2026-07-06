@@ -1,7 +1,8 @@
 import {
-  getKgPerPalletForTile,
   getTilePalletSpec,
   inferPresetIdFromDimensions,
+  KG_PER_TILE_PALLET_DEFAULT,
+  M2_PER_PALLET_DEFAULT,
   normalizeOrderUnit,
   type OrderUnit,
   type TileSpecOptions,
@@ -232,6 +233,27 @@ export interface OrderTotals {
   totalTruckPalletSlots?: number;
 }
 
+/** Weight scales with m² — never charge a full pallet when the load is a fraction of a pallet. */
+export function weightKgFromM2(
+  quantityM2: number,
+  kgPerPallet: number,
+  m2PerPallet: number
+): number {
+  if (quantityM2 <= 0) return 0;
+  const m2pp = m2PerPallet > 0 ? m2PerPallet : M2_PER_PALLET_DEFAULT;
+  const kgpp = kgPerPallet > 0 ? kgPerPallet : KG_PER_TILE_PALLET_DEFAULT;
+  return (quantityM2 / m2pp) * kgpp;
+}
+
+export function kgPerM2FromPalletSpec(
+  kgPerPallet: number,
+  m2PerPallet: number
+): number {
+  const m2pp = m2PerPallet > 0 ? m2PerPallet : M2_PER_PALLET_DEFAULT;
+  const kgpp = kgPerPallet > 0 ? kgPerPallet : KG_PER_TILE_PALLET_DEFAULT;
+  return m2pp > 0 ? kgpp / m2pp : 0;
+}
+
 /** Display m² without rounding to one decimal (e.g. 9.36 stays 9.36, not 9.4). */
 export function formatM2(value: number): string {
   if (!Number.isFinite(value)) return "0";
@@ -324,10 +346,7 @@ export function enrichOrderItem(item: OrderItemInput): EnrichedOrderItem {
         ? item.manualPallets
         : line.calculatedPallets;
 
-    const weightKg =
-      line.kgPerPallet > 0 && line.m2PerPallet > 0
-        ? (m2 / line.m2PerPallet) * line.kgPerPallet
-        : null;
+    const weightKg = weightKgFromM2(m2, line.kgPerPallet, line.m2PerPallet);
 
     return {
       unit,
@@ -442,13 +461,13 @@ export function calculateOrderTotals(items: OrderItemInput[]): OrderTotals {
         const w = item.tileWidthCm ?? 60;
         const h = item.tileHeightCm ?? 60;
         const specOptions = tileSpecOptionsForItem(item);
-        const kgPerPallet = getKgPerPalletForTile(w, h, specOptions);
         const m2 = item.quantityM2 ?? 0;
         const line = calculateTileLine(w, h, m2, specOptions);
-        totalWeightKg +=
-          line.kgPerPallet > 0 && line.m2PerPallet > 0
-            ? (m2 / line.m2PerPallet) * line.kgPerPallet
-            : (enriched.palletCount ?? 0) * kgPerPallet;
+        totalWeightKg += weightKgFromM2(
+          m2,
+          line.kgPerPallet,
+          line.m2PerPallet
+        );
         totalTruckPalletSlots += enriched.palletCount ?? 0;
       }
     } else if (unit === "kg") {
