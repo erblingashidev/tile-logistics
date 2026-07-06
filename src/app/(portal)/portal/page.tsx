@@ -218,14 +218,29 @@ export default function PortalPage() {
     setBusyOrderId(null);
 
     if (!res.ok) {
-      setError(data.error ?? sq.errors.proofFailed);
+      const msg = data.error ?? sq.errors.proofFailed;
+      if (res.status === 401) {
+        setError(sq.errors.unauthorized);
+      } else if (res.status === 403) {
+        setError(sq.errors.forbidden);
+      } else if (msg.includes("not assigned")) {
+        setError(sq.errors.notAssigned);
+      } else {
+        setError(msg);
+      }
       return;
     }
 
+    if (data.warning) {
+      setSuccess(`${proofLabelSq(phase)} — ${sq.successSaved} (${data.warning})`);
+    } else {
+      setSuccess(
+        phase === "departed"
+          ? sq.successDeparted
+          : `${proofLabelSq(phase)} — ${sq.successSaved}`
+      );
+    }
     if (input) input.value = "";
-    setSuccess(
-      phase === "departed" ? sq.successDeparted : `${proofLabelSq(phase)} — ${sq.successSaved}`
-    );
     setTimeout(() => setSuccess(""), 3000);
     load();
   }

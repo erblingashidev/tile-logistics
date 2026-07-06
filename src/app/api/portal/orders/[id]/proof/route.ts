@@ -5,14 +5,32 @@ import type { DeliveryProofPhase } from "@/lib/constants";
 
 export const runtime = "nodejs";
 
+function authErrorResponse(err: unknown) {
+  const message = err instanceof Error ? err.message : "Unauthorized";
+  if (message === "Forbidden") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  let session;
   try {
-    const session = await requireEmployee();
+    session = await requireEmployee();
+  } catch (err) {
+    return authErrorResponse(err);
+  }
+
+  try {
     const { id } = await params;
     const orderId = Number(id);
+    if (!Number.isFinite(orderId) || orderId <= 0) {
+      return NextResponse.json({ error: "Invalid order" }, { status: 400 });
+    }
+
     const form = await request.formData();
 
     const phase = String(form.get("phase") ?? "") as DeliveryProofPhase;
@@ -47,7 +65,10 @@ export async function POST(
     }
 
     return NextResponse.json(result);
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  } catch (err) {
+    console.error("[portal/proof]", err);
+    const message =
+      err instanceof Error ? err.message : "Server error saving proof";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

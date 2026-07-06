@@ -1,9 +1,9 @@
 import fs from "fs";
 import path from "path";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { dbAll, dbOne } from "@/lib/db/query";
-import { deliveryProofs, employees, orders } from "@/lib/db/schema";
+import { deliveryProofs, employees, orders, assignments, orderEmployeeAssignments } from "@/lib/db/schema";
 import {
   DELIVERY_PROOF_PHASES,
   type DeliveryProofPhase,
@@ -29,8 +29,13 @@ const LOADER_PHASES = new Set<DeliveryProofPhase>(["loaded", "load_skipped"]);
 
 export function ensureUploadDir(orderId: number) {
   const dir = path.join(UPLOAD_ROOT, String(orderId));
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
+  try {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+  } catch (err) {
+    console.error("[upload] ensureUploadDir failed:", err);
+    throw err;
   }
   return dir;
 }
@@ -40,18 +45,23 @@ export function saveProofPhoto(
   phase: string,
   file: Buffer,
   mimeType: string
-) {
-  const ext =
-    mimeType === "image/png"
-      ? "png"
-      : mimeType === "image/webp"
-        ? "webp"
-        : "jpg";
-  const filename = `${Date.now()}-${phase}.${ext}`;
-  const dir = ensureUploadDir(orderId);
-  const fullPath = path.join(dir, filename);
-  fs.writeFileSync(fullPath, file);
-  return path.join(String(orderId), filename);
+): string | null {
+  try {
+    const ext =
+      mimeType === "image/png"
+        ? "png"
+        : mimeType === "image/webp"
+          ? "webp"
+          : "jpg";
+    const filename = `${Date.now()}-${phase}.${ext}`;
+    const dir = ensureUploadDir(orderId);
+    const fullPath = path.join(dir, filename);
+    fs.writeFileSync(fullPath, file);
+    return path.join(String(orderId), filename);
+  } catch (err) {
+    console.error("[upload] saveProofPhoto failed:", err);
+    return null;
+  }
 }
 
 export function getProofPhotoPath(relativePath: string) {
@@ -86,6 +96,42 @@ export async function listDeliveryProofs(orderId: number) {
   }));
 }
 
+async function pickerOnSameTruck(
+  employeeId: number,
+  orderId: number
+): Promise<boolean> {
+  const db = await getDb();
+  const target = await dbOne(
+    db
+      .select({
+        vehicleId: assignments.vehicleId,
+        deliveryRound: assignments.deliveryRound,
+      })
+      .from(assignments)
+      .where(eq(assignments.orderId, orderId))
+  );
+  if (!target?.vehicleId) return false;
+
+  const mate = await dbOne(
+    db
+      .select({ id: orderEmployeeAssignments.id })
+      .from(orderEmployeeAssignments)
+      .innerJoin(
+        assignments,
+        eq(assignments.orderId, orderEmployeeAssignments.orderId)
+      )
+      .where(
+        and(
+          eq(orderEmployeeAssignments.employeeId, employeeId),
+          sql`${orderEmployeeAssignments.role} IN ('picker', 'unloader')`,
+          eq(assignments.vehicleId, target.vehicleId),
+          eq(assignments.deliveryRound, target.deliveryRound)
+        )
+      )
+  );
+  return Boolean(mate);
+}
+
 async function employeeCanSubmitPhase(
   employeeId: number,
   employeeRoles: EmployeeRole[],
@@ -108,7 +154,12 @@ async function employeeCanSubmitPhase(
     staff.staff.some((s) => s.employeeId === employeeId) ||
     staff.driver?.employeeId === employeeId ||
     (await isDriverAuthorizedForOrder(orderId, employeeId));
-  if (!onOrder) {
+  const onSameTruck =
+    LOADER_PHASES.has(phase) &&
+    (employeeRoles.includes("picker") || employeeRoles.includes("unloader")) &&
+    (await pickerOnSameTruck(employeeId, orderId));
+
+  if (!onOrder && !onSameTruck) {
     return { ok: false as const, error: "You are not assigned to this order" };
   }
 
@@ -351,6 +402,7 @@ export async function submitDeliveryProof(input: {
   }
 
   let photoPath: string | null = null;
+  let photoWarning: string | undefined;
   if (input.photoBuffer && input.photoMime) {
     photoPath = saveProofPhoto(
       input.orderId,
@@ -358,6 +410,17 @@ export async function submitDeliveryProof(input: {
       input.photoBuffer,
       input.photoMime
     );
+    if (!photoPath) {
+      if (phaseDef.photoRequired) {
+        return {
+          ok: false as const,
+          error:
+            "Photo could not be saved on the server. Try again or contact admin.",
+        };
+      }
+      photoWarning =
+        "Proof saved without photo — server storage unavailable.";
+    }
   }
 
   const employee = await dbOne(
@@ -393,6 +456,7 @@ export async function submitDeliveryProof(input: {
     ok: true as const,
     proofs: await listDeliveryProofs(input.orderId),
     orderStatus: phaseDef.nextOrderStatus,
+    warning: photoWarning,
   };
 }
 

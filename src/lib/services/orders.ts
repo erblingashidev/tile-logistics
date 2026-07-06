@@ -1,4 +1,4 @@
-import { eq, and, gte, lte, desc, sql, like, or } from "drizzle-orm";
+import { eq, and, gte, lte, desc, sql, like, or, inArray } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { dbAll, dbOne } from "@/lib/db/query";
 import {
@@ -1343,7 +1343,7 @@ export async function listOrdersForEmployee(
       ).map((r) => r.orderId);
     }
   } else if (roles.some((r) => r === "picker" || r === "unloader")) {
-    ids = (
+    const directIds = (
       await dbAll(
         db
           .select({ orderId: orderEmployeeAssignments.orderId })
@@ -1351,6 +1351,41 @@ export async function listOrdersForEmployee(
           .where(eq(orderEmployeeAssignments.employeeId, employeeId))
       )
     ).map((r) => r.orderId);
+
+    let truckOrderIds: number[] = [];
+    if (directIds.length > 0) {
+      const truckSlots = await dbAll(
+        db
+          .selectDistinct({
+            vehicleId: assignments.vehicleId,
+            deliveryRound: assignments.deliveryRound,
+          })
+          .from(assignments)
+          .where(inArray(assignments.orderId, directIds))
+      );
+
+      if (truckSlots.length > 0) {
+        truckOrderIds = (
+          await dbAll(
+            db
+              .select({ orderId: assignments.orderId })
+              .from(assignments)
+              .where(
+                or(
+                  ...truckSlots.map((slot) =>
+                    and(
+                      eq(assignments.vehicleId, slot.vehicleId),
+                      eq(assignments.deliveryRound, slot.deliveryRound)
+                    )
+                  )
+                )
+              )
+          )
+        ).map((r) => r.orderId);
+      }
+    }
+
+    ids = [...new Set([...directIds, ...truckOrderIds])];
   } else {
     const staffOrderIds = (
       await dbAll(

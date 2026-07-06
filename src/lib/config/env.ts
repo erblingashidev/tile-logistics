@@ -14,6 +14,10 @@ export function getUploadRoot(): string {
   if (process.env.UPLOAD_ROOT?.trim()) {
     return path.resolve(process.env.UPLOAD_ROOT.trim());
   }
+  // Netlify serverless: only /tmp is writable (ephemeral between invocations).
+  if (isNetlify()) {
+    return path.join("/tmp", "agimi-uploads");
+  }
   return path.join(process.cwd(), "data", "uploads");
 }
 
