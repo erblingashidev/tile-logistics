@@ -1545,8 +1545,8 @@ export default function OrdersPage() {
             </Button>
           </div>
         )}
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 px-4 py-2.5">
-          <label className="flex cursor-pointer items-center gap-2 text-xs text-zinc-600">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 bg-zinc-50/80 px-4 py-3">
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-700">
             <input
               type="checkbox"
               aria-label="Select all orders"
@@ -1563,11 +1563,18 @@ export default function OrdersPage() {
             />
             Select all
           </label>
-          <span className="text-xs text-zinc-500">
-            {orders.length} order{orders.length === 1 ? "" : "s"}
-          </span>
+          <div className="text-right text-xs text-zinc-500">
+            <p className="font-medium text-zinc-700">
+              {orders.length} order{orders.length === 1 ? "" : "s"}
+            </p>
+            {lastRefreshed && (
+              <p>
+                Updated {lastRefreshed.toLocaleTimeString()}
+              </p>
+            )}
+          </div>
         </div>
-        <div className="max-h-[min(72vh,880px)] space-y-3 overflow-y-auto p-3 sm:p-4">
+        <div className="max-h-[min(72vh,880px)] space-y-4 overflow-y-auto bg-zinc-50/40 p-3 sm:p-4">
           {loading && orders.length === 0 ? (
             <LoadingState title="Loading orders…" />
           ) : orders.length === 0 ? (
