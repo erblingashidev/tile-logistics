@@ -27,6 +27,7 @@ import {
   registerProductsFromOrder,
   resolveOrderItemCatalog,
 } from "@/lib/services/products";
+import { getLearnedUnitForItem } from "@/lib/services/product-learning";
 import { validateTruckForOrder } from "@/lib/dispatch/validate-assignment";
 import {
   isOrderReadyToShip,
@@ -186,10 +187,15 @@ async function itemsWithCatalog(
   items: OrderItemPayload[]
 ): Promise<OrderItemInput[]> {
   return Promise.all(
-    items.map(async (item) => ({
-      ...item,
-      catalogPallet: await resolveOrderItemCatalog(item),
-    }))
+    items.map(async (item) => {
+      const learnedUnit = await getLearnedUnitForItem(item);
+      const withLearned =
+        learnedUnit && !item.unit ? { ...item, unit: learnedUnit } : item;
+      return {
+        ...withLearned,
+        catalogPallet: await resolveOrderItemCatalog(withLearned),
+      };
+    })
   );
 }
 
@@ -705,6 +711,7 @@ export async function updateOrder(id: number, payload: OrderPayload) {
       },
     }
   );
+  await registerProductsFromOrder(id);
   return getOrder(id);
 }
 

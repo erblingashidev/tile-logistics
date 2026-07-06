@@ -22,6 +22,7 @@ export interface OrderInvoiceItem {
   productName?: string | null;
   productEan?: string | null;
   quantityM2?: number | null;
+  lengthM?: number | null;
   pieceCount?: number | null;
   palletCount?: number | null;
   weightKg?: number | null;

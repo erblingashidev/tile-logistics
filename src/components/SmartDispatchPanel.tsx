@@ -61,7 +61,7 @@ export function SmartDispatchPanel({
   onWarning,
 }: SmartDispatchPanelProps) {
   const [deliveryRound, setDeliveryRound] = useState("1");
-  const [maxOrders, setMaxOrders] = useState("3");
+  const [maxOrders, setMaxOrders] = useState("6");
   const [maxDistanceKm, setMaxDistanceKm] = useState("30");
   const [plan, setPlan] = useState<DispatchPlan | null>(null);
   const [loading, setLoading] = useState(false);
@@ -216,6 +216,10 @@ export function SmartDispatchPanel({
         {expanded && (
           <div className="space-y-4 border-t border-zinc-100 px-4 py-4">
             <div className="flex flex-wrap items-end justify-between gap-3">
+              <p className="w-full text-xs text-zinc-500">
+                Groups orders by region first (e.g. all Prishtinë together), then
+                by distance inside that area — no mixed Prishtinë ↔ Mitrovicë runs.
+              </p>
               <div className="grid flex-1 gap-3 sm:grid-cols-3">
                 <Select
                   label="Delivery round"
@@ -235,6 +239,11 @@ export function SmartDispatchPanel({
                 >
                   <option value="2">2 orders</option>
                   <option value="3">3 orders</option>
+                  <option value="4">4 orders</option>
+                  <option value="5">5 orders</option>
+                  <option value="6">6 orders (default)</option>
+                  <option value="7">7 orders</option>
+                  <option value="8">8 orders</option>
                 </Select>
                 <Select
                   label="Max distance between stops (km)"

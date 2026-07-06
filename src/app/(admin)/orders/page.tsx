@@ -1,24 +1,21 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { LocationPicker } from "@/components/LocationPicker";
-import { OrderInvoice } from "@/components/OrderInvoice";
 import {
-  OrderAssignmentPanel,
   type AssignmentDraft,
 } from "@/components/OrderAssignmentPanel";
 import { SmartDispatchPanel } from "@/components/SmartDispatchPanel";
+import { OrderListCard } from "@/components/OrderListCard";
 import { InvoiceImportPanel,
   type InvoiceImportFormState,
 } from "@/components/InvoiceImportPanel";
 import { InvoiceNumberField } from "@/components/InvoiceNumberField";
 import { ProductSearchField } from "@/components/ProductSearchField";
-import { Badge, Button, Card, Input, Select, Alert, PageSection, tableClass, LoadingState } from "@/components/ui";
+import { Badge, Button, Card, Input, Select, Alert, PageSection, LoadingState } from "@/components/ui";
 import {
-  orderListRowClass,
-  orderStageBadgeTone,
   type OrderDisplayStage,
 } from "@/lib/order-display";
 import {
@@ -46,9 +43,6 @@ import {
 import {
   DELIVERY_TIME_PREFERENCE_LABELS,
   DELIVERY_TIME_PREFERENCES,
-  formatDeliverySchedule,
-  deliveryScheduleBadgeTone,
-  isOrderReadyToShip,
 } from "@/lib/delivery-schedule";
 import { deliveryRoundSelectOptions, formatDeliveryRound } from "@/lib/delivery-rounds";
 import { isOrderUrgent } from "@/lib/order-priority";
@@ -175,26 +169,6 @@ function buildOrderNotes(salesAgent: string, customerPhone: string): string | un
   ].filter(Boolean);
   return parts.length > 0 ? parts.join(" · ") : undefined;
 }
-
-function orderReferentiDisplay(order: Order): string {
-  return (
-    order.salesAgentName?.trim() ||
-    parseReferentiFromNotes(order.notes) ||
-    ""
-  );
-}
-
-function stickyRowBg(stage: OrderDisplayStage): string {
-  if (stage === "arrived" || stage === "delivered") return "bg-green-50/90";
-  if (stage === "assigned" || stage === "in_transit" || stage === "loaded") {
-    return "bg-amber-50/90";
-  }
-  if (stage === "not_loaded") return "bg-red-50/60";
-  return "bg-white";
-}
-
-const stickyActionClass =
-  "sticky right-0 z-10 px-2 py-3 shadow-[-8px_0_12px_-6px_rgba(0,0,0,0.1)]";
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -1169,7 +1143,7 @@ export default function OrdersPage() {
                   onClick={() =>
                     setForm({
                       ...form,
-                      items: [...form.items, emptyItem()],
+                      items: [emptyItem(), ...form.items],
                     })
                   }
                 >
@@ -1571,313 +1545,85 @@ export default function OrdersPage() {
             </Button>
           </div>
         )}
-        <div className="relative max-h-[min(72vh,880px)] overflow-auto rounded-lg border border-zinc-200">
-          <table className={`${tableClass} min-w-max`}>
-            <thead className="sticky top-0 z-20 bg-white">
-              <tr>
-                <th className="w-8 bg-white">
-                  <input
-                    type="checkbox"
-                    aria-label="Select all"
-                    checked={
-                      orders.length > 0 &&
-                      selectedOrderIds.size === orders.length
-                    }
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedOrderIds(new Set(orders.map((o) => o.id)));
-                      } else {
-                        setSelectedOrderIds(new Set());
-                      }
-                    }}
-                  />
-                </th>
-                <th className="bg-white">Invoice</th>
-                <th className="bg-white">Customer</th>
-                <th className="bg-white">Referenti</th>
-                <th className="bg-white">Products</th>
-                <th className="bg-white">Region</th>
-                <th className="bg-white">Date</th>
-                <th className="bg-white">Delivery</th>
-                <th className="bg-white">m²</th>
-                <th className="bg-white">Pieces</th>
-                <th className="bg-white">Pallets</th>
-                <th className="bg-white">Kg</th>
-                <th className="bg-white">Price</th>
-                <th className="bg-white">Status</th>
-                <th className="bg-white">Assign</th>
-                <th className={`${stickyActionClass} bg-white`}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map((order) => {
-                const stage = (order.deliveryStage ??
-                  order.status) as OrderDisplayStage;
-                const isComplete =
-                  stage === "delivered" || stage === "arrived";
-                const hasAnyAssignment = Boolean(
-                  order.assignment ||
-                    order.staff?.picker ||
-                    order.staff?.staff?.some((s) =>
-                      ["driver", "unloader"].includes(s.role)
-                    )
-                );
-                const hasProgress = (order.proofs?.length ?? 0) > 0;
-                const draft: AssignmentDraft = assignState[order.id] ?? {
-                  vehicleId: filters.vehicleId ?? "",
-                  round: filters.deliveryRound || "1",
-                  pickerId: "",
-                };
-
-                const rowBg = stickyRowBg(stage);
-                const onFocusTruck =
-                  filters.vehicleId &&
-                  order.assignment?.vehicleId === Number(filters.vehicleId) &&
-                  order.assignment?.deliveryRound === focusRound;
-                const availableForFocus =
-                  filters.vehicleId && !order.assignment;
-
-                return (
-                <Fragment key={order.id}>
-                <tr
-                  className={`border-b align-top ${orderListRowClass(stage)} ${
-                    onFocusTruck
-                      ? "bg-blue-50/60"
-                      : availableForFocus
-                        ? "bg-amber-50/30"
-                        : ""
-                  }`}
-                >
-                  <td className="px-2 py-3">
-                    <input
-                      type="checkbox"
-                      checked={selectedOrderIds.has(order.id)}
-                      onChange={(e) => {
-                        const next = new Set(selectedOrderIds);
-                        if (e.target.checked) next.add(order.id);
-                        else next.delete(order.id);
-                        setSelectedOrderIds(next);
-                      }}
-                    />
-                  </td>
-                  <td className="px-2 py-3 font-medium">
-                    {order.invoiceNumber}
-                    {isOrderUrgent(order) && (
-                      <div className="mt-1">
-                        <Badge tone="red">URGENT</Badge>
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-2 py-3">{order.customerName}</td>
-                  <td className="max-w-[120px] px-2 py-3 text-xs text-zinc-600">
-                    {orderReferentiDisplay(order) || (
-                      <span className="text-zinc-400">—</span>
-                    )}
-                  </td>
-                  <td className="max-w-[240px] px-2 py-3">
-                    {order.items.length === 0 ? (
-                      <span className="text-zinc-400">—</span>
-                    ) : (
-                      <ul className="space-y-1 text-xs leading-snug">
-                        {order.items.map((item, idx) => {
-                          const unit = normalizeOrderUnit(item.unit);
-                          return (
-                          <li key={idx}>
-                            <span className="font-medium text-zinc-900">
-                              {item.productName?.trim() || "Product"}
-                            </span>
-                            {unit === "m2" && item.tileWidthCm && item.tileHeightCm ? (
-                              <span className="text-zinc-500">
-                                {" "}
-                                · {item.tileWidthCm}×{item.tileHeightCm} cm
-                              </span>
-                            ) : null}
-                            {unit === "m2" && item.quantityM2 != null ? (
-                              <span className="text-zinc-600">
-                                {" "}
-                                · {formatM2(item.quantityM2)} m²
-                              </span>
-                            ) : null}
-                            {unit === "kg" && item.weightKg != null ? (
-                              <span className="text-zinc-600">
-                                {" "}
-                                · {item.weightKg.toFixed(0)} kg
-                                {item.pieceCount != null
-                                  ? ` · ${item.pieceCount} pcs`
-                                  : ""}
-                              </span>
-                            ) : null}
-                            {unit === "meter" && item.lengthM != null ? (
-                              <span className="text-zinc-600">
-                                {" "}
-                                · {item.lengthM} m
-                              </span>
-                            ) : null}
-                            {unit === "piece" && item.pieceCount != null ? (
-                              <span className="text-zinc-600">
-                                {" "}
-                                · {item.pieceCount} pcs
-                              </span>
-                            ) : null}
-                          </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                  </td>
-                  <td className="px-2 py-3">
-                    {order.region ?? order.city ?? "—"}
-                  </td>
-                  <td className="px-2 py-3">{order.orderDate}</td>
-                  <td className="px-2 py-3">
-                    <Badge tone={deliveryScheduleBadgeTone(order)}>
-                      {formatDeliverySchedule(order)}
-                    </Badge>
-                    {!isOrderReadyToShip(order) && (
-                      <p className="mt-1 text-[10px] text-amber-700">
-                        Not in dispatch until{" "}
-                        {order.requestedDeliveryDate}
-                      </p>
-                    )}
-                  </td>
-                  <td className="px-2 py-3">{formatM2(order.totalM2)}</td>
-                  <td className="px-2 py-3">{order.totalPieces}</td>
-                  <td className="px-2 py-3">{order.totalPallets}</td>
-                  <td className="px-2 py-3">
-                    {order.totalWeightKg.toFixed(0)}
-                  </td>
-                  <td className="px-2 py-3">{order.price.toFixed(2)}</td>
-                  <td className="px-2 py-3">
-                    <Badge tone={orderStageBadgeTone(stage)}>
-                      {order.deliveryStageLabel ??
-                        order.status.replace(/_/g, " ")}
-                    </Badge>
-                    {order.proofs && order.proofs.length > 0 && (
-                      <p className="mt-1 text-xs text-zinc-600">
-                        {order.proofs.length} proof step
-                        {order.proofs.length !== 1 ? "s" : ""} recorded
-                      </p>
-                    )}
-                    {order.loadStatus === "loaded" && (
-                      <p className="mt-1 text-xs text-green-700">✓ Loaded on truck</p>
-                    )}
-                    {order.loadStatus === "load_skipped" && (
-                      <p className="mt-1 text-xs text-red-700">
-                        ✗ Not loaded
-                        {order.loadNotes ? `: ${order.loadNotes}` : ""}
-                      </p>
-                    )}
-                    {order.loadStatus === "pending" && order.assignment && (
-                      <p className="mt-1 text-xs text-amber-700">
-                        ○ Waiting for loader
-                      </p>
-                    )}
-                    {order.assignment && (
-                      <p className="mt-1 text-xs text-slate-500">
-                        {order.assignment.vehicleName} ·{" "}
-                        {formatDeliveryRound(order.assignment.deliveryRound, "short")}
-                        {order.assignment.driverName &&
-                          ` · ${order.assignment.driverName}`}
-                      </p>
-                    )}
-                    {order.staff?.picker && (
-                      <p className="mt-1 text-xs text-slate-500">
-                        Picker: {order.staff.picker.employeeName}
-                      </p>
-                    )}
-                    {isOrderUrgent(order) && !order.assignment && (
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        <Button
-                          variant="secondary"
-                          className="text-xs"
-                          onClick={() => suggestUrgentRoute(order)}
-                        >
-                          Find best truck
-                        </Button>
-                        <Link
-                          href="/dispatch"
-                          className="inline-flex items-center rounded border border-zinc-200 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50"
-                        >
-                          Dispatch board
-                        </Link>
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-2 py-3">
-                    {isComplete ? (
-                      <p className="text-xs text-green-700">
-                        {stage === "delivered"
-                          ? "Delivery complete"
-                          : "Arrived at customer"}
-                      </p>
-                    ) : (
-                      <OrderAssignmentPanel
-                        orderId={order.id}
-                        invoiceNumber={order.invoiceNumber}
-                        hasAssignment={hasAnyAssignment}
-                        hasProgress={hasProgress}
-                        draft={draft}
-                        vehicles={vehicles}
-                        pickers={pickers}
-                        onDraftChange={(next) =>
-                          setAssignState({ ...assignState, [order.id]: next })
-                        }
-                        onSaved={load}
-                        onError={setError}
-                        onWarning={(msg) => {
-                          setWarning(msg);
-                          setTimeout(() => setWarning(""), 3000);
-                        }}
-                      />
-                    )}
-                  </td>
-                  <td className={`${stickyActionClass} ${rowBg}`}>
-                    <div className="flex flex-col gap-1">
-                      <Button
-                        variant="ghost"
-                        className="text-xs"
-                        onClick={() =>
-                          setExpandedOrderId(
-                            expandedOrderId === order.id ? null : order.id
-                          )
-                        }
-                      >
-                        {expandedOrderId === order.id ? "Hide" : "Details"}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        className="text-xs"
-                        onClick={() => startEdit(order)}
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        className="text-xs text-red-600"
-                        onClick={() => deleteOrder(order.id)}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-                {expandedOrderId === order.id && (
-                  <tr key={`${order.id}-details`} className="border-b bg-zinc-100/80">
-                    <td colSpan={16} className="px-4 py-6">
-                      <OrderInvoice order={order} />
-                    </td>
-                  </tr>
-                )}
-                </Fragment>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 px-4 py-2.5">
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-zinc-600">
+            <input
+              type="checkbox"
+              aria-label="Select all orders"
+              checked={
+                orders.length > 0 && selectedOrderIds.size === orders.length
+              }
+              onChange={(e) => {
+                if (e.target.checked) {
+                  setSelectedOrderIds(new Set(orders.map((o) => o.id)));
+                } else {
+                  setSelectedOrderIds(new Set());
+                }
+              }}
+            />
+            Select all
+          </label>
+          <span className="text-xs text-zinc-500">
+            {orders.length} order{orders.length === 1 ? "" : "s"}
+          </span>
+        </div>
+        <div className="max-h-[min(72vh,880px)] space-y-3 overflow-y-auto p-3 sm:p-4">
           {loading && orders.length === 0 ? (
             <LoadingState title="Loading orders…" />
           ) : orders.length === 0 ? (
             <p className="py-8 text-center text-slate-500">No orders yet.</p>
-          ) : null}
+          ) : (
+            orders.map((order) => {
+              const draft: AssignmentDraft = assignState[order.id] ?? {
+                vehicleId: filters.vehicleId ?? "",
+                round: filters.deliveryRound || "1",
+                pickerId: "",
+              };
+              const onFocusTruck =
+                Boolean(filters.vehicleId) &&
+                order.assignment?.vehicleId === Number(filters.vehicleId) &&
+                order.assignment?.deliveryRound === focusRound;
+              const availableForFocus =
+                Boolean(filters.vehicleId) && !order.assignment;
+
+              return (
+                <OrderListCard
+                  key={order.id}
+                  order={order}
+                  selected={selectedOrderIds.has(order.id)}
+                  expanded={expandedOrderId === order.id}
+                  highlightFocus={onFocusTruck}
+                  highlightAvailable={availableForFocus}
+                  draft={draft}
+                  vehicles={vehicles}
+                  pickers={pickers}
+                  onSelectChange={(checked) => {
+                    const next = new Set(selectedOrderIds);
+                    if (checked) next.add(order.id);
+                    else next.delete(order.id);
+                    setSelectedOrderIds(next);
+                  }}
+                  onToggleExpand={() =>
+                    setExpandedOrderId(
+                      expandedOrderId === order.id ? null : order.id
+                    )
+                  }
+                  onEdit={() => startEdit(order)}
+                  onDelete={() => deleteOrder(order.id)}
+                  onDraftChange={(next) =>
+                    setAssignState({ ...assignState, [order.id]: next })
+                  }
+                  onSaved={load}
+                  onError={setError}
+                  onWarning={(msg) => {
+                    setWarning(msg);
+                    setTimeout(() => setWarning(""), 3000);
+                  }}
+                  onSuggestUrgentRoute={() => suggestUrgentRoute(order)}
+                />
+              );
+            })
+          )}
         </div>
       </Card>
 

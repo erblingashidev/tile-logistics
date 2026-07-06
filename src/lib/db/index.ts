@@ -241,6 +241,24 @@ async function runMigrations(client: Client) {
     )
   `);
   await client.execute(`
+    CREATE TABLE IF NOT EXISTS product_aliases (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      alias_key TEXT NOT NULL,
+      alias_type TEXT NOT NULL,
+      product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+      unit TEXT,
+      ean TEXT,
+      learned_from TEXT NOT NULL DEFAULT 'order',
+      hit_count INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  await client.execute(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_product_aliases_key_type
+      ON product_aliases(alias_key, alias_type)
+  `);
+  await client.execute(`
     CREATE TABLE IF NOT EXISTS warehouse_locations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       code TEXT NOT NULL UNIQUE,

@@ -15,6 +15,11 @@ import {
   palletSpecFromProduct,
   type ProductPalletSpec,
 } from "@/lib/product-pallet-spec";
+import {
+  recordProductLearning,
+  resolveProductByAlias,
+  getLearnedUnitForItem,
+} from "@/lib/services/product-learning";
 
 export type ProductSource = "order" | "receive" | "inventory" | "manual";
 
@@ -239,6 +244,13 @@ export async function upsertProduct(input: ProductUpsertInput) {
     }
 
     await db.update(products).set(updates).where(eq(products.id, existing.id));
+    await recordProductLearning({
+      productId: existing.id,
+      productName: input.productName ?? existing.productName,
+      productEan: ean ?? existing.ean,
+      unit,
+      source: input.source === "manual" ? "manual" : "order",
+    });
     return getProduct(existing.id);
   }
 
@@ -255,6 +267,13 @@ export async function upsertProduct(input: ProductUpsertInput) {
   );
 
   const id = inserted!.id;
+  await recordProductLearning({
+    productId: id,
+    productName: input.productName,
+    productEan: ean,
+    unit,
+    source: input.source === "manual" ? "manual" : "order",
+  });
   await logActivity(
     "create",
     "product",
@@ -313,7 +332,9 @@ export async function registerProductsFromOrder(orderId: number) {
       unitWeightKg,
       source: "order",
     });
-    if (product) registered.push(product);
+    if (product) {
+      registered.push(product);
+    }
   }
   return registered;
 }
@@ -412,6 +433,14 @@ export async function updateProduct(
     })
     .where(eq(products.id, id));
 
+  await recordProductLearning({
+    productId: id,
+    productName: name,
+    productEan: ean,
+    unit,
+    source: input.source === "manual" ? "manual" : "order",
+  });
+
   const product = await getProduct(id);
   return { ok: true as const, product: product! };
 }
@@ -424,6 +453,12 @@ export async function resolveOrderItemCatalog(item: {
   if (item.productId) {
     return palletSpecFromProduct(await getProduct(item.productId));
   }
+
+  const fromAlias = await resolveProductByAlias(item);
+  if (fromAlias) {
+    return palletSpecFromProduct(fromAlias);
+  }
+
   if (item.productEan?.trim()) {
     return palletSpecFromProduct(await getProductByEan(item.productEan));
   }
@@ -433,7 +468,16 @@ export async function resolveOrderItemCatalog(item: {
   const exact = matches.find(
     (p) => p.productName?.trim().toLowerCase() === name.toLowerCase()
   );
-  return palletSpecFromProduct(exact ?? matches[0] ?? null);
+  const resolved = exact ?? matches[0] ?? null;
+  if (resolved) {
+    await recordProductLearning({
+      productId: resolved.id,
+      productName: name,
+      productEan: item.productEan,
+      source: "search",
+    });
+  }
+  return palletSpecFromProduct(resolved);
 }
 
 export async function deleteProduct(id: number) {

@@ -5,7 +5,7 @@ import {
   type LocationEntry,
 } from "@/lib/locations";
 import {
-  clusterStopsByProximity,
+  clusterStopsByRegionThenProximity,
   describeRouteAreas,
   orderStopsForRoundTrip,
   type GeoStop,
@@ -145,7 +145,7 @@ export function suggestRoutes(
   rawOrders: Parameters<typeof toRouteOrder>[0][],
   filters: RoutePlanFilters
 ): RouteSuggestion[] {
-  const maxOrders = Math.min(3, Math.max(2, filters.maxOrdersPerRoute ?? 3));
+  const maxOrders = Math.min(8, Math.max(2, filters.maxOrdersPerRoute ?? 6));
   const maxDist = filters.maxDistanceKm ?? 30;
 
   let orders = rawOrders
@@ -170,10 +170,11 @@ export function suggestRoutes(
     region: o.region,
   }));
 
-  const clusters = clusterStopsByProximity(geoStops, {
+  const clusters = clusterStopsByRegionThenProximity(geoStops, {
     maxOrders,
     maxDistanceKm: maxDist,
     mergeDistanceKm: maxDist + 5,
+    regionMaxDistanceKm: Math.max(maxDist, 45),
   });
 
   const orderById = new Map(orders.map((o) => [o.id, o]));

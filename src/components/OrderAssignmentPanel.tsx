@@ -219,7 +219,7 @@ export function OrderAssignmentPanel({
   }
 
   return (
-    <div className="flex min-w-[260px] flex-col gap-2 rounded-lg border border-zinc-200 bg-zinc-50/80 p-2.5">
+    <div className="flex w-full flex-col gap-2 rounded-lg border border-zinc-200 bg-zinc-50/80 p-2.5">
       <p className="text-xs font-semibold text-zinc-800">Assignment</p>
 
       <select

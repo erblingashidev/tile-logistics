@@ -8,9 +8,9 @@ import {
   vehicles,
 } from "@/lib/db/schema";
 import {
-  clusterStopsByProximity,
-  describeRouteAreas,
+  clusterStopsByRegionThenProximity,
   orderStopsForRoundTrip,
+  normalizeDispatchRegion,
   type GeoStop,
 } from "@/lib/dispatch/route-cluster";
 import { checkVehicleCapacity } from "@/lib/calculations";
@@ -196,11 +196,15 @@ function clusterOrders(
   maxOrders: number,
   maxDistanceKm: number
 ): DispatchOrderStop[][] {
-  return clusterStopsByProximity(stops as GeoStop[], {
-    maxOrders,
-    maxDistanceKm,
-    mergeDistanceKm: maxDistanceKm + 5,
-  }) as DispatchOrderStop[][];
+  return clusterStopsByRegionThenProximity(
+    stops.map((s) => ({ ...s, totalPallets: s.totalPallets })),
+    {
+      maxOrders,
+      maxDistanceKm,
+      mergeDistanceKm: maxDistanceKm + 5,
+      regionMaxDistanceKm: Math.max(maxDistanceKm, 45),
+    }
+  ) as DispatchOrderStop[][];
 }
 
 function simulateVehicleAfterAssign(
@@ -264,9 +268,14 @@ async function buildRecommendation(
     );
   }
   if (group.length > 1) {
+    const regionLabel = [
+      ...new Set(group.map((o) => normalizeDispatchRegion(o))),
+    ].join(" · ");
     reasons.push(
-      `${group.length} stops (${describeRouteAreas(group)}) — one truck, shared route saves fuel`
+      `${group.length} stops in ${regionLabel} — same area, one truck (no mixed-region run)`
     );
+  } else if (group[0]?.region) {
+    reasons.push(`Delivery area: ${group[0].region}`);
   }
   reasons.push(`~${totalKm} km round trip · cost score ${costScore}`);
   if (picker.name) {
@@ -431,7 +440,7 @@ export async function generateDispatchPlan(options?: {
   region?: string;
 }): Promise<DispatchPlan> {
   const deliveryRound = options?.deliveryRound ?? 1;
-  const maxOrders = Math.min(3, options?.maxOrdersPerRoute ?? 3);
+  const maxOrders = Math.min(8, options?.maxOrdersPerRoute ?? 6);
   const maxDistanceKm = options?.maxDistanceKm ?? 30;
 
   let fleet = await loadDispatchVehicles(deliveryRound);
@@ -541,8 +550,8 @@ export async function generateDispatchPlan(options?: {
     .sort((a, b) => {
       const palletsA = a.reduce((s, o) => s + o.totalPallets, 0);
       const palletsB = b.reduce((s, o) => s + o.totalPallets, 0);
-      if (palletsA !== palletsB) return palletsA - palletsB;
-      return a.length - b.length;
+      if (palletsB !== palletsA) return palletsB - palletsA;
+      return b.length - a.length;
     });
 
   for (const group of standardGroups) {

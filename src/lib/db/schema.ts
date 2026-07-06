@@ -187,6 +187,22 @@ export const products = sqliteTable("products", {
   updatedAt: text("updated_at").notNull(),
 });
 
+/** Learned mappings from invoice OCR / user edits → catalog product. */
+export const productAliases = sqliteTable("product_aliases", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  aliasKey: text("alias_key").notNull(),
+  aliasType: text("alias_type").notNull(),
+  productId: integer("product_id")
+    .notNull()
+    .references(() => products.id, { onDelete: "cascade" }),
+  unit: text("unit"),
+  ean: text("ean"),
+  learnedFrom: text("learned_from").notNull().default("order"),
+  hitCount: integer("hit_count").notNull().default(1),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
 export const warehouseLocations = sqliteTable("warehouse_locations", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   code: text("code").notNull().unique(),

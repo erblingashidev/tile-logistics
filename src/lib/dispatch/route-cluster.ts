@@ -155,6 +155,64 @@ export function clusterStopsByProximity<T extends GeoStop>(
   });
 }
 
+/** Normalize municipality/region for dispatch grouping (Prishtinë ≈ prishtine). */
+export function normalizeDispatchRegion(stop: GeoStop): string {
+  return (stop.region || stop.city || "unknown")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+/**
+ * Group orders by region first, then by map distance inside each region.
+ * Keeps Prishtinë (and other municipalities) on the same truck run instead of
+ * mixing with Mitrovicë/Ferizaj on one trip.
+ */
+export function clusterStopsByRegionThenProximity<T extends GeoStop>(
+  stops: T[],
+  options: RouteClusterOptions & { regionMaxDistanceKm?: number }
+): T[][] {
+  if (stops.length === 0) return [];
+
+  const byRegion = new Map<string, T[]>();
+  for (const stop of stops) {
+    const key = normalizeDispatchRegion(stop);
+    const bucket = byRegion.get(key) ?? [];
+    bucket.push(stop);
+    byRegion.set(key, bucket);
+  }
+
+  const intraMaxKm =
+    options.regionMaxDistanceKm ?? Math.max(options.maxDistanceKm, 45);
+
+  const regionBuckets = [...byRegion.entries()].sort((a, b) => {
+    const palletsA = a[1].reduce(
+      (s, o) => s + ((o as { totalPallets?: number }).totalPallets ?? 1),
+      0
+    );
+    const palletsB = b[1].reduce(
+      (s, o) => s + ((o as { totalPallets?: number }).totalPallets ?? 1),
+      0
+    );
+    if (palletsB !== palletsA) return palletsB - palletsA;
+    return b[1].length - a[1].length;
+  });
+
+  const allGroups: T[][] = [];
+  for (const [, regionStops] of regionBuckets) {
+    const groups = clusterStopsByProximity(regionStops, {
+      maxOrders: options.maxOrders,
+      maxDistanceKm: intraMaxKm,
+      mergeDistanceKm: intraMaxKm + 5,
+    });
+    allGroups.push(...groups);
+  }
+
+  return allGroups;
+}
+
 export function describeRouteAreas(stops: GeoStop[]): string {
   const labels = [
     ...new Set(stops.map((s) => s.city || s.region || "area").filter(Boolean)),

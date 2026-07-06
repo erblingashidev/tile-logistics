@@ -230,6 +230,8 @@ export async function recommendUrgentPlacement(
       const sameRegion = regions.some(
         (r) => r.toLowerCase() === (order.region ?? order.city ?? "").toLowerCase()
       );
+      if (!sameRegion) continue;
+
       const almostReady = Boolean(
         truckStatus?.canDepart || truckStatus?.allResolved
       );
@@ -260,9 +262,6 @@ export async function recommendUrgentPlacement(
         );
       }
       if (!sameRegion && distToRoute > 25) {
-        reasons.push(
-          "Note: different region — only suggested because distance still fits this route"
-        );
         fitScore -= 30;
       }
 
