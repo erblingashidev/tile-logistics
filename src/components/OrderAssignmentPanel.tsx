@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui";
 import { deliveryRoundSelectOptions } from "@/lib/delivery-rounds";
 
@@ -54,14 +54,34 @@ function palletsOnTruck(vehicle: VehicleOption, round: number): number {
   );
 }
 
-function chipClass(selected: boolean, disabled?: boolean) {
-  if (disabled) {
-    return "cursor-not-allowed border-zinc-100 bg-zinc-50 text-zinc-300";
-  }
+function chipClass(selected: boolean) {
   if (selected) {
-    return "border-zinc-900 bg-zinc-900 text-white shadow-sm";
+    return "border-zinc-900 bg-zinc-900 text-white";
   }
   return "border-zinc-200 bg-white text-zinc-800 hover:border-zinc-400 hover:bg-zinc-50";
+}
+
+function ChoiceChip({
+  selected,
+  onClick,
+  children,
+}: {
+  selected: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      onClick={onClick}
+      className={`inline-flex items-center rounded-md border-2 px-2.5 py-1.5 text-xs font-medium transition ${chipClass(
+        selected
+      )}`}
+    >
+      {children}
+    </button>
+  );
 }
 
 export function OrderAssignmentPanel({
@@ -297,20 +317,13 @@ export function OrderAssignmentPanel({
         </p>
         <div className="flex flex-wrap gap-1.5">
           {deliveryRoundSelectOptions().map((option) => (
-            <label
+            <ChoiceChip
               key={option.value}
-              className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition ${chipClass(
-                draft.round === String(option.value)
-              )}`}
+              selected={draft.round === String(option.value)}
+              onClick={() => selectRound(String(option.value))}
             >
-              <input
-                type="checkbox"
-                className="sr-only"
-                checked={draft.round === String(option.value)}
-                onChange={() => selectRound(String(option.value))}
-              />
               {option.label}
-            </label>
+            </ChoiceChip>
           ))}
         </div>
       </div>
@@ -320,40 +333,26 @@ export function OrderAssignmentPanel({
           Picker
         </p>
         <div className="flex flex-wrap gap-1.5">
-          <label
-            className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition ${chipClass(
-              !draft.pickerId
-            )}`}
+          <ChoiceChip
+            selected={!draft.pickerId}
+            onClick={() => selectPicker("")}
           >
-            <input
-              type="checkbox"
-              className="sr-only"
-              checked={!draft.pickerId}
-              onChange={() => selectPicker("")}
-            />
             Auto
-          </label>
+          </ChoiceChip>
           {pickers.map((picker) => (
-            <label
+            <ChoiceChip
               key={picker.id}
-              className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition ${chipClass(
-                draft.pickerId === String(picker.id)
-              )}`}
+              selected={draft.pickerId === String(picker.id)}
+              onClick={() =>
+                selectPicker(
+                  draft.pickerId === String(picker.id)
+                    ? ""
+                    : String(picker.id)
+                )
+              }
             >
-              <input
-                type="checkbox"
-                className="sr-only"
-                checked={draft.pickerId === String(picker.id)}
-                onChange={() =>
-                  selectPicker(
-                    draft.pickerId === String(picker.id)
-                      ? ""
-                      : String(picker.id)
-                  )
-                }
-              />
               {picker.name}
-            </label>
+            </ChoiceChip>
           ))}
         </div>
       </div>
@@ -377,11 +376,16 @@ export function OrderAssignmentPanel({
               max > 0 ? Math.min(100, Math.round((onTruck / max) * 100)) : 0;
 
             return (
-              <label
+              <button
                 key={vehicle.id}
-                className={`flex cursor-pointer flex-col gap-1.5 rounded-lg border p-2.5 text-left transition ${
+                type="button"
+                aria-pressed={selected}
+                onClick={() =>
+                  selectTruck(selected ? "" : String(vehicle.id))
+                }
+                className={`flex w-full cursor-pointer flex-col gap-1.5 rounded-lg border-2 p-2.5 text-left transition ${
                   selected
-                    ? "border-zinc-900 bg-zinc-900 text-white ring-2 ring-zinc-900 ring-offset-1"
+                    ? "border-zinc-900 bg-zinc-900 text-white"
                     : isPreferred
                       ? "border-blue-300 bg-blue-50/60 hover:border-blue-400"
                       : fits
@@ -389,16 +393,6 @@ export function OrderAssignmentPanel({
                         : "border-amber-200 bg-amber-50/40 hover:border-amber-300"
                 }`}
               >
-                <input
-                  type="checkbox"
-                  className="sr-only"
-                  checked={selected}
-                  onChange={() =>
-                    selectTruck(
-                      selected ? "" : String(vehicle.id)
-                    )
-                  }
-                />
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p
@@ -454,7 +448,7 @@ export function OrderAssignmentPanel({
                     </p>
                   </div>
                 )}
-              </label>
+              </button>
             );
           })}
         </div>

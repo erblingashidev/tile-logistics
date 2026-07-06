@@ -56,23 +56,20 @@ export function TruckFocusBar({
 
       <div className="flex flex-wrap gap-1.5">
         {["1", "2", "3", "4", "5", "6"].map((value) => (
-          <label
+          <button
             key={value}
-            className={`inline-flex cursor-pointer items-center rounded-md border px-2.5 py-1 text-xs font-medium transition ${
+            type="button"
+            aria-pressed={deliveryRound === value}
+            disabled={!selectedVehicleId}
+            onClick={() => onSelectRound(value)}
+            className={`inline-flex items-center rounded-md border-2 px-2.5 py-1 text-xs font-medium transition ${
               deliveryRound === value
                 ? "border-blue-600 bg-blue-600 text-white"
                 : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400"
-            } ${!selectedVehicleId ? "opacity-60" : ""}`}
+            } ${!selectedVehicleId ? "cursor-not-allowed opacity-60" : ""}`}
           >
-            <input
-              type="checkbox"
-              className="sr-only"
-              disabled={!selectedVehicleId}
-              checked={deliveryRound === value}
-              onChange={() => onSelectRound(value)}
-            />
             R{value}
-          </label>
+          </button>
         ))}
       </div>
 
@@ -86,22 +83,19 @@ export function TruckFocusBar({
           );
 
           return (
-            <label
+            <button
               key={vehicle.id}
-              className={`flex cursor-pointer flex-col gap-1.5 rounded-xl border p-3 transition ${
+              type="button"
+              aria-pressed={selected}
+              onClick={() =>
+                onSelectVehicle(selected ? "" : String(vehicle.id))
+              }
+              className={`flex w-full flex-col gap-1.5 rounded-xl border-2 p-3 text-left transition ${
                 selected
                   ? "border-blue-600 bg-blue-600 text-white shadow-md"
                   : "border-zinc-200 bg-white hover:border-blue-300 hover:shadow-sm"
               }`}
             >
-              <input
-                type="checkbox"
-                className="sr-only"
-                checked={selected}
-                onChange={() =>
-                  onSelectVehicle(selected ? "" : String(vehicle.id))
-                }
-              />
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p
@@ -152,7 +146,7 @@ export function TruckFocusBar({
                   {vehicle.assignedDriver.name}
                 </p>
               )}
-            </label>
+            </button>
           );
         })}
       </div>

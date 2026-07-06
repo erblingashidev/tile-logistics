@@ -854,24 +854,21 @@ export default function OrdersPage() {
                   ["unassigned", "Available only"],
                 ] as const
               ).map(([value, label]) => (
-                <label
+                <button
                   key={value}
-                  className={`inline-flex cursor-pointer items-center rounded-md border px-2.5 py-1 text-xs font-medium transition ${
+                  type="button"
+                  aria-pressed={filters.vehicleScope === value}
+                  onClick={() =>
+                    setFilters({ ...filters, vehicleScope: value })
+                  }
+                  className={`inline-flex items-center rounded-md border-2 px-2.5 py-1 text-xs font-medium transition ${
                     filters.vehicleScope === value
                       ? "border-blue-600 bg-blue-600 text-white"
                       : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400"
                   }`}
                 >
-                  <input
-                    type="checkbox"
-                    className="sr-only"
-                    checked={filters.vehicleScope === value}
-                    onChange={() =>
-                      setFilters({ ...filters, vehicleScope: value })
-                    }
-                  />
                   {label}
-                </label>
+                </button>
               ))}
             </div>
           )}
@@ -1594,7 +1591,7 @@ export default function OrdersPage() {
             )}
           </div>
         </div>
-        <div className="max-h-[min(72vh,880px)] space-y-4 overflow-y-auto bg-zinc-50/40 p-3 sm:p-4">
+        <div className="max-h-[min(72vh,880px)] space-y-4 overflow-y-auto overscroll-y-contain bg-zinc-50/40 p-3 sm:p-4">
           {loading && orders.length === 0 ? (
             <LoadingState title="Loading orders…" />
           ) : orders.length === 0 ? (
