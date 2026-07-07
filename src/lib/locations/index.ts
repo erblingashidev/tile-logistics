@@ -96,6 +96,95 @@ export function resolveLocation(text: string): LocationEntry | null {
   return partial ?? null;
 }
 
+function normalizePlaceName(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function findCityCenter(city: string): LocationEntry | undefined {
+  const target = normalizePlaceName(city);
+  return (
+    KOSOVO_LOCATIONS.find(
+      (l) =>
+        normalizePlaceName(l.city) === target &&
+        (l.type === "city" || l.type === "warehouse")
+    ) ?? KOSOVO_LOCATIONS.find((l) => normalizePlaceName(l.city) === target)
+  );
+}
+
+function findRegionCenter(region: string): LocationEntry | undefined {
+  const target = normalizePlaceName(region);
+  return (
+    KOSOVO_LOCATIONS.find(
+      (l) =>
+        normalizePlaceName(l.region) === target &&
+        (l.type === "city" || l.type === "warehouse")
+    ) ?? KOSOVO_LOCATIONS.find((l) => normalizePlaceName(l.region) === target)
+  );
+}
+
+export function isValidGeoCoord(
+  lat: number | null | undefined,
+  lng: number | null | undefined
+): boolean {
+  if (lat == null || lng == null) return false;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  if (lat === 0 && lng === 0) return false;
+  return lat >= 41.5 && lat <= 43.5 && lng >= 19.5 && lng <= 22.5;
+}
+
+/** Best-effort coordinates for routing when order lat/lng are missing. */
+export function resolveOrderGeo(input: {
+  location?: string;
+  locationId?: string | null;
+  city?: string | null;
+  region?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+}): { lat: number; lng: number; city: string; region: string } | null {
+  if (isValidGeoCoord(input.lat, input.lng)) {
+    return {
+      lat: input.lat!,
+      lng: input.lng!,
+      city: input.city?.trim() ?? "",
+      region: input.region?.trim() ?? input.city?.trim() ?? "",
+    };
+  }
+
+  if (input.locationId) {
+    const loc = getLocationById(input.locationId);
+    if (loc) {
+      return { lat: loc.lat, lng: loc.lng, city: loc.city, region: loc.region };
+    }
+  }
+
+  if (input.location?.trim()) {
+    const loc = resolveLocation(input.location);
+    if (loc) {
+      return { lat: loc.lat, lng: loc.lng, city: loc.city, region: loc.region };
+    }
+  }
+
+  if (input.city?.trim()) {
+    const loc = resolveLocation(input.city) ?? findCityCenter(input.city);
+    if (loc) {
+      return { lat: loc.lat, lng: loc.lng, city: loc.city, region: loc.region };
+    }
+  }
+
+  if (input.region?.trim()) {
+    const loc = resolveLocation(input.region) ?? findRegionCenter(input.region);
+    if (loc) {
+      return { lat: loc.lat, lng: loc.lng, city: loc.city, region: loc.region };
+    }
+  }
+
+  return null;
+}
+
 /** Distance in km (Haversine) */
 export function distanceKm(
   a: { lat: number; lng: number },

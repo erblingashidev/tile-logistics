@@ -1,4 +1,4 @@
-import { distanceFromWarehouse, distanceKm } from "@/lib/locations";
+import { distanceFromWarehouse, distanceKm, resolveOrderGeo } from "@/lib/locations";
 import { groupSpreadKm } from "@/lib/dispatch/route-cluster-utils";
 import { checkVehicleCapacity } from "@/lib/calculations";
 import { MAX_DELIVERY_ROUNDS } from "@/lib/constants";
@@ -43,15 +43,26 @@ export interface UrgentPlacementOption {
 }
 
 function geoStop(order: {
+  location?: string;
+  locationId?: string | null;
+  city?: string | null;
   lat?: number | null;
   lng?: number | null;
   region?: string | null;
 }) {
-  if (order.lat == null || order.lng == null) return null;
-  return {
+  const geo = resolveOrderGeo({
+    location: order.location,
+    locationId: order.locationId,
+    city: order.city,
+    region: order.region,
     lat: order.lat,
     lng: order.lng,
-    region: order.region ?? undefined,
+  });
+  if (!geo) return null;
+  return {
+    lat: geo.lat,
+    lng: geo.lng,
+    region: geo.region ?? order.region ?? undefined,
   };
 }
 

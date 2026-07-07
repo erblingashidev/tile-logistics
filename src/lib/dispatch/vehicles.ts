@@ -1,4 +1,4 @@
-import { distanceFromWarehouse } from "@/lib/locations";
+import { distanceFromWarehouse, distanceKm } from "@/lib/locations";
 
 export interface DispatchVehicle {
   id: number;
@@ -175,17 +175,7 @@ export function estimateRouteCostKm(
 
   let totalKm = distanceFromWarehouse(stops[0]);
   for (let i = 1; i < stops.length; i++) {
-    const a = stops[i - 1];
-    const b = stops[i];
-    const R = 6371;
-    const dLat = ((b.lat - a.lat) * Math.PI) / 180;
-    const dLng = ((b.lng - a.lng) * Math.PI) / 180;
-    const x =
-      Math.sin(dLat / 2) ** 2 +
-      Math.cos((a.lat * Math.PI) / 180) *
-        Math.cos((b.lat * Math.PI) / 180) *
-        Math.sin(dLng / 2) ** 2;
-    totalKm += R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+    totalKm += distanceKm(stops[i - 1], stops[i]);
   }
   totalKm += distanceFromWarehouse(stops[stops.length - 1]);
 

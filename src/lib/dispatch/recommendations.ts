@@ -19,6 +19,7 @@ import { getDriverForVehicle } from "@/lib/services/employees";
 import { analyzeOrderCargo } from "@/lib/dispatch/large-tiles";
 import { isOrderReadyToShip } from "@/lib/delivery-schedule";
 import { isOrderUrgent } from "@/lib/order-priority";
+import { resolveOrderGeo } from "@/lib/locations";
 import { recommendUrgentPlacement } from "@/lib/dispatch/urgent-routing";
 import { pickerOnTruckRound } from "@/lib/dispatch/picker-resolution";
 import {
@@ -171,17 +172,25 @@ async function resolvePicker(
 function toStop(
   order: Awaited<ReturnType<typeof listOrders>>[number]
 ): DispatchOrderStop | null {
-  if (!order.lat || !order.lng) return null;
+  const geo = resolveOrderGeo({
+    location: order.location,
+    locationId: order.locationId,
+    city: order.city,
+    region: order.region,
+    lat: order.lat,
+    lng: order.lng,
+  });
+  if (!geo) return null;
   const cargo = analyzeOrderCargo(order.items ?? []);
   return {
     id: order.id,
     invoiceNumber: order.invoiceNumber,
     customerName: order.customerName,
     location: order.location,
-    city: order.city ?? order.region ?? "",
-    region: order.region ?? order.city ?? "",
-    lat: order.lat,
-    lng: order.lng,
+    city: order.city ?? geo.city,
+    region: order.region ?? geo.region,
+    lat: geo.lat,
+    lng: geo.lng,
     totalPallets: order.totalPallets,
     totalWeightKg: order.totalWeightKg,
     totalM2: order.totalM2,

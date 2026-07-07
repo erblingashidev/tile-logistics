@@ -1,8 +1,7 @@
 import {
   distanceFromWarehouse,
   distanceKm,
-  resolveLocation,
-  type LocationEntry,
+  resolveOrderGeo,
 } from "@/lib/locations";
 import {
   clusterStopsByRegionThenProximity,
@@ -62,6 +61,7 @@ function toRouteOrder(order: {
   invoiceNumber: string;
   customerName: string;
   location: string;
+  locationId?: string | null;
   region?: string | null;
   city?: string | null;
   lat?: number | null;
@@ -71,32 +71,26 @@ function toRouteOrder(order: {
   totalM2: number;
   assignment?: unknown;
 }): RouteOrder | null {
-  const loc =
-    order.lat && order.lng
-      ? ({
-          name: order.location,
-          city: order.city ?? "",
-          region:
-            order.region ??
-            resolveLocation(order.location)?.region ??
-            order.city ??
-            "",
-          lat: order.lat,
-          lng: order.lng,
-        } as LocationEntry)
-      : resolveLocation(order.location);
+  const geo = resolveOrderGeo({
+    location: order.location,
+    locationId: order.locationId,
+    city: order.city,
+    region: order.region,
+    lat: order.lat,
+    lng: order.lng,
+  });
 
-  if (!loc && !order.region) return null;
+  if (!geo) return null;
 
   return {
     id: order.id,
     invoiceNumber: order.invoiceNumber,
     customerName: order.customerName,
     location: order.location,
-    city: order.city ?? loc?.city ?? "",
-    region: order.region ?? loc?.region ?? order.city ?? "",
-    lat: order.lat ?? loc?.lat ?? 0,
-    lng: order.lng ?? loc?.lng ?? 0,
+    city: order.city ?? geo.city,
+    region: order.region ?? geo.region,
+    lat: geo.lat,
+    lng: geo.lng,
     totalPallets: order.totalPallets,
     totalWeightKg: order.totalWeightKg,
     totalM2: order.totalM2,
