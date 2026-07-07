@@ -101,6 +101,22 @@ async function ensureAdminsTable(client: Client) {
   await client.execute(
     "CREATE INDEX IF NOT EXISTS idx_admins_active ON admins(is_active)"
   );
+  await addColumnIfMissing(
+    client,
+    "admins",
+    "employee_id",
+    "employee_id INTEGER REFERENCES employees(id)",
+    await tableColumns(client, "admins")
+  );
+
+  const empColsForTitle = await tableColumns(client, "employees");
+  await addColumnIfMissing(
+    client,
+    "employees",
+    "title",
+    "title TEXT",
+    empColsForTitle
+  );
 
   const count = await client.execute("SELECT COUNT(*) AS c FROM admins");
   const rowCount = Number(count.rows[0]?.c ?? count.rows[0]?.[0] ?? 0);
@@ -647,6 +663,10 @@ export async function getDb() {
           await runMigrations(clientInstance);
         }
         dbInstance = drizzle(clientInstance, { schema });
+        const { backfillAdminEmployeeLinks } = await import(
+          "@/lib/services/admins"
+        );
+        await backfillAdminEmployeeLinks();
         if (shouldRunStartupBackfill()) {
           const { backfillOrderSalesOwnership } = await import(
             "@/lib/services/sales-portal"

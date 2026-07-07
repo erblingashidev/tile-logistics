@@ -11,7 +11,10 @@ import {
   EmptyState,
   Input,
   LoadingState,
+  Select,
 } from "@/components/ui";
+import type { EmployeeRole } from "@/lib/constants";
+import { ADMIN_EMPLOYEE_ROLE_OPTIONS } from "@/lib/admin-roles";
 
 interface AdminUser {
   id: number;
@@ -19,6 +22,7 @@ interface AdminUser {
   username: string;
   title: string | null;
   email: string | null;
+  employeeRole: EmployeeRole | null;
   isActive: boolean;
   createdAt: string;
   lastLoginAt: string | null;
@@ -30,6 +34,7 @@ const emptyForm = {
   password: "",
   title: "",
   email: "",
+  employeeRole: "warehouse_admin" as EmployeeRole,
 };
 
 function formatDate(value?: string | null) {
@@ -114,8 +119,8 @@ export default function AdminsPage() {
     >
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-zinc-600">
-          Add your general manager, CEO, warehouse lead, or other trusted staff
-          who need the same admin access as you.
+          Each admin is also added to Employees under Management with the role
+          you pick here (CEO, General Manager, Warehouse Lead).
         </p>
         <Button onClick={() => setShowForm((value) => !value)}>
           {showForm ? "Cancel" : "Add admin"}
@@ -137,9 +142,30 @@ export default function AdminsPage() {
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               required
             />
+            <Select
+              label="Role in Employees"
+              value={form.employeeRole}
+              onChange={(e) => {
+                const employeeRole = e.target.value as EmployeeRole;
+                const option = ADMIN_EMPLOYEE_ROLE_OPTIONS.find(
+                  (item) => item.role === employeeRole
+                );
+                setForm((f) => ({
+                  ...f,
+                  employeeRole,
+                  title: f.title || option?.defaultTitle || f.title,
+                }));
+              }}
+            >
+              {ADMIN_EMPLOYEE_ROLE_OPTIONS.map((option) => (
+                <option key={option.role} value={option.role}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
             <Input
-              label="Title / role"
-              hint="e.g. General Manager, CEO, Warehouse Lead"
+              label="Title shown on profile"
+              hint="Appears under their name on the Employees page"
               value={form.title}
               onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
             />
@@ -192,6 +218,16 @@ export default function AdminsPage() {
                   </div>
                   {admin.title ? (
                     <p className="mt-1 text-sm text-zinc-600">{admin.title}</p>
+                  ) : null}
+                  {admin.employeeRole ? (
+                    <p className="mt-1 text-xs text-zinc-500">
+                      Employees role:{" "}
+                      {
+                        ADMIN_EMPLOYEE_ROLE_OPTIONS.find(
+                          (option) => option.role === admin.employeeRole
+                        )?.label
+                      }
+                    </p>
                   ) : null}
                   <p className="mt-2 text-sm text-zinc-500">
                     @{admin.username}

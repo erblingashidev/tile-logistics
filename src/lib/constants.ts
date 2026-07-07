@@ -36,6 +36,12 @@ export type EmployeeStatus = (typeof EMPLOYEE_STATUSES)[number];
 /** Staff groups shown on the Employees page. */
 export const EMPLOYEE_CATEGORIES = [
   {
+    id: "management",
+    label: "Management",
+    description: "Leadership — CEO, general manager, warehouse lead",
+    roles: ["ceo", "general_manager", "warehouse_admin"] as const,
+  },
+  {
     id: "showroom",
     label: "Showroom",
     description: "Showroom floor — customer-facing",
@@ -52,7 +58,6 @@ export const EMPLOYEE_CATEGORIES = [
     label: "Warehouse",
     description: "Depot — loading, trucks, stock (Albanian mobile app)",
     roles: [
-      "warehouse_admin",
       "warehouse_reporter",
       "group_leader",
       "picker",
@@ -72,10 +77,20 @@ export const EMPLOYEE_CATEGORIES = [
 export type EmployeeCategoryId = (typeof EMPLOYEE_CATEGORIES)[number]["id"];
 
 export const EMPLOYEE_ROLES = [
+  { id: "ceo", label: "CEO", category: "management" as const },
+  {
+    id: "general_manager",
+    label: "General Manager",
+    category: "management" as const,
+  },
   { id: "showroom_picker", label: "Showroom picker", category: "showroom" as const },
   { id: "sales_admin", label: "Sales admin (office)", category: "sales" as const },
   { id: "sales_agent", label: "Sales agent (field)", category: "sales" as const },
-  { id: "warehouse_admin", label: "Warehouse admin", category: "warehouse" as const },
+  {
+    id: "warehouse_admin",
+    label: "Warehouse lead / admin",
+    category: "management" as const,
+  },
   {
     id: "warehouse_reporter",
     label: "Warehouse reporter (whole depot)",

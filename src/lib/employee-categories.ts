@@ -14,6 +14,12 @@ export const WAREHOUSE_ROLES: EmployeeRole[] = [
   "maintainer",
 ];
 
+export const MANAGEMENT_ROLES: EmployeeRole[] = [
+  "ceo",
+  "general_manager",
+  "warehouse_admin",
+];
+
 export const SALES_ROLES: EmployeeRole[] = [
   "sales_admin",
   "sales_agent",
@@ -46,6 +52,7 @@ export const WAREHOUSE_WEEKLY_REPORT_ROLES: EmployeeRole[] = [
 ];
 
 const CATEGORY_ORDER: EmployeeCategoryId[] = [
+  "management",
   "warehouse",
   "sales",
   "showroom",

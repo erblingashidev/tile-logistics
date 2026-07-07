@@ -3,6 +3,7 @@ import { getDb } from "@/lib/db";
 import { dbAll, dbOne } from "@/lib/db/query";
 import {
   assignments,
+  admins,
   employees,
   orderEmployeeAssignments,
   orders,
@@ -34,6 +35,7 @@ export interface EmployeePayload {
   name: string;
   status?: string;
   roles: EmployeeRole[];
+  title?: string | null;
   assignedVehicleId?: number | null;
   username?: string | null;
   password?: string | null;
@@ -65,6 +67,17 @@ async function assertUsernameAvailable(username: string, excludeId?: number) {
   );
   if (existing && existing.id !== excludeId) {
     throw new EmployeeCredentialError("That username is already in use");
+  }
+
+  const { admins: adminsTable } = await import("@/lib/db/schema");
+  const existingAdmin = await dbOne(
+    db
+      .select({ id: adminsTable.id })
+      .from(adminsTable)
+      .where(eq(adminsTable.username, normalized))
+  );
+  if (existingAdmin) {
+    throw new EmployeeCredentialError("That username is already used by an admin");
   }
 }
 
@@ -137,10 +150,17 @@ async function enrichEmployeeRow(
     );
     assignedVehicle = v ?? null;
   }
+  const linkedAdmin = await dbOne(
+    db
+      .select({ id: admins.id })
+      .from(admins)
+      .where(and(eq(admins.employeeId, row.id), eq(admins.isActive, 1)))
+  );
   return {
     id: row.id,
     name: row.name,
     status: row.status,
+    title: row.title ?? null,
     notes: row.notes,
     assignedVehicleId: row.assignedVehicleId,
     createdAt: row.createdAt,
@@ -150,6 +170,7 @@ async function enrichEmployeeRow(
     assignments,
     warehouseZones: await getEmployeeWarehouseZones(row.id),
     hasLogin: Boolean(row.username && row.passwordHash),
+    hasDashboardAdmin: Boolean(linkedAdmin),
     username: row.username ?? null,
   };
 }
@@ -302,6 +323,7 @@ export async function createEmployee(payload: EmployeePayload) {
         name: payload.name,
         status: payload.status ?? "available",
         roles: serializeEmployeeRoles(payload.roles),
+        title: payload.title?.trim() || null,
         username,
         passwordHash: payload.password
           ? hashPassword(payload.password.trim())
@@ -418,6 +440,7 @@ export async function updateEmployee(id: number, payload: Partial<EmployeePayloa
     name: string;
     status: string;
     roles: string;
+    title: string | null;
     notes: string | null;
     updatedAt: string;
     username?: string | null;
@@ -426,6 +449,10 @@ export async function updateEmployee(id: number, payload: Partial<EmployeePayloa
     name: payload.name ?? existing.name,
     status: nextStatus,
     roles: serializeEmployeeRoles(nextRoles),
+    title:
+      payload.title !== undefined
+        ? payload.title?.trim() || null
+        : (existing.title ?? null),
     notes: payload.notes ?? existing.notes,
     updatedAt: now,
   };

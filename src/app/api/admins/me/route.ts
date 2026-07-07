@@ -8,6 +8,7 @@ import {
   updateAdmin,
   type AdminPayload,
 } from "@/lib/services/admins";
+import { inferEmployeeRoleForAdmin } from "@/lib/admin-roles";
 
 export const runtime = "nodejs";
 
@@ -55,7 +56,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   const body = (await request.json()) as Partial<
-    Pick<AdminPayload, "name" | "username" | "title" | "email" | "isActive">
+    Pick<AdminPayload, "name" | "username" | "title" | "email" | "isActive" | "employeeRole">
   >;
 
   if (body.isActive !== undefined) {
@@ -66,7 +67,10 @@ export async function PATCH(request: NextRequest) {
   }
 
   try {
-    const admin = await updateAdmin(adminId, body, {
+    const admin = await updateAdmin(adminId, {
+      ...body,
+      employeeRole: inferEmployeeRoleForAdmin(body.title, body.employeeRole),
+    }, {
       actorAdminId: adminId,
     });
     if (!admin) {

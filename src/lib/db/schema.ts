@@ -99,6 +99,7 @@ export const employees = sqliteTable("employees", {
   managerEmployeeId: integer("manager_employee_id"),
   username: text("username"),
   passwordHash: text("password_hash"),
+  title: text("title"),
   notes: text("notes"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
@@ -112,6 +113,9 @@ export const admins = sqliteTable("admins", {
   title: text("title"),
   email: text("email"),
   isActive: integer("is_active").notNull().default(1),
+  employeeId: integer("employee_id").references(() => employees.id, {
+    onDelete: "set null",
+  }),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
   lastLoginAt: text("last_login_at"),

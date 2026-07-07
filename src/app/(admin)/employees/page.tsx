@@ -27,10 +27,12 @@ interface EmployeeAssignment {
 interface Employee {
   id: number;
   name: string;
+  title?: string | null;
   status: string;
   roles: EmployeeRole[];
   username?: string | null;
   hasLogin?: boolean;
+  hasDashboardAdmin?: boolean;
   notes?: string | null;
   warehouseZones?: string[];
   assignedVehicle?: {
@@ -458,6 +460,9 @@ export default function EmployeesPage() {
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <p className="font-medium text-zinc-900">{e.name}</p>
+                          {e.title && (
+                            <p className="text-sm text-zinc-600">{e.title}</p>
+                          )}
                           {e.username && (
                             <p className="text-xs text-zinc-500">@{e.username}</p>
                           )}
@@ -465,6 +470,9 @@ export default function EmployeesPage() {
                             <Badge tone={statusTone[e.status] ?? "slate"}>
                               {e.status.replace(/_/g, " ")}
                             </Badge>
+                            {e.hasDashboardAdmin ? (
+                              <Badge tone="blue">Dashboard admin</Badge>
+                            ) : null}
                             {e.hasLogin ? (
                               <Badge tone="green">Portal login</Badge>
                             ) : (

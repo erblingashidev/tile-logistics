@@ -95,6 +95,7 @@ CREATE TABLE IF NOT EXISTS employees (
   assigned_vehicle_id INTEGER,
   username TEXT,
   password_hash TEXT,
+  title TEXT,
   notes TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -360,6 +361,7 @@ CREATE TABLE IF NOT EXISTS admins (
   title TEXT,
   email TEXT,
   is_active INTEGER NOT NULL DEFAULT 1,
+  employee_id INTEGER REFERENCES employees(id),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   last_login_at TEXT
