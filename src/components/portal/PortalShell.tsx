@@ -16,6 +16,8 @@ interface PortalShellProps {
   showReports?: boolean;
   showChangePassword?: boolean;
   onLogout: () => void;
+  onRefresh?: () => void | Promise<void>;
+  refreshing?: boolean;
   children: React.ReactNode;
 }
 
@@ -43,6 +45,8 @@ export function PortalShell({
   showReports = false,
   showChangePassword = true,
   onLogout,
+  onRefresh,
+  refreshing = false,
   children,
 }: PortalShellProps) {
   const navItems = [
@@ -102,20 +106,48 @@ export function PortalShell({
         )}
       </main>
 
-      {navItems.length > 1 && (
+      {(navItems.length > 1 || onRefresh) && (
         <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-zinc-200/80 bg-white/95 px-3 py-2 backdrop-blur-md">
-          <div className="mx-auto flex max-w-lg gap-1">
-            {navItems.map((item) => (
-              <Link
-                key={item.id}
-                href={item.href}
-                className={`flex-1 rounded-xl px-2 py-2.5 text-center text-xs font-semibold transition ${navClass(
-                  activeNav === item.id
-                )}`}
+          <div className="mx-auto flex max-w-lg items-center gap-1">
+            {navItems.length > 0 && (
+              <div className="flex min-w-0 flex-1 gap-1">
+                {navItems.map((item) => (
+                  <Link
+                    key={item.id}
+                    href={item.href}
+                    className={`min-w-0 flex-1 rounded-xl px-2 py-2.5 text-center text-xs font-semibold transition ${navClass(
+                      activeNav === item.id
+                    )}`}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+            )}
+            {onRefresh && (
+              <button
+                type="button"
+                onClick={() => void onRefresh()}
+                disabled={refreshing}
+                aria-label={sq.refresh}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-60 md:hidden"
               >
-                {item.label}
-              </Link>
-            ))}
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
+                  aria-hidden
+                >
+                  <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+                  <path d="M21 3v6h-6" />
+                </svg>
+                {sq.refresh}
+              </button>
+            )}
           </div>
         </nav>
       )}

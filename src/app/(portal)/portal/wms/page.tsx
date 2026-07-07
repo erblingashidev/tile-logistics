@@ -44,6 +44,7 @@ export default function PortalWmsPage() {
   const [form, setForm] = useState({ ean: "", quantityM2: "", locationId: "" });
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     const [wmsRes, meRes] = await Promise.all([
@@ -86,6 +87,15 @@ export default function PortalWmsPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  async function refreshNow() {
+    setRefreshing(true);
+    try {
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   async function startSector(zone: string) {
     setError("");
@@ -174,6 +184,8 @@ export default function PortalWmsPage() {
       showWms
       showReports={roles.some((r) => WAREHOUSE_REPORT_ROLES.includes(r))}
       onLogout={logout}
+      onRefresh={refreshNow}
+      refreshing={refreshing}
     >
       {error && <Alert tone="error">{error}</Alert>}
       {success && <Alert tone="info">{success}</Alert>}

@@ -82,6 +82,7 @@ export default function PortalReportsPage() {
   const [editReason, setEditReason] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/portal/warehouse-reports");
@@ -103,6 +104,15 @@ export default function PortalReportsPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  async function refreshNow() {
+    setRefreshing(true);
+    try {
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   function toggleLeader(id: number) {
     setTaggedLeaderIds((prev) =>
@@ -224,6 +234,8 @@ export default function PortalReportsPage() {
       }
       showReports
       onLogout={logout}
+      onRefresh={refreshNow}
+      refreshing={refreshing}
     >
       {error && <Alert tone="error">{error}</Alert>}
       {success && <Alert tone="info">{success}</Alert>}

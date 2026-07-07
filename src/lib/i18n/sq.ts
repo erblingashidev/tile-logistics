@@ -2,6 +2,7 @@
 
 export const sq = {
   appName: "AGIMI Logjistikë",
+  refresh: "Rifresko",
   logout: "Dil",
   depotLink: "Depo",
   myStatus: "Statusi im",

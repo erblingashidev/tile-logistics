@@ -142,6 +142,7 @@ export default function PortalPage() {
   const [success, setSuccess] = useState("");
   const [busyOrderId, setBusyOrderId] = useState<number | null>(null);
   const [busyArriving, setBusyArriving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [skipNotes, setSkipNotes] = useState<Record<number, string>>({});
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
@@ -164,6 +165,15 @@ export default function PortalPage() {
     const interval = setInterval(load, 15000);
     return () => clearInterval(interval);
   }, [load]);
+
+  async function refreshNow() {
+    setRefreshing(true);
+    try {
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   async function setStatus(status: string) {
     setError("");
@@ -337,6 +347,8 @@ export default function PortalPage() {
       showWms={showWmsLink}
       showReports={showReportsLink}
       onLogout={logout}
+      onRefresh={refreshNow}
+      refreshing={refreshing}
     >
       {error && <Alert tone="error">{error}</Alert>}
       {success && <Alert tone="info">{success}</Alert>}
