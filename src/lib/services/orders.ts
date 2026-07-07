@@ -785,7 +785,7 @@ export async function assignOrderToVehicle(
 ) {
   let round = deliveryRound;
   let roundReason: string | undefined;
-  if (!options?.explicitRound) {
+  if (options?.explicitRound === false) {
     const resolved = await resolveAssignmentDeliveryRound(vehicleId);
     round = resolved.round;
     roundReason = resolved.reason;
@@ -1260,7 +1260,7 @@ export async function assignOrderBundle(input: {
     input.deliveryRound,
     input.ignoreWeightWarning ?? false,
     input.ignoreCraneRule ?? false,
-    { explicitRound: input.explicitDeliveryRound ?? false }
+    { explicitRound: input.explicitDeliveryRound === false ? false : true }
   );
   if (!truck.ok) return truck;
 

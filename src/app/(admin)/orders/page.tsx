@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { LocationPicker } from "@/components/LocationPicker";
@@ -246,6 +246,7 @@ export default function OrdersPage() {
   const [warning, setWarning] = useState("");
   const [truckWorkspace, setTruckWorkspace] =
     useState<TruckWorkspaceSnapshot | null>(null);
+  const focusedVehicleRef = useRef("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -287,8 +288,12 @@ export default function OrdersPage() {
   useEffect(() => {
     if (!filters.vehicleId) {
       setTruckWorkspace(null);
+      focusedVehicleRef.current = "";
       return;
     }
+    const vehicleChanged = focusedVehicleRef.current !== filters.vehicleId;
+    focusedVehicleRef.current = filters.vehicleId;
+
     let cancelled = false;
     fetch(`/api/vehicles/${filters.vehicleId}/truck-workspace`, {
       cache: "no-store",
@@ -297,10 +302,10 @@ export default function OrdersPage() {
       .then((data: TruckWorkspaceSnapshot & { error?: string }) => {
         if (cancelled || data.error) return;
         setTruckWorkspace(data);
-        const nextRound = String(data.suggestedRound);
-        setFilters((f) =>
-          f.deliveryRound === nextRound ? f : { ...f, deliveryRound: nextRound }
-        );
+        if (vehicleChanged) {
+          const nextRound = String(data.suggestedRound);
+          setFilters((f) => ({ ...f, deliveryRound: nextRound }));
+        }
       })
       .catch(() => {});
     return () => {

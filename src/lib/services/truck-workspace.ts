@@ -355,6 +355,43 @@ export async function clearVehicleReturningIfPrepping(vehicleId: number) {
 export async function resolveAssignmentDeliveryRound(
   vehicleId: number
 ): Promise<{ round: number; reason: string }> {
+  const db = await getDb();
+  const vehicleRow = await dbOne(
+    db
+      .select({ status: vehicles.status })
+      .from(vehicles)
+      .where(eq(vehicles.id, vehicleId))
+  );
+
+  if (vehicleRow?.status === "returning") {
+    for (const round of DELIVERY_ROUNDS) {
+      const truck = await getTruckLoadStatus(vehicleId, round);
+      if (truck.totalOrders > 0 && !truck.hasFullyDeparted) {
+        return {
+          round,
+          reason: `Truck returning — continue loading round ${round} at the warehouse.`,
+        };
+      }
+    }
+
+    let finishedRound = 0;
+    for (const round of DELIVERY_ROUNDS) {
+      const truck = await getTruckLoadStatus(vehicleId, round);
+      if (truck.totalOrders === 0 || !truck.hasFullyDeparted) continue;
+      if (!(await hasUndeliveredOrdersOnRound(vehicleId, round))) {
+        finishedRound = Math.max(finishedRound, round);
+      }
+    }
+
+    if (finishedRound > 0) {
+      const next = Math.min(finishedRound + 1, MAX_DELIVERY_ROUNDS);
+      return {
+        round: next,
+        reason: `Truck returning from round ${finishedRound} — assign to round ${next} for the next trip.`,
+      };
+    }
+  }
+
   let highestDepartedOnRoad = 0;
   let lowestWarehouseRound = 0;
 

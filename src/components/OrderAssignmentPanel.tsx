@@ -202,7 +202,11 @@ export function OrderAssignmentPanel({
     if (data.weightWarning) onWarning(data.weightWarning);
     if (data.craneWarning) onWarning(data.craneWarning);
     if (data.scheduleWarning) onWarning(data.scheduleWarning);
-    if (data.deliveryRoundReason) {
+    if (data.deliveryRoundReason && data.deliveryRound !== Number(active.round)) {
+      onWarning(
+        `Assigned to round ${data.deliveryRound} (auto-adjusted). ${data.deliveryRoundReason}`
+      );
+    } else if (data.deliveryRoundReason) {
       onWarning(
         data.deliveryRound
           ? `Assigned to round ${data.deliveryRound}. ${data.deliveryRoundReason}`
@@ -360,8 +364,8 @@ export function OrderAssignmentPanel({
           Delivery round
         </p>
         <p className="mb-2 text-[11px] text-zinc-500">
-          Round is chosen automatically from truck status (on the road → next
-          round).
+          Suggested round is shown above from truck status. You can override by
+          picking a different round — your choice is kept when assigning.
         </p>
         <div className="flex flex-wrap gap-1.5">
           {deliveryRoundSelectOptions().map((option) => (
