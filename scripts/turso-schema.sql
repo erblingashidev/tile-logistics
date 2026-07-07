@@ -335,3 +335,19 @@ CREATE INDEX IF NOT EXISTS idx_vehicle_maintenance_vehicle
   ON vehicle_maintenance_records(vehicle_id);
 CREATE INDEX IF NOT EXISTS idx_vehicle_maintenance_next_due
   ON vehicle_maintenance_records(next_due_at);
+
+CREATE TABLE IF NOT EXISTS employee_notifications (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+  type TEXT NOT NULL,
+  vehicle_id INTEGER REFERENCES vehicles(id) ON DELETE CASCADE,
+  delivery_round INTEGER,
+  message TEXT NOT NULL,
+  read_at TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_employee_notifications_employee
+  ON employee_notifications(employee_id);
+CREATE INDEX IF NOT EXISTS idx_employee_notifications_unread
+  ON employee_notifications(employee_id, read_at);

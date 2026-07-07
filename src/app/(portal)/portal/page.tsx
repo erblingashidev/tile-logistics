@@ -92,6 +92,16 @@ interface PortalEmployee {
   name: string;
   roles: EmployeeRole[];
   status?: string;
+  vehicleStatus?: string | null;
+}
+
+interface PortalNotification {
+  id: number;
+  type: string;
+  vehicleId: number | null;
+  deliveryRound: number | null;
+  message: string;
+  createdAt: string;
 }
 
 const statusTone: Record<string, "green" | "amber" | "blue" | "red" | "slate"> =
@@ -100,6 +110,7 @@ const statusTone: Record<string, "green" | "amber" | "blue" | "red" | "slate"> =
     busy: "blue",
     on_break: "amber",
     off_duty: "slate",
+    returning: "amber",
     pending: "amber",
     assigned: "blue",
     in_transit: "blue",
@@ -123,9 +134,11 @@ export default function PortalPage() {
   const [myStatus, setMyStatus] = useState("available");
   const [orders, setOrders] = useState<PortalOrder[]>([]);
   const [truckGroups, setTruckGroups] = useState<TruckLoadGroup[]>([]);
+  const [notifications, setNotifications] = useState<PortalNotification[]>([]);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [busyOrderId, setBusyOrderId] = useState<number | null>(null);
+  const [busyArriving, setBusyArriving] = useState(false);
   const [skipNotes, setSkipNotes] = useState<Record<number, string>>({});
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
@@ -140,6 +153,7 @@ export default function PortalPage() {
     setMyStatus(data.employee?.status ?? "available");
     setOrders(data.orders ?? []);
     setTruckGroups(data.truckGroups ?? []);
+    setNotifications(data.notifications ?? []);
   }, [router]);
 
   useEffect(() => {
@@ -163,6 +177,29 @@ export default function PortalPage() {
     setMyStatus(status);
     setSuccess(sq.statusUpdated);
     setTimeout(() => setSuccess(""), 2000);
+  }
+
+  async function confirmTruckArrived() {
+    setError("");
+    setSuccess("");
+    setBusyArriving(true);
+    const res = await fetch("/api/portal/truck/arrived", { method: "POST" });
+    const data = await res.json();
+    setBusyArriving(false);
+    if (!res.ok) {
+      setError(data.error ?? sq.errors.status);
+      return;
+    }
+    setSuccess(sq.truckArrivedSuccess);
+    setTimeout(() => setSuccess(""), 4000);
+    load();
+  }
+
+  async function dismissNotification(notificationId: number) {
+    await fetch(`/api/portal/notifications/${notificationId}/read`, {
+      method: "POST",
+    });
+    setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
   }
 
   async function submitProof(
@@ -293,6 +330,35 @@ export default function PortalPage() {
     >
       {error && <Alert tone="error">{error}</Alert>}
       {success && <Alert tone="info">{success}</Alert>}
+
+      {notifications.map((notification) => (
+        <Alert key={notification.id} tone="warning">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <p className="text-sm leading-relaxed">{notification.message}</p>
+            <Button
+              type="button"
+              variant="secondary"
+              className="shrink-0"
+              onClick={() => dismissNotification(notification.id)}
+            >
+              {sq.notificationDismiss}
+            </Button>
+          </div>
+        </Alert>
+      ))}
+
+      {isDriver && employee?.vehicleStatus === "returning" && (
+        <PortalCard className="border-amber-200 bg-amber-50/80">
+          <p className="text-sm text-amber-950">{sq.allDeliveredReturn}</p>
+          <Button
+            className="mt-4 w-full"
+            disabled={busyArriving}
+            onClick={confirmTruckArrived}
+          >
+            {sq.truckArrivedButton}
+          </Button>
+        </PortalCard>
+      )}
 
       <PortalCard>
         <PortalSectionTitle className="mb-3 normal-case tracking-normal text-zinc-700">

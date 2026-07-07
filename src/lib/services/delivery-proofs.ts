@@ -13,6 +13,10 @@ import { logActivity } from "@/lib/logger";
 import { deliveryProofMessage } from "@/lib/log-messages";
 import { getUploadRoot, isNetlify } from "@/lib/config/env";
 import { getOrderStaff } from "@/lib/services/employees";
+import {
+  syncAfterOrderDelivered,
+  syncAfterTruckDeparture,
+} from "@/lib/services/truck-workspace";
 import { updateOrderStatus } from "@/lib/services/order-status";
 import {
   assertTruckReadyForDriverDeparture,
@@ -395,6 +399,8 @@ async function departTruckForOrder(
     );
   }
 
+  await syncAfterTruckDeparture(truck.vehicleId, driverEmployeeId);
+
   return {
     ok: true as const,
     truck: await getTruckLoadStatus(truck.vehicleId, truck.deliveryRound),
@@ -561,6 +567,10 @@ export async function submitDeliveryProof(input: {
     input.employeeId,
     hasStoredPhoto(storedPhoto)
   );
+
+  if (input.phase === "delivered") {
+    await syncAfterOrderDelivered(input.orderId);
+  }
 
   return {
     ok: true as const,

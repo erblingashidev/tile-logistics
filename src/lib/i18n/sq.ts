@@ -6,10 +6,16 @@ export const sq = {
   depotLink: "Depo",
   myStatus: "Statusi im",
   statusUpdated: "Statusi u përditësua",
+  allDeliveredReturn:
+    "Të gjitha porositë u dorëzuan — kthehu në depo. Kur arrin, konfirmo më poshtë.",
+  truckArrivedButton: "Kamioni mbërriti në depo",
+  truckArrivedSuccess: "Arritja u regjistrua — ngarkuesit u njoftuan.",
+  notificationDismiss: "E kuptova",
 
   status: {
     available: "I lirë",
     busy: "I zënë",
+    returning: "Kthim në depo",
     on_break: "Në pushim",
     off_duty: "Jashtë turnit",
   } as Record<string, string>,

@@ -1,8 +1,12 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui";
 import { deliveryRoundSelectOptions } from "@/lib/delivery-rounds";
+import {
+  TruckWorkspaceStatus,
+  type TruckWorkspaceSnapshot,
+} from "@/components/TruckWorkspaceStatus";
 
 interface VehicleOption {
   id: number;
@@ -101,7 +105,36 @@ export function OrderAssignmentPanel({
 }: OrderAssignmentPanelProps) {
   const [busy, setBusy] = useState(false);
   const [quickAssign, setQuickAssign] = useState(false);
+  const [truckWorkspace, setTruckWorkspace] =
+    useState<TruckWorkspaceSnapshot | null>(null);
   const round = Number(draft.round) || 1;
+  const activeVehicleId = draft.vehicleId || preferredVehicleId || "";
+
+  useEffect(() => {
+    if (!activeVehicleId) {
+      setTruckWorkspace(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/vehicles/${activeVehicleId}/truck-workspace`, {
+      cache: "no-store",
+    })
+      .then((res) => res.json())
+      .then((data: TruckWorkspaceSnapshot & { error?: string }) => {
+        if (cancelled || data.error) return;
+        setTruckWorkspace(data);
+        onDraftChange({
+          ...draft,
+          round: String(data.suggestedRound),
+          vehicleId: activeVehicleId,
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync round when truck focus changes
+  }, [activeVehicleId]);
 
   const sortedVehicles = [...vehicles].sort((a, b) => {
     if (preferredVehicleId) {
@@ -169,6 +202,13 @@ export function OrderAssignmentPanel({
     if (data.weightWarning) onWarning(data.weightWarning);
     if (data.craneWarning) onWarning(data.craneWarning);
     if (data.scheduleWarning) onWarning(data.scheduleWarning);
+    if (data.deliveryRoundReason) {
+      onWarning(
+        data.deliveryRound
+          ? `Assigned to round ${data.deliveryRound}. ${data.deliveryRoundReason}`
+          : data.deliveryRoundReason
+      );
+    }
     onSaved();
   }
 
@@ -311,9 +351,17 @@ export function OrderAssignmentPanel({
         </label>
       </div>
 
+      {truckWorkspace && activeVehicleId && (
+        <TruckWorkspaceStatus workspace={truckWorkspace} activeRound={round} compact />
+      )}
+
       <div>
         <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
           Delivery round
+        </p>
+        <p className="mb-2 text-[11px] text-zinc-500">
+          Round is chosen automatically from truck status (on the road → next
+          round).
         </p>
         <div className="flex flex-wrap gap-1.5">
           {deliveryRoundSelectOptions().map((option) => (

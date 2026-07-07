@@ -40,6 +40,10 @@ import {
   syncTruckDriverOnAssignments,
 } from "@/lib/services/load-coordination";
 import {
+  resolveAssignmentDeliveryRound,
+  clearVehicleReturningIfPrepping,
+} from "@/lib/services/truck-workspace";
+import {
   computeOrderDisplayStage,
   ORDER_STAGE_LABELS,
 } from "@/lib/order-display";
@@ -776,9 +780,18 @@ export async function assignOrderToVehicle(
   vehicleId: number,
   deliveryRound: number,
   ignoreWeightWarning = false,
-  ignoreCraneRule = false
+  ignoreCraneRule = false,
+  options?: { explicitRound?: boolean }
 ) {
-  if (deliveryRound < 1 || deliveryRound > MAX_DELIVERY_ROUNDS) {
+  let round = deliveryRound;
+  let roundReason: string | undefined;
+  if (!options?.explicitRound) {
+    const resolved = await resolveAssignmentDeliveryRound(vehicleId);
+    round = resolved.round;
+    roundReason = resolved.reason;
+  }
+
+  if (round < 1 || round > MAX_DELIVERY_ROUNDS) {
     return {
       ok: false,
       error: `Delivery round must be between 1 and ${MAX_DELIVERY_ROUNDS}`,
@@ -817,7 +830,7 @@ export async function assignOrderToVehicle(
         .where(
           and(
             eq(assignments.vehicleId, vehicleId),
-            eq(assignments.deliveryRound, deliveryRound),
+            eq(assignments.deliveryRound, round),
             sql`${assignments.orderId} != ${orderId}`
           )
         )
@@ -861,7 +874,7 @@ export async function assignOrderToVehicle(
           invoiceNumber: order.invoiceNumber,
           vehicleId,
           vehicleName: vehicle.name,
-          deliveryRound,
+          deliveryRound: round,
           reason: capacity.message,
         },
       }
@@ -898,7 +911,7 @@ export async function assignOrderToVehicle(
     orderId,
     vehicleId,
     driverEmployeeId,
-    deliveryRound,
+    deliveryRound: round,
     assignedAt: now,
   });
 
@@ -907,6 +920,8 @@ export async function assignOrderToVehicle(
   }
 
   await syncTruckDriverOnAssignments(vehicleId);
+
+  await clearVehicleReturningIfPrepping(vehicleId);
 
   const staff = await getOrderStaff(orderId);
 
@@ -923,7 +938,7 @@ export async function assignOrderToVehicle(
       order.invoiceNumber,
       vehicle.name,
       vehicle.plateNumber,
-      deliveryRound,
+      round,
       !capacity.weightOk && ignoreWeightWarning,
       staff.picker?.employeeName,
       staff.driver?.employeeName ?? linkedDriver?.name ?? null
@@ -935,7 +950,7 @@ export async function assignOrderToVehicle(
         vehicleId,
         vehicleName: vehicle.name,
         plateNumber: vehicle.plateNumber,
-        deliveryRound,
+        deliveryRound: round,
         capacity,
         weightWarningIgnored: !capacity.weightOk && ignoreWeightWarning,
         pickerName: staff.picker?.employeeName,
@@ -950,6 +965,8 @@ export async function assignOrderToVehicle(
     capacity,
     weightWarning: capacity.weightWarning,
     craneWarning: craneCheck.ok ? craneCheck.warning : undefined,
+    deliveryRound: round,
+    deliveryRoundReason: roundReason,
     order: await getOrder(orderId),
   };
 }
@@ -1235,15 +1252,19 @@ export async function assignOrderBundle(input: {
   autoAssignTeam?: boolean;
   ignoreWeightWarning?: boolean;
   ignoreCraneRule?: boolean;
+  explicitDeliveryRound?: boolean;
 }) {
   const truck = await assignOrderToVehicle(
     input.orderId,
     input.vehicleId,
     input.deliveryRound,
     input.ignoreWeightWarning ?? false,
-    input.ignoreCraneRule ?? false
+    input.ignoreCraneRule ?? false,
+    { explicitRound: input.explicitDeliveryRound ?? false }
   );
   if (!truck.ok) return truck;
+
+  const usedRound = truck.deliveryRound ?? input.deliveryRound;
 
   const pickerId = input.pickerId ?? null;
 
@@ -1278,7 +1299,7 @@ export async function assignOrderBundle(input: {
       details: {
         invoiceNumber: order.invoiceNumber,
         vehicleId: input.vehicleId,
-        deliveryRound: input.deliveryRound,
+        deliveryRound: usedRound,
         pickerId,
         summary: orderAssignBundleMessage(
           order.invoiceNumber,
@@ -1294,6 +1315,8 @@ export async function assignOrderBundle(input: {
     order: await getOrder(input.orderId),
     craneWarning: truck.craneWarning,
     scheduleWarning: scheduleAssignmentWarning(order),
+    deliveryRound: usedRound,
+    deliveryRoundReason: truck.deliveryRoundReason,
   };
 }
 
@@ -1765,7 +1788,7 @@ export async function transferOrdersToVehicle(input: {
       "transfer",
       "order",
       orderId,
-      `${order.invoiceNumber} transferred from ${fromVehicle} to ${vehicle.name} (${vehicle.plateNumber}) — round ${input.deliveryRound}.`,
+      `${order.invoiceNumber} transferred from ${fromVehicle} to ${vehicle.name} (${vehicle.plateNumber}) — round ${result.deliveryRound ?? input.deliveryRound}.`,
       {
         category: "deliveries",
         details: {
@@ -1773,7 +1796,7 @@ export async function transferOrdersToVehicle(input: {
           fromVehicle,
           vehicleId: input.vehicleId,
           vehicleName: vehicle.name,
-          deliveryRound: input.deliveryRound,
+          deliveryRound: result.deliveryRound ?? input.deliveryRound,
         },
       }
     );

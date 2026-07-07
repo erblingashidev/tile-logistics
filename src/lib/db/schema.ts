@@ -428,3 +428,18 @@ export const warehouseReportEditRequests = sqliteTable(
     reviewedAt: text("reviewed_at"),
   }
 );
+
+export const employeeNotifications = sqliteTable("employee_notifications", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  employeeId: integer("employee_id")
+    .notNull()
+    .references(() => employees.id, { onDelete: "cascade" }),
+  type: text("type").notNull(),
+  vehicleId: integer("vehicle_id").references(() => vehicles.id, {
+    onDelete: "cascade",
+  }),
+  deliveryRound: integer("delivery_round"),
+  message: text("message").notNull(),
+  readAt: text("read_at"),
+  createdAt: text("created_at").notNull(),
+});

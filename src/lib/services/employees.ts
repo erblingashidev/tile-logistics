@@ -556,6 +556,32 @@ export async function updateEmployeeStatus(id: number, status: string) {
   return updateEmployee(id, { status });
 }
 
+/** Mark driver busy when their truck leaves the warehouse. */
+export async function markDriverOnTheRoad(employeeId: number) {
+  const employee = await getEmployee(employeeId);
+  if (!employee) return;
+  if (employee.status === "busy") return;
+
+  const updated = await updateEmployee(employeeId, { status: "busy" });
+  if (!updated) return;
+
+  await logActivity(
+    "update",
+    "employee",
+    employeeId,
+    employeeStatusMessage(employee.name, employee.status, "busy"),
+    {
+      category: "employees",
+      details: {
+        employeeId,
+        from: employee.status,
+        to: "busy",
+        reason: "truck_departed",
+      },
+    }
+  );
+}
+
 export async function updateEmployeeStatusSelf(
   employeeId: number,
   status: string
@@ -565,6 +591,7 @@ export async function updateEmployeeStatusSelf(
   }
   const employee = await updateEmployee(employeeId, { status });
   if (!employee) return { ok: false as const, error: "Employee not found" };
+
   return { ok: true as const, employee };
 }
 

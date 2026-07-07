@@ -8,6 +8,10 @@ import {
   type AssignmentDraft,
 } from "@/components/OrderAssignmentPanel";
 import { TruckFocusBar } from "@/components/TruckFocusBar";
+import {
+  TruckWorkspaceStatus,
+  type TruckWorkspaceSnapshot,
+} from "@/components/TruckWorkspaceStatus";
 import { SmartDispatchPanel } from "@/components/SmartDispatchPanel";
 import { OrderListCard } from "@/components/OrderListCard";
 import {
@@ -240,6 +244,8 @@ export default function OrdersPage() {
   const [transferRound, setTransferRound] = useState("1");
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
+  const [truckWorkspace, setTruckWorkspace] =
+    useState<TruckWorkspaceSnapshot | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -277,6 +283,30 @@ export default function OrdersPage() {
     const interval = setInterval(load, 15000);
     return () => clearInterval(interval);
   }, [load]);
+
+  useEffect(() => {
+    if (!filters.vehicleId) {
+      setTruckWorkspace(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/vehicles/${filters.vehicleId}/truck-workspace`, {
+      cache: "no-store",
+    })
+      .then((res) => res.json())
+      .then((data: TruckWorkspaceSnapshot & { error?: string }) => {
+        if (cancelled || data.error) return;
+        setTruckWorkspace(data);
+        const nextRound = String(data.suggestedRound);
+        setFilters((f) =>
+          f.deliveryRound === nextRound ? f : { ...f, deliveryRound: nextRound }
+        );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [filters.vehicleId, lastRefreshed]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -678,7 +708,11 @@ export default function OrdersPage() {
       setError(data.error ?? "Could not assign order");
       return;
     }
-    setWarning(`Assigned ${order.invoiceNumber} → ${focusVehicle?.name ?? "truck"}`);
+    setWarning(
+      `Assigned ${order.invoiceNumber} → ${focusVehicle?.name ?? "truck"}${
+        data.deliveryRound ? ` · R${data.deliveryRound}` : ""
+      }`
+    );
     setTimeout(() => setWarning(""), 3000);
     load();
   }
@@ -907,6 +941,14 @@ export default function OrdersPage() {
                   {label}
                 </button>
               ))}
+            </div>
+          )}
+          {focusVehicle && truckWorkspace && (
+            <div className="mt-4">
+              <TruckWorkspaceStatus
+                workspace={truckWorkspace}
+                activeRound={focusRound}
+              />
             </div>
           )}
           {focusVehicle && (

@@ -55,6 +55,27 @@ export function hasDeliveryProofDbPhotos(): boolean {
   return deliveryProofDbPhotosEnabled;
 }
 
+async function ensureEmployeeNotificationsTable(client: Client) {
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS employee_notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+      type TEXT NOT NULL,
+      vehicle_id INTEGER REFERENCES vehicles(id) ON DELETE CASCADE,
+      delivery_round INTEGER,
+      message TEXT NOT NULL,
+      read_at TEXT,
+      created_at TEXT NOT NULL
+    )
+  `);
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_employee_notifications_employee ON employee_notifications(employee_id)"
+  );
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_employee_notifications_unread ON employee_notifications(employee_id, read_at)"
+  );
+}
+
 async function ensureDeliveryProofPhotoColumns(client: Client) {
   const proofCols = await tableColumns(client, "delivery_proofs");
   await addColumnIfMissing(
@@ -569,6 +590,7 @@ export async function getDb() {
         clientInstance = createDbClient();
         await clientInstance.execute("PRAGMA foreign_keys = ON");
         await ensureDeliveryProofPhotoColumns(clientInstance);
+        await ensureEmployeeNotificationsTable(clientInstance);
         if (shouldRunRuntimeMigrations()) {
           await runMigrations(clientInstance);
         }
