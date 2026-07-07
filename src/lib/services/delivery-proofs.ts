@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { eq, and, sql } from "drizzle-orm";
-import { getDb, hasDeliveryProofDbPhotos } from "@/lib/db";
+import { getDb, hasDeliveryProofDbPhotos, setDeliveryProofDbPhotosEnabled } from "@/lib/db";
 import { dbAll, dbOne } from "@/lib/db/query";
 import { deliveryProofs, employees, orders, assignments, orderEmployeeAssignments } from "@/lib/db/schema";
 import {
@@ -160,7 +160,12 @@ export async function getDeliveryProofPhoto(proofId: number) {
   return null;
 }
 
-export async function listDeliveryProofs(orderId: number) {
+function isMissingPhotoDataColumnError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /no such column/i.test(message) && /photo_data/i.test(message);
+}
+
+async function queryDeliveryProofs(orderId: number, includeDbPhoto: boolean) {
   const db = await getDb();
   const selectFields = {
     id: deliveryProofs.id,
@@ -174,7 +179,7 @@ export async function listDeliveryProofs(orderId: number) {
     createdAt: deliveryProofs.createdAt,
     employeeId: deliveryProofs.employeeId,
     employeeName: employees.name,
-    ...(hasDeliveryProofDbPhotos()
+    ...(includeDbPhoto
       ? {
           hasDbPhoto: sql<boolean>`${deliveryProofs.photoData} IS NOT NULL`.as(
             "has_db_photo"
@@ -183,7 +188,7 @@ export async function listDeliveryProofs(orderId: number) {
       : {}),
   };
 
-  const rows = await dbAll(
+  return dbAll(
     db
       .select(selectFields)
       .from(deliveryProofs)
@@ -191,10 +196,27 @@ export async function listDeliveryProofs(orderId: number) {
       .where(eq(deliveryProofs.orderId, orderId))
       .orderBy(deliveryProofs.capturedAt)
   );
-  return rows.map((p) => ({
-    ...p,
-    photoUrl: proofPhotoUrl(p),
-  }));
+}
+
+export async function listDeliveryProofs(orderId: number) {
+  const includeDbPhoto = hasDeliveryProofDbPhotos();
+  try {
+    const rows = await queryDeliveryProofs(orderId, includeDbPhoto);
+    return rows.map((p) => ({
+      ...p,
+      photoUrl: proofPhotoUrl(p),
+    }));
+  } catch (err) {
+    if (includeDbPhoto && isMissingPhotoDataColumnError(err)) {
+      setDeliveryProofDbPhotosEnabled(false);
+      const rows = await queryDeliveryProofs(orderId, false);
+      return rows.map((p) => ({
+        ...p,
+        photoUrl: proofPhotoUrl(p),
+      }));
+    }
+    throw err;
+  }
 }
 
 async function pickerOnSameTruck(

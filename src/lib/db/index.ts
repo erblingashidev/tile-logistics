@@ -55,6 +55,10 @@ export function hasDeliveryProofDbPhotos(): boolean {
   return deliveryProofDbPhotosEnabled;
 }
 
+export function setDeliveryProofDbPhotosEnabled(enabled: boolean) {
+  deliveryProofDbPhotosEnabled = enabled;
+}
+
 async function ensureEmployeeNotificationsTable(client: Client) {
   await client.execute(`
     CREATE TABLE IF NOT EXISTS employee_notifications (
@@ -77,7 +81,7 @@ async function ensureEmployeeNotificationsTable(client: Client) {
 }
 
 async function ensureDeliveryProofPhotoColumns(client: Client) {
-  const proofCols = await tableColumns(client, "delivery_proofs");
+  let proofCols = await tableColumns(client, "delivery_proofs");
   await addColumnIfMissing(
     client,
     "delivery_proofs",
@@ -92,6 +96,9 @@ async function ensureDeliveryProofPhotoColumns(client: Client) {
     "photo_mime TEXT",
     proofCols
   );
+  if (!proofCols.has("photo_data")) {
+    proofCols = await tableColumns(client, "delivery_proofs");
+  }
   deliveryProofDbPhotosEnabled = proofCols.has("photo_data");
 }
 
