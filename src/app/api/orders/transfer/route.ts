@@ -12,6 +12,10 @@ export async function POST(request: NextRequest) {
   const orderIds = (body.orderIds as number[]) ?? [];
   const vehicleId = Number(body.vehicleId);
   const deliveryRound = Number(body.deliveryRound) || 1;
+  const pickerId =
+    body.pickerId != null && body.pickerId !== ""
+      ? Number(body.pickerId)
+      : null;
   const preservePicker = body.preservePicker !== false;
   const ignoreWeightWarning = Boolean(body.ignoreWeightWarning);
   const ignoreCraneRule = Boolean(body.ignoreCraneRule);
@@ -27,7 +31,8 @@ export async function POST(request: NextRequest) {
     orderIds,
     vehicleId,
     deliveryRound,
-    preservePicker,
+    pickerId,
+    preservePicker: pickerId == null && preservePicker,
     ignoreWeightWarning,
     ignoreCraneRule,
   });

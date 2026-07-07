@@ -1711,6 +1711,7 @@ export async function transferOrdersToVehicle(input: {
   orderIds: number[];
   vehicleId: number;
   deliveryRound: number;
+  pickerId?: number | null;
   preservePicker?: boolean;
   ignoreWeightWarning?: boolean;
   ignoreCraneRule?: boolean;
@@ -1750,9 +1751,11 @@ export async function transferOrdersToVehicle(input: {
 
     const fromVehicle = order.assignment?.vehicleName ?? "previous truck";
     const pickerId =
-      input.preservePicker !== false
-        ? (order.staff?.picker?.employeeId ?? null)
-        : null;
+      input.pickerId != null
+        ? input.pickerId
+        : input.preservePicker !== false
+          ? (order.staff?.picker?.employeeId ?? null)
+          : null;
 
     const result = await assignOrderBundle({
       orderId,
@@ -1762,6 +1765,7 @@ export async function transferOrdersToVehicle(input: {
       autoAssignTeam: pickerId == null,
       ignoreWeightWarning: input.ignoreWeightWarning ?? false,
       ignoreCraneRule: input.ignoreCraneRule ?? false,
+      explicitDeliveryRound: true,
     });
 
     if (!result.ok) {

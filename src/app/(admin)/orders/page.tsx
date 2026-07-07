@@ -242,6 +242,7 @@ export default function OrdersPage() {
   );
   const [transferVehicleId, setTransferVehicleId] = useState("");
   const [transferRound, setTransferRound] = useState("1");
+  const [transferPickerId, setTransferPickerId] = useState("");
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
   const [truckWorkspace, setTruckWorkspace] =
@@ -577,9 +578,16 @@ export default function OrdersPage() {
       return;
     }
     const target = vehicles.find((v) => v.id === Number(transferVehicleId));
+    const picker = transferPickerId
+      ? pickers.find((p) => p.id === Number(transferPickerId))
+      : null;
     if (
       !confirm(
-        `Transfer ${ids.length} order(s) to ${target?.name ?? "truck"} (round ${transferRound})?\n\nPicker assignments are kept unless you clear them separately.`
+        `Transfer ${ids.length} order(s) to ${target?.name ?? "truck"} (round ${transferRound})?${
+          picker
+            ? `\n\nPicker: ${picker.name}`
+            : "\n\nExisting picker assignments are kept when set."
+        }`
       )
     ) {
       return;
@@ -592,7 +600,8 @@ export default function OrdersPage() {
         orderIds: ids,
         vehicleId: Number(transferVehicleId),
         deliveryRound: Number(transferRound) || 1,
-        preservePicker: true,
+        pickerId: transferPickerId ? Number(transferPickerId) : null,
+        preservePicker: !transferPickerId,
         ignoreWeightWarning,
         ignoreCraneRule,
       }),
@@ -653,9 +662,14 @@ export default function OrdersPage() {
       return;
     }
     const truck = vehicles.find((v) => String(v.id) === filters.vehicleId);
+    const picker = transferPickerId
+      ? pickers.find((p) => p.id === Number(transferPickerId))
+      : null;
     if (
       !confirm(
-        `Assign ${ids.length} order(s) to ${truck?.name ?? "truck"} · round ${filters.deliveryRound}?`
+        `Assign ${ids.length} order(s) to ${truck?.name ?? "truck"} · round ${filters.deliveryRound}?${
+          picker ? `\n\nPicker: ${picker.name}` : ""
+        }`
       )
     ) {
       return;
@@ -668,7 +682,8 @@ export default function OrdersPage() {
         orderIds: ids,
         vehicleId: Number(filters.vehicleId),
         deliveryRound: Number(filters.deliveryRound) || 1,
-        preservePicker: true,
+        pickerId: transferPickerId ? Number(transferPickerId) : null,
+        preservePicker: !transferPickerId,
         ignoreWeightWarning: true,
       }),
     });
@@ -1621,6 +1636,19 @@ export default function OrdersPage() {
               {deliveryRoundSelectOptions().map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
+                </option>
+              ))}
+            </select>
+            <select
+              className="rounded border border-violet-200 bg-white px-2 py-1 text-xs"
+              value={transferPickerId}
+              onChange={(e) => setTransferPickerId(e.target.value)}
+              aria-label="Assign picker"
+            >
+              <option value="">Picker (optional)…</option>
+              {pickers.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
                 </option>
               ))}
             </select>
