@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireEmployee } from "@/lib/auth";
+import { getSession, requireAdmin, requireEmployee } from "@/lib/auth";
+import { changeAdminPassword } from "@/lib/services/admins";
 import { changeEmployeePassword } from "@/lib/services/employees";
 
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
-  let session;
-  try {
-    session = await requireEmployee();
-  } catch {
+  const session = await getSession();
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -36,15 +35,46 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const result = await changeEmployeePassword(
-    session.employeeId,
-    currentPassword,
-    newPassword
-  );
+  if (session.role === "admin") {
+    if (session.adminId <= 0) {
+      return NextResponse.json(
+        {
+          error:
+            "This legacy admin account cannot change password here. Add a database admin account first.",
+        },
+        { status: 400 }
+      );
+    }
 
-  if (!result.ok) {
-    return NextResponse.json({ error: result.error }, { status: 400 });
+    try {
+      await requireAdmin();
+    } catch {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const result = await changeAdminPassword(
+      session.adminId,
+      currentPassword,
+      newPassword
+    );
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: 400 });
+    }
+    return NextResponse.json({ ok: true });
   }
 
-  return NextResponse.json({ ok: true });
+  try {
+    const employeeSession = await requireEmployee();
+    const result = await changeEmployeePassword(
+      employeeSession.employeeId,
+      currentPassword,
+      newPassword
+    );
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: 400 });
+    }
+    return NextResponse.json({ ok: true });
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 }

@@ -15,8 +15,10 @@ const nav = [
   { href: "/vehicles", label: "Vehicles" },
   { href: "/vehicles/maintenance", label: "Maintenance" },
   { href: "/employees", label: "Employees" },
+  { href: "/admins", label: "Admin users" },
   { href: "/logs", label: "Logs" },
   { href: "/reports", label: "Reports" },
+  { href: "/settings", label: "Profile" },
 ];
 
 function isActive(pathname: string, href: string) {
@@ -95,9 +97,12 @@ export function AppShell({
           </nav>
           <div className="border-t border-white/10 p-3">
             {userName && (
-              <p className="mb-2 truncate px-3 text-xs text-zinc-400">
+              <Link
+                href="/settings"
+                className="mb-2 block truncate rounded px-3 py-2 text-xs text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
+              >
                 {userName}
-              </p>
+              </Link>
             )}
             <button
               type="button"
@@ -140,9 +145,12 @@ export function AppShell({
               )}
               <div className="flex shrink-0 items-center gap-2">
                 {userName && (
-                  <span className="hidden max-w-[12rem] truncate text-xs text-zinc-500 sm:inline">
+                  <Link
+                    href="/settings"
+                    className="hidden max-w-[12rem] truncate text-xs text-zinc-500 hover:text-zinc-800 sm:inline"
+                  >
                     {userName}
-                  </span>
+                  </Link>
                 )}
                 <Button
                   variant="ghost"

@@ -351,3 +351,19 @@ CREATE INDEX IF NOT EXISTS idx_employee_notifications_employee
   ON employee_notifications(employee_id);
 CREATE INDEX IF NOT EXISTS idx_employee_notifications_unread
   ON employee_notifications(employee_id, read_at);
+
+CREATE TABLE IF NOT EXISTS admins (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  username TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  title TEXT,
+  email TEXT,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  last_login_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_admins_username ON admins(username);
+CREATE INDEX IF NOT EXISTS idx_admins_active ON admins(is_active);

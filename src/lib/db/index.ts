@@ -80,6 +80,50 @@ async function ensureEmployeeNotificationsTable(client: Client) {
   );
 }
 
+async function ensureAdminsTable(client: Client) {
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS admins (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      username TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      title TEXT,
+      email TEXT,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      last_login_at TEXT
+    )
+  `);
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_admins_username ON admins(username)"
+  );
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_admins_active ON admins(is_active)"
+  );
+
+  const count = await client.execute("SELECT COUNT(*) AS c FROM admins");
+  const rowCount = Number(count.rows[0]?.c ?? count.rows[0]?.[0] ?? 0);
+  if (rowCount > 0) return;
+
+  const { getAdminCredentials } = await import("@/lib/config/auth-env");
+  const { hashPassword } = await import("@/lib/auth/password");
+  const creds = getAdminCredentials();
+  const now = new Date().toISOString();
+  await client.execute({
+    sql: `INSERT INTO admins (name, username, password_hash, title, is_active, created_at, updated_at)
+          VALUES (?, ?, ?, ?, 1, ?, ?)`,
+    args: [
+      "Admin",
+      creds.username.trim().toLowerCase(),
+      hashPassword(creds.password),
+      "Administrator",
+      now,
+      now,
+    ],
+  });
+}
+
 async function ensureDeliveryProofPhotoColumns(client: Client) {
   let proofCols = await tableColumns(client, "delivery_proofs");
   await addColumnIfMissing(
@@ -598,6 +642,7 @@ export async function getDb() {
         await clientInstance.execute("PRAGMA foreign_keys = ON");
         await ensureDeliveryProofPhotoColumns(clientInstance);
         await ensureEmployeeNotificationsTable(clientInstance);
+        await ensureAdminsTable(clientInstance);
         if (shouldRunRuntimeMigrations()) {
           await runMigrations(clientInstance);
         }

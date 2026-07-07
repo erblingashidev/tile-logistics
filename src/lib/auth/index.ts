@@ -14,16 +14,30 @@ import {
 } from "@/lib/auth/session";
 
 import type { EmployeeRole } from "@/lib/constants";
-import { getAdminCredentials } from "@/lib/config/auth-env";
+import { loginAdminFromDb } from "@/lib/services/admins";
 import { employeeLoginRedirect } from "@/lib/employee-categories";
 
 export async function loginAdmin(
   username: string,
   password: string
 ): Promise<SessionUser | null> {
+  const fromDb = await loginAdminFromDb(username, password);
+  if (fromDb) return fromDb;
+
+  const { getAdminCredentials } = await import("@/lib/config/auth-env");
   const admin = getAdminCredentials();
-  if (username !== admin.username || password !== admin.password) return null;
-  return { role: "admin", name: "Admin" };
+  if (username.trim().toLowerCase() !== admin.username.trim().toLowerCase()) {
+    return null;
+  }
+  if (password !== admin.password) return null;
+
+  return {
+    role: "admin",
+    adminId: 0,
+    name: "Admin",
+    username: admin.username.trim().toLowerCase(),
+    title: "Administrator",
+  };
 }
 
 export async function loginEmployee(

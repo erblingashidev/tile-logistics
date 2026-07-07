@@ -104,6 +104,19 @@ export const employees = sqliteTable("employees", {
   updatedAt: text("updated_at").notNull(),
 });
 
+export const admins = sqliteTable("admins", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  username: text("username").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  title: text("title"),
+  email: text("email"),
+  isActive: integer("is_active").notNull().default(1),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+  lastLoginAt: text("last_login_at"),
+});
+
 export const orderEmployeeAssignments = sqliteTable(
   "order_employee_assignments",
   {

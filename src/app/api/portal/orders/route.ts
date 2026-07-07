@@ -35,7 +35,12 @@ export async function GET() {
       vehicleStatus = vehicle?.status ?? null;
     }
 
-    const notifications = await listUnreadNotifications(session.employeeId);
+    let notifications: Awaited<ReturnType<typeof listUnreadNotifications>> = [];
+    try {
+      notifications = await listUnreadNotifications(session.employeeId);
+    } catch (err) {
+      console.error("[api/portal/orders GET] notifications failed", err);
+    }
 
     return NextResponse.json(
       {
@@ -52,7 +57,18 @@ export async function GET() {
         headers: { "Cache-Control": "no-store" },
       }
     );
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (message === "Forbidden") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    console.error("[api/portal/orders GET]", err);
+    return NextResponse.json(
+      { error: "Failed to load portal data" },
+      { status: 500 }
+    );
   }
 }

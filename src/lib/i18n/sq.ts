@@ -116,6 +116,7 @@ export const sq = {
 
   errors: {
     generic: "Nuk u ruajt. Provo përsëri.",
+    refresh: "Nuk u rifreskua faqja. Rifresko ose dil dhe hy përsëri.",
     status: "Statusi nuk u përditësua.",
     photoRequired: "Duhet foto për dorëzimin.",
     notesRequired: "Shkruaj arsyen pse nuk ngarkohet.",

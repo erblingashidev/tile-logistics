@@ -9,7 +9,10 @@ const SECRET = getAuthSecret();
 export type SessionUser =
   | {
       role: "admin";
+      adminId: number;
       name: string;
+      username: string;
+      title?: string | null;
     }
   | {
       role: "employee";
@@ -95,7 +98,16 @@ export async function verifySessionToken(
     };
     if (!parsed.exp || parsed.exp < Date.now()) return null;
     if (parsed.role === "admin") {
-      return { role: "admin", name: parsed.name };
+      return {
+        role: "admin",
+        adminId: typeof parsed.adminId === "number" ? parsed.adminId : 0,
+        name: parsed.name || "Admin",
+        username: typeof parsed.username === "string" ? parsed.username : "",
+        title:
+          typeof parsed.title === "string" || parsed.title === null
+            ? parsed.title
+            : null,
+      };
     }
     if (
       parsed.role === "employee" &&

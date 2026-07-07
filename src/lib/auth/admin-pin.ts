@@ -1,17 +1,21 @@
 import { getAdminCredentials } from "@/lib/config/auth-env";
+import { verifyAnyAdminPassword } from "@/lib/services/admins";
 
-/** Admin PIN uses the same secret as admin login. */
-export function verifyAdminPin(pin: string): boolean {
-  return pin.trim() === getAdminCredentials().password;
+/** Admin PIN accepts the env bootstrap password or any active admin password. */
+export async function verifyAdminPin(pin: string): Promise<boolean> {
+  return verifyAnyAdminPassword(pin);
 }
 
-export function assertAdminPin(pin: string | undefined): {
-  ok: true;
-} | {
-  ok: false;
-  error: string;
-  requiresPin: true;
-} {
+export async function assertAdminPin(pin: string | undefined): Promise<
+  | {
+      ok: true;
+    }
+  | {
+      ok: false;
+      error: string;
+      requiresPin: true;
+    }
+> {
   if (!pin?.trim()) {
     return {
       ok: false,
@@ -19,7 +23,7 @@ export function assertAdminPin(pin: string | undefined): {
       requiresPin: true,
     };
   }
-  if (!verifyAdminPin(pin)) {
+  if (!(await verifyAdminPin(pin))) {
     return {
       ok: false,
       error: "Incorrect admin PIN.",
@@ -27,4 +31,9 @@ export function assertAdminPin(pin: string | undefined): {
     };
   }
   return { ok: true };
+}
+
+/** Legacy sync check for env bootstrap password only. */
+export function verifyEnvAdminPin(pin: string): boolean {
+  return pin.trim() === getAdminCredentials().password;
 }

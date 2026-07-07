@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { ClientRecovery } from "@/components/ClientRecovery";
 import { BRAND } from "@/lib/brand";
 import "./globals.css";
 
@@ -34,7 +35,10 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full font-sans">{children}</body>
+      <body className="min-h-full font-sans">
+        <ClientRecovery />
+        {children}
+      </body>
     </html>
   );
 }

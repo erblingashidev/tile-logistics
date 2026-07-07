@@ -147,17 +147,25 @@ export default function PortalPage() {
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/portal/orders", { cache: "no-store" });
-    if (res.status === 401) {
-      router.push("/login");
-      return;
+    try {
+      const res = await fetch("/api/portal/orders", { cache: "no-store" });
+      if (res.status === 401) {
+        router.push("/login");
+        return;
+      }
+      if (!res.ok) {
+        setError(sq.errors.refresh);
+        return;
+      }
+      const data = await res.json();
+      setEmployee(data.employee ?? null);
+      setMyStatus(data.employee?.status ?? "available");
+      setOrders(data.orders ?? []);
+      setTruckGroups(data.truckGroups ?? []);
+      setNotifications(data.notifications ?? []);
+    } catch {
+      setError(sq.errors.refresh);
     }
-    const data = await res.json();
-    setEmployee(data.employee);
-    setMyStatus(data.employee?.status ?? "available");
-    setOrders(data.orders ?? []);
-    setTruckGroups(data.truckGroups ?? []);
-    setNotifications(data.notifications ?? []);
   }, [router]);
 
   useEffect(() => {

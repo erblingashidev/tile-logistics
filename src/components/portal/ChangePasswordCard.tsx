@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { PortalCard, PortalSectionTitle } from "@/components/portal/PortalShell";
-import { Alert, Button, Input } from "@/components/ui";
+import { Alert, Button, Card, Input } from "@/components/ui";
 
 type ChangePasswordLabels = {
   title: string;
@@ -26,13 +26,55 @@ const defaultLabels: ChangePasswordLabels = {
   toggleHide: "Hide",
 };
 
+function PasswordSurface({
+  variant,
+  children,
+  className = "",
+}: {
+  variant: "portal" | "admin";
+  children: React.ReactNode;
+  className?: string;
+}) {
+  if (variant === "admin") {
+    return <Card className={`p-5 ${className}`}>{children}</Card>;
+  }
+  return <PortalCard className={className}>{children}</PortalCard>;
+}
+
+function PasswordTitle({
+  variant,
+  children,
+  className = "",
+}: {
+  variant: "portal" | "admin";
+  children: React.ReactNode;
+  className?: string;
+}) {
+  if (variant === "admin") {
+    return (
+      <h2 className={`text-sm font-semibold text-zinc-900 ${className}`}>
+        {children}
+      </h2>
+    );
+  }
+  return (
+    <PortalSectionTitle className={`normal-case tracking-normal text-zinc-700 ${className}`}>
+      {children}
+    </PortalSectionTitle>
+  );
+}
+
 export function ChangePasswordCard({
   labels = defaultLabels,
+  variant = "portal",
+  defaultOpen = false,
 }: {
   labels?: Partial<ChangePasswordLabels>;
+  variant?: "portal" | "admin";
+  defaultOpen?: boolean;
 }) {
   const copy = { ...defaultLabels, ...labels };
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen || variant === "admin");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -68,22 +110,30 @@ export function ChangePasswordCard({
   }
 
   return (
-    <PortalCard>
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        className="flex w-full items-center justify-between gap-3 text-left"
-      >
-        <PortalSectionTitle className="normal-case tracking-normal text-zinc-700">
+    <PasswordSurface variant={variant}>
+      {variant === "portal" ? (
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          className="flex w-full items-center justify-between gap-3 text-left"
+        >
+          <PasswordTitle variant={variant}>{copy.title}</PasswordTitle>
+          <span className="text-xs font-medium text-zinc-500">
+            {open ? "−" : "+"}
+          </span>
+        </button>
+      ) : (
+        <PasswordTitle variant={variant} className="mb-4">
           {copy.title}
-        </PortalSectionTitle>
-        <span className="text-xs font-medium text-zinc-500">
-          {open ? "−" : "+"}
-        </span>
-      </button>
+        </PasswordTitle>
+      )}
 
       {open && (
-        <form onSubmit={submit} className="mt-4 space-y-3" autoComplete="off">
+        <form
+          onSubmit={submit}
+          className={`space-y-3 ${variant === "portal" ? "mt-4" : ""}`}
+          autoComplete="off"
+        >
           {error && <Alert tone="error">{error}</Alert>}
           {success && <Alert tone="info">{success}</Alert>}
 
@@ -129,6 +179,6 @@ export function ChangePasswordCard({
           </div>
         </form>
       )}
-    </PortalCard>
+    </PasswordSurface>
   );
 }

@@ -336,26 +336,45 @@ export async function listOrders(filters?: {
 
   const mapped = await Promise.all(
     rows.map(async (order) => {
-      const proofs = await listDeliveryProofs(order.id);
-      const deliveryStage = computeOrderDisplayStage(
-        order.status,
-        proofs.map((p) => p.phase)
-      );
-      return {
-        ...order,
-        assignment: await getOrderAssignment(order.id),
-        staff: await getOrderStaff(order.id),
-        proofs,
-        deliveryStage,
-        deliveryStageLabel: ORDER_STAGE_LABELS[deliveryStage],
-        ...(await getOrderLoadStatus(order.id)),
-        items: await dbAll(
-          db
-            .select()
-            .from(orderItems)
-            .where(eq(orderItems.orderId, order.id))
-        ),
-      };
+      try {
+        const proofs = await listDeliveryProofs(order.id);
+        const deliveryStage = computeOrderDisplayStage(
+          order.status,
+          proofs.map((p) => p.phase)
+        );
+        return {
+          ...order,
+          assignment: await getOrderAssignment(order.id),
+          staff: await getOrderStaff(order.id),
+          proofs,
+          deliveryStage,
+          deliveryStageLabel: ORDER_STAGE_LABELS[deliveryStage],
+          ...(await getOrderLoadStatus(order.id)),
+          items: await dbAll(
+            db
+              .select()
+              .from(orderItems)
+              .where(eq(orderItems.orderId, order.id))
+          ),
+        };
+      } catch (err) {
+        console.error("[listOrders] enrich failed for order", order.id, err);
+        const deliveryStage = computeOrderDisplayStage(order.status, []);
+        return {
+          ...order,
+          assignment: null,
+          staff: { staff: [], picker: null, driver: null },
+          proofs: [],
+          deliveryStage,
+          deliveryStageLabel: ORDER_STAGE_LABELS[deliveryStage],
+          prepStatus: "pending" as const,
+          loadStatus: "pending" as const,
+          loadNotes: null,
+          canMarkLoaded: false,
+          loadBlockedReason: null,
+          items: [],
+        };
+      }
     })
   );
 
@@ -1046,17 +1065,18 @@ function orderHasDeliveryProgress(
   );
 }
 
-function checkAssignmentChangePermission(
+async function checkAssignmentChangePermission(
   order: NonNullable<Awaited<ReturnType<typeof getOrder>>>,
   options?: { force?: boolean; adminPin?: string; skipCheck?: boolean }
-):
+): Promise<
   | { ok: true }
-  | { ok: false; error: string; requiresPin?: true; requiresForce?: true } {
+  | { ok: false; error: string; requiresPin?: true; requiresForce?: true }
+> {
   if (options?.skipCheck) return { ok: true };
   if (!orderHasDeliveryProgress(order)) return { ok: true };
 
   if (options?.adminPin) {
-    const pin = assertAdminPin(options.adminPin);
+    const pin = await assertAdminPin(options.adminPin);
     if (!pin.ok) return pin;
     return { ok: true };
   }
@@ -1083,7 +1103,7 @@ export async function clearOrderAssignments(
   const order = await getOrder(orderId);
   if (!order) return { ok: false as const, error: "Order not found" };
 
-  const permission = checkAssignmentChangePermission(order, options);
+  const permission = await checkAssignmentChangePermission(order, options);
   if (!permission.ok) return permission;
 
   const scope = resolveClearScope(options?.scope);
@@ -1186,7 +1206,7 @@ export async function resetOrderDelivery(
   orderId: number,
   options: { adminPin: string }
 ) {
-  const pin = assertAdminPin(options.adminPin);
+  const pin = await assertAdminPin(options.adminPin);
   if (!pin.ok) return pin;
 
   const order = await getOrder(orderId);
