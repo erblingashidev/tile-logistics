@@ -36,8 +36,23 @@ async function addColumnIfMissing(
   existing: Set<string>
 ) {
   if (existing.has(column)) return;
-  await client.execute(`ALTER TABLE ${table} ADD COLUMN ${definition}`);
-  existing.add(column);
+  try {
+    await client.execute(`ALTER TABLE ${table} ADD COLUMN ${definition}`);
+    existing.add(column);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (/duplicate column name/i.test(message)) {
+      existing.add(column);
+      return;
+    }
+    throw err;
+  }
+}
+
+let deliveryProofDbPhotosEnabled = false;
+
+export function hasDeliveryProofDbPhotos(): boolean {
+  return deliveryProofDbPhotosEnabled;
 }
 
 async function ensureDeliveryProofPhotoColumns(client: Client) {
@@ -56,6 +71,7 @@ async function ensureDeliveryProofPhotoColumns(client: Client) {
     "photo_mime TEXT",
     proofCols
   );
+  deliveryProofDbPhotosEnabled = proofCols.has("photo_data");
 }
 
 async function runMigrations(client: Client) {
@@ -548,21 +564,29 @@ export async function getDb() {
 
   if (!initPromise) {
     initPromise = (async () => {
-      assertProductionSecrets();
-      clientInstance = createDbClient();
-      await clientInstance.execute("PRAGMA foreign_keys = ON");
-      await ensureDeliveryProofPhotoColumns(clientInstance);
-      if (shouldRunRuntimeMigrations()) {
-        await runMigrations(clientInstance);
+      try {
+        assertProductionSecrets();
+        clientInstance = createDbClient();
+        await clientInstance.execute("PRAGMA foreign_keys = ON");
+        await ensureDeliveryProofPhotoColumns(clientInstance);
+        if (shouldRunRuntimeMigrations()) {
+          await runMigrations(clientInstance);
+        }
+        dbInstance = drizzle(clientInstance, { schema });
+        if (shouldRunStartupBackfill()) {
+          const { backfillOrderSalesOwnership } = await import(
+            "@/lib/services/sales-portal"
+          );
+          await backfillOrderSalesOwnership();
+        }
+        return dbInstance;
+      } catch (err) {
+        initPromise = null;
+        dbInstance = null;
+        clientInstance = null;
+        deliveryProofDbPhotosEnabled = false;
+        throw err;
       }
-      dbInstance = drizzle(clientInstance, { schema });
-      if (shouldRunStartupBackfill()) {
-        const { backfillOrderSalesOwnership } = await import(
-          "@/lib/services/sales-portal"
-        );
-        await backfillOrderSalesOwnership();
-      }
-      return dbInstance;
     })();
   }
 

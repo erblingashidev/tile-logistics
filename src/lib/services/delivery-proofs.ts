@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { eq, and, sql } from "drizzle-orm";
-import { getDb } from "@/lib/db";
+import { getDb, hasDeliveryProofDbPhotos } from "@/lib/db";
 import { dbAll, dbOne } from "@/lib/db/query";
 import { deliveryProofs, employees, orders, assignments, orderEmployeeAssignments } from "@/lib/db/schema";
 import {
@@ -62,10 +62,10 @@ function storeProofPhoto(
 function proofPhotoUrl(proof: {
   id: number;
   photoPath: string | null;
-  photoMime: string | null;
+  hasDbPhoto?: boolean;
 }) {
   if (proof.photoPath) return `/api/uploads/${proof.photoPath}`;
-  if (proof.photoMime) return `/api/uploads/proof/${proof.id}`;
+  if (proof.hasDbPhoto) return `/api/uploads/proof/${proof.id}`;
   return null;
 }
 
@@ -153,22 +153,30 @@ export async function getDeliveryProofPhoto(proofId: number) {
 
 export async function listDeliveryProofs(orderId: number) {
   const db = await getDb();
+  const selectFields = {
+    id: deliveryProofs.id,
+    orderId: deliveryProofs.orderId,
+    phase: deliveryProofs.phase,
+    photoPath: deliveryProofs.photoPath,
+    notes: deliveryProofs.notes,
+    lat: deliveryProofs.lat,
+    lng: deliveryProofs.lng,
+    capturedAt: deliveryProofs.capturedAt,
+    createdAt: deliveryProofs.createdAt,
+    employeeId: deliveryProofs.employeeId,
+    employeeName: employees.name,
+    ...(hasDeliveryProofDbPhotos()
+      ? {
+          hasDbPhoto: sql<boolean>`${deliveryProofs.photoData} IS NOT NULL`.as(
+            "has_db_photo"
+          ),
+        }
+      : {}),
+  };
+
   const rows = await dbAll(
     db
-      .select({
-        id: deliveryProofs.id,
-        orderId: deliveryProofs.orderId,
-        phase: deliveryProofs.phase,
-        photoPath: deliveryProofs.photoPath,
-        photoMime: deliveryProofs.photoMime,
-        notes: deliveryProofs.notes,
-        lat: deliveryProofs.lat,
-        lng: deliveryProofs.lng,
-        capturedAt: deliveryProofs.capturedAt,
-        createdAt: deliveryProofs.createdAt,
-        employeeId: deliveryProofs.employeeId,
-        employeeName: employees.name,
-      })
+      .select(selectFields)
       .from(deliveryProofs)
       .innerJoin(employees, eq(deliveryProofs.employeeId, employees.id))
       .where(eq(deliveryProofs.orderId, orderId))
@@ -337,7 +345,10 @@ async function departTruckForOrder(
 
     const existing = await dbOne(
       db
-        .select()
+        .select({
+          id: deliveryProofs.id,
+          phase: deliveryProofs.phase,
+        })
         .from(deliveryProofs)
         .where(
           and(
@@ -477,7 +488,7 @@ export async function submitDeliveryProof(input: {
 
   const existing = await dbOne(
     db
-      .select()
+      .select({ id: deliveryProofs.id })
       .from(deliveryProofs)
       .where(
         and(

@@ -11,21 +11,33 @@ export async function readJsonList<T>(res: Response): Promise<T[]> {
 export async function readJsonListWithError<T>(
   res: Response
 ): Promise<{ data: T[]; error?: string }> {
+  const text = await res.text();
+  let data: unknown;
   try {
-    const data: unknown = await res.json();
-    if (!res.ok) {
-      const message =
-        data &&
-        typeof data === "object" &&
-        "error" in data &&
-        typeof (data as { error: unknown }).error === "string"
-          ? (data as { error: string }).error
-          : `Request failed (${res.status})`;
-      return { data: [], error: message };
-    }
-    if (Array.isArray(data)) return { data: data as T[] };
-    return { data: [], error: "Unexpected response from server" };
+    data = text ? JSON.parse(text) : null;
   } catch {
-    return { data: [], error: "Could not read server response" };
+    const hint = text.trimStart().startsWith("<")
+      ? "Server returned an HTML error page"
+      : text.slice(0, 120).trim();
+    return {
+      data: [],
+      error: hint
+        ? `Could not read server response (${res.status}): ${hint}`
+        : `Could not read server response (${res.status})`,
+    };
   }
+
+  if (!res.ok) {
+    const message =
+      data &&
+      typeof data === "object" &&
+      "error" in data &&
+      typeof (data as { error: unknown }).error === "string"
+        ? (data as { error: string }).error
+        : `Request failed (${res.status})`;
+    return { data: [], error: message };
+  }
+
+  if (Array.isArray(data)) return { data: data as T[] };
+  return { data: [], error: "Unexpected response from server" };
 }

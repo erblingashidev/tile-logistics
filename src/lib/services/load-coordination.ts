@@ -348,7 +348,7 @@ export async function orderHasDeparted(orderId: number): Promise<boolean> {
   const db = await getDb();
   const proof = await dbOne(
     db
-      .select()
+      .select({ id: deliveryProofs.id })
       .from(deliveryProofs)
       .where(
         and(

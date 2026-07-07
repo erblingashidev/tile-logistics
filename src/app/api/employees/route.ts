@@ -14,8 +14,14 @@ export async function GET(request: NextRequest) {
   const auth = await requireApiAdmin();
   if (!auth.ok) return auth.response;
 
-  const role = request.nextUrl.searchParams.get("role") as EmployeeRole | null;
-  return NextResponse.json(await listEmployees(role ?? undefined));
+  try {
+    const role = request.nextUrl.searchParams.get("role") as EmployeeRole | null;
+    return NextResponse.json(await listEmployees(role ?? undefined));
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Failed to load employees";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
 
 export async function POST(request: NextRequest) {

@@ -13,46 +13,53 @@ export async function GET(request: NextRequest) {
   const auth = await requireApiSession();
   if (!auth.ok) return auth.response;
 
-  const sp = request.nextUrl.searchParams;
-  const orders = await listOrders({
-    dateFrom: sp.get("dateFrom") ?? undefined,
-    dateTo: sp.get("dateTo") ?? undefined,
-    minM2: sp.get("minM2") ? Number(sp.get("minM2")) : undefined,
-    maxM2: sp.get("maxM2") ? Number(sp.get("maxM2")) : undefined,
-    minPallets: sp.get("minPallets")
-      ? Number(sp.get("minPallets"))
-      : undefined,
-    maxPallets: sp.get("maxPallets")
-      ? Number(sp.get("maxPallets"))
-      : undefined,
-    minPrice: sp.get("minPrice") ? Number(sp.get("minPrice")) : undefined,
-    maxPrice: sp.get("maxPrice") ? Number(sp.get("maxPrice")) : undefined,
-    location: sp.get("location") ?? undefined,
-    city: sp.get("city") ?? undefined,
-    region: sp.get("region") ?? undefined,
-    employeeId: sp.get("employeeId") ? Number(sp.get("employeeId")) : undefined,
-    pickerId: sp.get("pickerId") ? Number(sp.get("pickerId")) : undefined,
-    driverId: sp.get("driverId") ? Number(sp.get("driverId")) : undefined,
-    vehicleId: sp.get("vehicleId") ? Number(sp.get("vehicleId")) : undefined,
-    deliveryRound: sp.get("deliveryRound")
-      ? Number(sp.get("deliveryRound"))
-      : undefined,
-    vehicleScope:
-      sp.get("vehicleScope") === "on_truck" ||
-      sp.get("vehicleScope") === "unassigned" ||
-      sp.get("vehicleScope") === "workspace"
-        ? (sp.get("vehicleScope") as "workspace" | "on_truck" | "unassigned")
+  try {
+    const sp = request.nextUrl.searchParams;
+    const orders = await listOrders({
+      dateFrom: sp.get("dateFrom") ?? undefined,
+      dateTo: sp.get("dateTo") ?? undefined,
+      minM2: sp.get("minM2") ? Number(sp.get("minM2")) : undefined,
+      maxM2: sp.get("maxM2") ? Number(sp.get("maxM2")) : undefined,
+      minPallets: sp.get("minPallets")
+        ? Number(sp.get("minPallets"))
         : undefined,
-    unassigned: sp.get("unassigned") === "true",
-    status: sp.get("status") ?? undefined,
-    search: sp.get("search") ?? undefined,
-    hideDelivered: sp.get("hideDelivered") === "true",
-  });
-  return NextResponse.json(orders, {
-    headers: {
-      "Cache-Control": "no-store, no-cache, must-revalidate",
-    },
-  });
+      maxPallets: sp.get("maxPallets")
+        ? Number(sp.get("maxPallets"))
+        : undefined,
+      minPrice: sp.get("minPrice") ? Number(sp.get("minPrice")) : undefined,
+      maxPrice: sp.get("maxPrice") ? Number(sp.get("maxPrice")) : undefined,
+      location: sp.get("location") ?? undefined,
+      city: sp.get("city") ?? undefined,
+      region: sp.get("region") ?? undefined,
+      employeeId: sp.get("employeeId") ? Number(sp.get("employeeId")) : undefined,
+      pickerId: sp.get("pickerId") ? Number(sp.get("pickerId")) : undefined,
+      driverId: sp.get("driverId") ? Number(sp.get("driverId")) : undefined,
+      vehicleId: sp.get("vehicleId") ? Number(sp.get("vehicleId")) : undefined,
+      deliveryRound: sp.get("deliveryRound")
+        ? Number(sp.get("deliveryRound"))
+        : undefined,
+      vehicleScope:
+        sp.get("vehicleScope") === "on_truck" ||
+        sp.get("vehicleScope") === "unassigned" ||
+        sp.get("vehicleScope") === "workspace"
+          ? (sp.get("vehicleScope") as "workspace" | "on_truck" | "unassigned")
+          : undefined,
+      unassigned: sp.get("unassigned") === "true",
+      status: sp.get("status") ?? undefined,
+      search: sp.get("search") ?? undefined,
+      hideDelivered: sp.get("hideDelivered") === "true",
+    });
+    return NextResponse.json(orders, {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+      },
+    });
+  } catch (err) {
+    console.error("[api/orders GET]", err);
+    const message =
+      err instanceof Error ? err.message : "Failed to load orders";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
 
 export async function POST(request: NextRequest) {
