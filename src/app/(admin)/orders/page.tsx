@@ -745,7 +745,9 @@ export default function OrdersPage() {
 
   const assignedCount = orders.filter((o) => o.assignment).length;
   const unassignedCount = orders.length - assignedCount;
-  const preparedCount = orders.filter((o) => o.deliveryStage === "loaded").length;
+  const preparedCount = orders.filter(
+    (o) => o.deliveryStage === "prepared" || o.deliveryStage === "loaded"
+  ).length;
   const visibleOrders = orders.filter((order) => {
     if (assignmentFilter === "assigned") return Boolean(order.assignment);
     if (assignmentFilter === "unassigned") return !order.assignment;

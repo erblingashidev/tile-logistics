@@ -45,7 +45,13 @@ export const sq = {
   notOnTruck: "Nuk është në kamion — nuk ka hapa dorëzimi.",
 
   loaderConfirm: "Ngarkuesi — konfirmo porosinë",
-  markLoaded: "✓ Gati për ngarkim në kamion",
+  markLoaded: "✓ Ngarkuar në kamion",
+  markPrepared: "✓ E përgatitura",
+  waitingTruckReturn: "Kamioni nuk është kthyer ende — prit derisa shoferi të konfirmojë arritjen në depo.",
+  driverWaitingLoad: "Pritet ngarkimi nga depo — pa veprime derisa ngarkuesi ta ngarkojë.",
+  driverInfoOnly: "Informacion — raund tjetër",
+  loaderStepPrepare: "Hapi 1 — e përgatitura",
+  loaderStepLoad: "Hapi 2 — ngarko në kamion",
   cannotLoadTitle: "Nuk mund të ngarkohet?",
   cannotLoadPlaceholder: "Shkruaj arsyen (e detyrueshme)…",
   confirmCannotLoad: "Konfirmo — nuk ngarkohet",
@@ -66,7 +72,8 @@ export const sq = {
   notLoadedPrefix: "Nuk u ngarkua:",
 
   proof: {
-    loaded: "Ngarkuar në depo",
+    prepared: "E përgatitura",
+    loaded: "Ngarkuar në kamion",
     load_skipped: "Nuk u ngarkua",
     departed: "Doli nga depo",
     arrived: "Mbërriti te klienti",

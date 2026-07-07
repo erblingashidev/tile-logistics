@@ -3,6 +3,7 @@ import type { DeliveryProofPhase } from "@/lib/constants";
 export type OrderDisplayStage =
   | "pending"
   | "assigned"
+  | "prepared"
   | "loaded"
   | "not_loaded"
   | "in_transit"
@@ -13,7 +14,8 @@ export type OrderDisplayStage =
 export const ORDER_STAGE_LABELS: Record<OrderDisplayStage, string> = {
   pending: "Open",
   assigned: "Assigned",
-  loaded: "Prepared",
+  prepared: "Prepared",
+  loaded: "Loaded on truck",
   not_loaded: "Not loaded",
   in_transit: "On the way",
   arrived: "Arrived",
@@ -31,6 +33,8 @@ export function orderListRowClass(stage: OrderDisplayStage): string {
       return "bg-indigo-50/95 border-l-4 border-l-indigo-500";
     case "loaded":
       return "bg-cyan-50/95 border-l-4 border-l-cyan-500";
+    case "prepared":
+      return "bg-sky-50/95 border-l-4 border-l-sky-400";
     case "assigned":
       return "bg-amber-50/95 border-l-4 border-l-amber-400";
     case "not_loaded":
@@ -54,8 +58,13 @@ export const ORDER_STAGE_LEGEND: Array<{
     swatchClass: "bg-amber-200 ring-1 ring-amber-400",
   },
   {
-    stage: "loaded",
+    stage: "prepared",
     label: "Prepared",
+    swatchClass: "bg-sky-200 ring-1 ring-sky-400",
+  },
+  {
+    stage: "loaded",
+    label: "Loaded on truck",
     swatchClass: "bg-cyan-200 ring-1 ring-cyan-500",
   },
   {
@@ -80,6 +89,7 @@ export function orderStageBadgeTone(
 ): "green" | "amber" | "slate" | "red" | "blue" {
   if (stage === "arrived" || stage === "delivered") return "green";
   if (stage === "loaded") return "blue";
+  if (stage === "prepared") return "blue";
   if (stage === "assigned" || stage === "in_transit") return "amber";
   if (stage === "cancelled" || stage === "not_loaded") return "red";
   return "slate";
@@ -97,6 +107,7 @@ export function computeOrderDisplayStage(
   if (status === "in_transit" || phases.has("departed")) return "in_transit";
   if (phases.has("load_skipped")) return "not_loaded";
   if (phases.has("loaded")) return "loaded";
+  if (phases.has("prepared")) return "prepared";
   if (status === "assigned") return "assigned";
   if (status === "pending") return "pending";
   return "pending";
@@ -105,6 +116,7 @@ export function computeOrderDisplayStage(
 const WAITING_STAGES = new Set<OrderDisplayStage>([
   "pending",
   "assigned",
+  "prepared",
   "loaded",
   "not_loaded",
 ]);
@@ -145,6 +157,7 @@ export function latestProofPhase(
   proofPhases: DeliveryProofPhase[]
 ): DeliveryProofPhase | null {
   const order: DeliveryProofPhase[] = [
+    "prepared",
     "loaded",
     "departed",
     "arrived",

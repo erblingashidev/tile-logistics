@@ -1040,7 +1040,7 @@ function orderHasDeliveryProgress(
   order: NonNullable<Awaited<ReturnType<typeof getOrder>>>
 ): boolean {
   return (order.proofs ?? []).some((p) =>
-    ["loaded", "load_skipped", "departed", "arrived", "delivered"].includes(
+    ["prepared", "loaded", "load_skipped", "departed", "arrived", "delivered"].includes(
       p.phase
     )
   );

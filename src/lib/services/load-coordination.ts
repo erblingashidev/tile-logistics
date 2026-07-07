@@ -1,4 +1,5 @@
 import { eq, and, sql } from "drizzle-orm";
+import { DELIVERY_ROUNDS } from "@/lib/constants";
 import { assignEmployeeToOrder } from "@/lib/services/employees";
 import { getDb } from "@/lib/db";
 import { dbAll, dbOne } from "@/lib/db/query";
@@ -32,13 +33,17 @@ async function driverLinkedToVehicle(vehicleId: number) {
 }
 
 export type OrderLoadStatus = "pending" | "loaded" | "load_skipped";
+export type OrderPrepStatus = "pending" | "prepared";
 
 export interface TruckLoadOrder {
   orderId: number;
   invoiceNumber: string;
   customerName: string;
+  prepStatus: OrderPrepStatus;
   loadStatus: OrderLoadStatus;
   loadNotes: string | null;
+  canMarkLoaded: boolean;
+  loadBlockedReason: string | null;
   /** Loaded on truck but driver has not left warehouse yet. */
   awaitingDepart: boolean;
 }
@@ -64,21 +69,105 @@ export interface TruckLoadStatus {
 
 function loadStatusFromProofs(
   proofs: { phase: string; notes: string | null }[]
-): { status: OrderLoadStatus; notes: string | null } {
+): {
+  prepStatus: OrderPrepStatus;
+  loadStatus: OrderLoadStatus;
+  notes: string | null;
+} {
   const loaded = proofs.find((p) => p.phase === "loaded");
-  if (loaded) return { status: "loaded", notes: loaded.notes };
+  if (loaded) {
+    return { prepStatus: "prepared", loadStatus: "loaded", notes: loaded.notes };
+  }
 
   const skipped = proofs.find((p) => p.phase === "load_skipped");
   if (skipped) {
-    return { status: "load_skipped", notes: skipped.notes };
+    return {
+      prepStatus: "pending",
+      loadStatus: "load_skipped",
+      notes: skipped.notes,
+    };
   }
 
-  return { status: "pending", notes: null };
+  const prepared = proofs.find((p) => p.phase === "prepared");
+  if (prepared) {
+    return { prepStatus: "prepared", loadStatus: "pending", notes: prepared.notes };
+  }
+
+  return { prepStatus: "pending", loadStatus: "pending", notes: null };
+}
+
+export async function assertLoaderCanMarkLoaded(
+  orderId: number
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const assignment = await getTruckAssignmentForOrder(orderId);
+  if (!assignment) {
+    return { ok: false, error: "Order is not assigned to a truck" };
+  }
+
+  const db = await getDb();
+  const proofs = await dbAll(
+    db
+      .select({ phase: deliveryProofs.phase })
+      .from(deliveryProofs)
+      .where(eq(deliveryProofs.orderId, orderId))
+  );
+  const hasPrepared = proofs.some((p) => p.phase === "prepared");
+  if (!hasPrepared) {
+    return { ok: false, error: "Mark the order as prepared first." };
+  }
+
+  const vehicle = await dbOne(
+    db
+      .select({ status: vehicles.status })
+      .from(vehicles)
+      .where(eq(vehicles.id, assignment.vehicleId))
+  );
+
+  let lowerRoundDeparted = false;
+  for (const round of DELIVERY_ROUNDS) {
+    if (round >= assignment.deliveryRound) break;
+    const departed = await dbOne(
+      db
+        .select({ id: deliveryProofs.id })
+        .from(assignments)
+        .innerJoin(
+          deliveryProofs,
+          eq(deliveryProofs.orderId, assignments.orderId)
+        )
+        .where(
+          and(
+            eq(assignments.vehicleId, assignment.vehicleId),
+            eq(assignments.deliveryRound, round),
+            eq(deliveryProofs.phase, "departed")
+          )
+        )
+    );
+    if (departed) {
+      lowerRoundDeparted = true;
+      break;
+    }
+  }
+
+  if (
+    lowerRoundDeparted &&
+    vehicle?.status !== "available"
+  ) {
+    return {
+      ok: false,
+      error:
+        "Truck is still out or returning — wait until the driver confirms arrival at the warehouse.",
+    };
+  }
+
+  return { ok: true };
 }
 
 export async function getOrderLoadStatus(orderId: number): Promise<{
+  prepStatus: OrderPrepStatus;
   loadStatus: OrderLoadStatus;
   loadNotes: string | null;
+  canMarkLoaded: boolean;
+  loadBlockedReason: string | null;
 }> {
   const db = await getDb();
   const proofs = await dbAll(
@@ -87,8 +176,23 @@ export async function getOrderLoadStatus(orderId: number): Promise<{
       .from(deliveryProofs)
       .where(eq(deliveryProofs.orderId, orderId))
   );
-  const { status, notes } = loadStatusFromProofs(proofs);
-  return { loadStatus: status, loadNotes: notes };
+  const { prepStatus, loadStatus, notes } = loadStatusFromProofs(proofs);
+
+  let canMarkLoaded = false;
+  let loadBlockedReason: string | null = null;
+  if (prepStatus === "prepared" && loadStatus === "pending") {
+    const check = await assertLoaderCanMarkLoaded(orderId);
+    canMarkLoaded = check.ok;
+    loadBlockedReason = check.ok ? null : check.error;
+  }
+
+  return {
+    prepStatus,
+    loadStatus,
+    loadNotes: notes,
+    canMarkLoaded,
+    loadBlockedReason,
+  };
 }
 
 /** Backfill driver on truck assignments from employee ↔ truck link. */
@@ -188,15 +292,18 @@ export async function getTruckLoadStatus(
 
   const truckOrders: TruckLoadOrder[] = await Promise.all(
     rows.map(async (row) => {
-      const { loadStatus, loadNotes } = await getOrderLoadStatus(row.orderId);
+      const load = await getOrderLoadStatus(row.orderId);
       const awaitingDepart =
-        loadStatus === "loaded" && !(await orderHasDeparted(row.orderId));
+        load.loadStatus === "loaded" && !(await orderHasDeparted(row.orderId));
       return {
         orderId: row.orderId,
         invoiceNumber: row.invoiceNumber,
         customerName: row.customerName,
-        loadStatus,
-        loadNotes,
+        prepStatus: load.prepStatus,
+        loadStatus: load.loadStatus,
+        loadNotes: load.loadNotes,
+        canMarkLoaded: load.canMarkLoaded,
+        loadBlockedReason: load.loadBlockedReason,
         awaitingDepart,
       };
     })

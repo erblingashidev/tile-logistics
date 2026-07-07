@@ -20,6 +20,7 @@ import {
 import { updateOrderStatus } from "@/lib/services/order-status";
 import {
   assertTruckReadyForDriverDeparture,
+  assertLoaderCanMarkLoaded,
   getOrderLoadStatus,
   getTruckLoadStatus,
   isDriverAuthorizedForOrder,
@@ -29,7 +30,11 @@ import {
 
 const UPLOAD_ROOT = getUploadRoot();
 
-const LOADER_PHASES = new Set<DeliveryProofPhase>(["loaded", "load_skipped"]);
+const LOADER_PHASES = new Set<DeliveryProofPhase>([
+  "prepared",
+  "loaded",
+  "load_skipped",
+]);
 
 type StoredProofPhoto = {
   photoPath: string | null;
@@ -447,6 +452,28 @@ export async function submitDeliveryProof(input: {
   if (!order) return { ok: false as const, error: "Order not found" };
 
   const loadStatus = await getOrderLoadStatus(input.orderId);
+
+  if (input.phase === "prepared") {
+    if (loadStatus.prepStatus === "prepared") {
+      return { ok: false as const, error: "This order is already marked as prepared." };
+    }
+    if (loadStatus.loadStatus === "loaded") {
+      return { ok: false as const, error: "This order is already loaded on the truck." };
+    }
+    if (loadStatus.loadStatus === "load_skipped") {
+      return {
+        ok: false as const,
+        error: "This order was marked as cannot load.",
+      };
+    }
+  }
+
+  if (input.phase === "loaded") {
+    const loadCheck = await assertLoaderCanMarkLoaded(input.orderId);
+    if (!loadCheck.ok) {
+      return { ok: false as const, error: loadCheck.error };
+    }
+  }
 
   if (LOADER_PHASES.has(input.phase)) {
     if (loadStatus.loadStatus === "loaded" && input.phase === "load_skipped") {

@@ -148,8 +148,17 @@ export type OrderStatus = (typeof ORDER_STATUSES)[number];
 /** Proof-of-delivery steps employees capture on the portal */
 export const DELIVERY_PROOF_PHASES = [
   {
+    id: "prepared",
+    label: "Prepared at warehouse",
+    shortLabel: "Prepared",
+    roles: ["picker", "unloader"] as EmployeeRole[],
+    nextOrderStatus: "assigned" as OrderStatus,
+    photoRequired: false,
+    notesRequired: false,
+  },
+  {
     id: "loaded",
-    label: "Loaded at warehouse",
+    label: "Loaded on truck",
     shortLabel: "Loaded",
     roles: ["picker", "unloader"] as EmployeeRole[],
     nextOrderStatus: "assigned" as OrderStatus,
