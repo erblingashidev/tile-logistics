@@ -11,7 +11,7 @@ import {
 } from "@/lib/constants";
 import { logActivity } from "@/lib/logger";
 import { deliveryProofMessage } from "@/lib/log-messages";
-import { getUploadRoot } from "@/lib/config/env";
+import { getUploadRoot, isNetlify } from "@/lib/config/env";
 import { getOrderStaff } from "@/lib/services/employees";
 import { updateOrderStatus } from "@/lib/services/order-status";
 import {
@@ -26,6 +26,48 @@ import {
 const UPLOAD_ROOT = getUploadRoot();
 
 const LOADER_PHASES = new Set<DeliveryProofPhase>(["loaded", "load_skipped"]);
+
+type StoredProofPhoto = {
+  photoPath: string | null;
+  photoData: Buffer | null;
+  photoMime: string | null;
+};
+
+function useDatabaseProofPhotos(): boolean {
+  return isNetlify();
+}
+
+function hasStoredPhoto(photo: StoredProofPhoto): boolean {
+  return Boolean(photo.photoPath || photo.photoData);
+}
+
+function storeProofPhoto(
+  orderId: number,
+  phase: string,
+  file: Buffer,
+  mimeType: string
+): StoredProofPhoto {
+  if (useDatabaseProofPhotos()) {
+    return { photoPath: null, photoData: file, photoMime: mimeType };
+  }
+
+  const photoPath = saveProofPhoto(orderId, phase, file, mimeType);
+  if (photoPath) {
+    return { photoPath, photoData: null, photoMime: null };
+  }
+
+  return { photoPath: null, photoData: file, photoMime: mimeType };
+}
+
+function proofPhotoUrl(proof: {
+  id: number;
+  photoPath: string | null;
+  photoMime: string | null;
+}) {
+  if (proof.photoPath) return `/api/uploads/${proof.photoPath}`;
+  if (proof.photoMime) return `/api/uploads/proof/${proof.id}`;
+  return null;
+}
 
 export function ensureUploadDir(orderId: number) {
   const dir = path.join(UPLOAD_ROOT, String(orderId));
@@ -68,6 +110,47 @@ export function getProofPhotoPath(relativePath: string) {
   return path.join(UPLOAD_ROOT, relativePath);
 }
 
+export async function getDeliveryProofPhoto(proofId: number) {
+  const db = await getDb();
+  const row = await dbOne(
+    db
+      .select({
+        photoData: deliveryProofs.photoData,
+        photoMime: deliveryProofs.photoMime,
+        photoPath: deliveryProofs.photoPath,
+      })
+      .from(deliveryProofs)
+      .where(eq(deliveryProofs.id, proofId))
+  );
+  if (!row) return null;
+
+  if (row.photoData) {
+    const buffer =
+      row.photoData instanceof Buffer
+        ? row.photoData
+        : Buffer.from(row.photoData as Uint8Array);
+    return {
+      buffer,
+      mimeType: row.photoMime || "image/jpeg",
+    };
+  }
+
+  if (row.photoPath) {
+    const fullPath = getProofPhotoPath(row.photoPath);
+    if (!fs.existsSync(fullPath)) return null;
+    const ext = path.extname(fullPath).toLowerCase();
+    const mimeType =
+      ext === ".png"
+        ? "image/png"
+        : ext === ".webp"
+          ? "image/webp"
+          : "image/jpeg";
+    return { buffer: fs.readFileSync(fullPath), mimeType };
+  }
+
+  return null;
+}
+
 export async function listDeliveryProofs(orderId: number) {
   const db = await getDb();
   const rows = await dbAll(
@@ -77,6 +160,7 @@ export async function listDeliveryProofs(orderId: number) {
         orderId: deliveryProofs.orderId,
         phase: deliveryProofs.phase,
         photoPath: deliveryProofs.photoPath,
+        photoMime: deliveryProofs.photoMime,
         notes: deliveryProofs.notes,
         lat: deliveryProofs.lat,
         lng: deliveryProofs.lng,
@@ -92,7 +176,7 @@ export async function listDeliveryProofs(orderId: number) {
   );
   return rows.map((p) => ({
     ...p,
-    photoUrl: p.photoPath ? `/api/uploads/${p.photoPath}` : null,
+    photoUrl: proofPhotoUrl(p),
   }));
 }
 
@@ -171,6 +255,8 @@ async function insertProofRecord(input: {
   employeeId: number;
   phase: DeliveryProofPhase;
   photoPath: string | null;
+  photoData?: Buffer | null;
+  photoMime?: string | null;
   notes?: string;
   lat?: number;
   lng?: number;
@@ -182,6 +268,8 @@ async function insertProofRecord(input: {
     employeeId: input.employeeId,
     phase: input.phase,
     photoPath: input.photoPath,
+    photoData: input.photoData ?? null,
+    photoMime: input.photoMime ?? null,
     notes: input.notes?.trim() || null,
     lat: input.lat ?? null,
     lng: input.lng ?? null,
@@ -260,9 +348,13 @@ async function departTruckForOrder(
     );
     if (existing) continue;
 
-    let photoPath: string | null = null;
+    let storedPhoto: StoredProofPhoto = {
+      photoPath: null,
+      photoData: null,
+      photoMime: null,
+    };
     if (photoBuffer && photoMime && truckOrder.orderId === triggerOrderId) {
-      photoPath = saveProofPhoto(
+      storedPhoto = storeProofPhoto(
         truckOrder.orderId,
         "departed",
         photoBuffer,
@@ -274,7 +366,7 @@ async function departTruckForOrder(
       orderId: truckOrder.orderId,
       employeeId: driverEmployeeId,
       phase: "departed",
-      photoPath,
+      ...storedPhoto,
       lat,
       lng,
     });
@@ -288,7 +380,7 @@ async function departTruckForOrder(
       driver?.name ?? "Driver",
       "departed",
       driverEmployeeId,
-      Boolean(photoPath)
+      hasStoredPhoto(storedPhoto)
     );
   }
 
@@ -401,16 +493,20 @@ export async function submitDeliveryProof(input: {
     };
   }
 
-  let photoPath: string | null = null;
+  let storedPhoto: StoredProofPhoto = {
+    photoPath: null,
+    photoData: null,
+    photoMime: null,
+  };
   let photoWarning: string | undefined;
   if (input.photoBuffer && input.photoMime) {
-    photoPath = saveProofPhoto(
+    storedPhoto = storeProofPhoto(
       input.orderId,
       input.phase,
       input.photoBuffer,
       input.photoMime
     );
-    if (!photoPath) {
+    if (!hasStoredPhoto(storedPhoto)) {
       if (phaseDef.photoRequired) {
         return {
           ok: false as const,
@@ -420,6 +516,9 @@ export async function submitDeliveryProof(input: {
       }
       photoWarning =
         "Proof saved without photo — server storage unavailable.";
+    } else if (!storedPhoto.photoPath && storedPhoto.photoData) {
+      photoWarning =
+        "Proof saved with photo stored in database (server disk unavailable).";
     }
   }
 
@@ -434,7 +533,7 @@ export async function submitDeliveryProof(input: {
     orderId: input.orderId,
     employeeId: input.employeeId,
     phase: input.phase,
-    photoPath,
+    ...storedPhoto,
     notes: input.notes,
     lat: input.lat,
     lng: input.lng,
@@ -449,7 +548,7 @@ export async function submitDeliveryProof(input: {
     employee?.name ?? "Employee",
     input.phase,
     input.employeeId,
-    Boolean(photoPath)
+    hasStoredPhoto(storedPhoto)
   );
 
   return {

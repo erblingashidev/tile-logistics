@@ -140,7 +140,9 @@ Copy `.env.example` → `.env.local` and fill in values. For local dev, Turso is
 
 ### Employee proof photos
 
-- Uploads go to `UPLOAD_ROOT` on disk. On Netlify this is ephemeral. For production photo storage, plan S3/Cloudinary/Netlify Blobs (not configured yet).
+- On Netlify, delivery proof photos are stored in Turso (`photo_data` column), not on disk.
+- `UPLOAD_ROOT` is ignored on Netlify — only `/tmp` is writable there.
+- For warehouse report photos, disk uploads still use `/tmp` (ephemeral). Plan S3/Cloudinary/Netlify Blobs for long-term file storage if needed.
 
 ---
 

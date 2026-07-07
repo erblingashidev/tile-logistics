@@ -11,12 +11,12 @@ export function getDatabasePath(): string {
 }
 
 export function getUploadRoot(): string {
-  if (process.env.UPLOAD_ROOT?.trim()) {
-    return path.resolve(process.env.UPLOAD_ROOT.trim());
-  }
-  // Netlify serverless: only /tmp is writable (ephemeral between invocations).
+  // Netlify serverless: only /tmp is writable (UPLOAD_ROOT env is ignored).
   if (isNetlify()) {
     return path.join("/tmp", "agimi-uploads");
+  }
+  if (process.env.UPLOAD_ROOT?.trim()) {
+    return path.resolve(process.env.UPLOAD_ROOT.trim());
   }
   return path.join(process.cwd(), "data", "uploads");
 }
@@ -27,7 +27,12 @@ export function isProductionDeploy(): boolean {
 
 /** True when running on Netlify (serverless — no persistent local disk). */
 export function isNetlify(): boolean {
-  return Boolean(process.env.NETLIFY || process.env.NETLIFY_DEV);
+  return Boolean(
+    process.env.NETLIFY ||
+    process.env.NETLIFY_DEV ||
+    process.env.URL?.includes("netlify.app") ||
+    process.env.DEPLOY_URL?.includes("netlify.app")
+  );
 }
 
 export function assertProductionSecrets(): void {

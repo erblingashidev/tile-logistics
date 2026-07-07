@@ -40,6 +40,24 @@ async function addColumnIfMissing(
   existing.add(column);
 }
 
+async function ensureDeliveryProofPhotoColumns(client: Client) {
+  const proofCols = await tableColumns(client, "delivery_proofs");
+  await addColumnIfMissing(
+    client,
+    "delivery_proofs",
+    "photo_data",
+    "photo_data BLOB",
+    proofCols
+  );
+  await addColumnIfMissing(
+    client,
+    "delivery_proofs",
+    "photo_mime",
+    "photo_mime TEXT",
+    proofCols
+  );
+}
+
 async function runMigrations(client: Client) {
   const schemaPath = path.join(process.cwd(), "scripts", "turso-schema.sql");
   const sql = fs.readFileSync(schemaPath, "utf8");
@@ -533,6 +551,7 @@ export async function getDb() {
       assertProductionSecrets();
       clientInstance = createDbClient();
       await clientInstance.execute("PRAGMA foreign_keys = ON");
+      await ensureDeliveryProofPhotoColumns(clientInstance);
       if (shouldRunRuntimeMigrations()) {
         await runMigrations(clientInstance);
       }

@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, blob } from "drizzle-orm/sqlite-core";
 
 export const orders = sqliteTable("orders", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -140,6 +140,8 @@ export const deliveryProofs = sqliteTable("delivery_proofs", {
     .references(() => employees.id, { onDelete: "cascade" }),
   phase: text("phase").notNull(),
   photoPath: text("photo_path"),
+  photoData: blob("photo_data"),
+  photoMime: text("photo_mime"),
   notes: text("notes"),
   lat: real("lat"),
   lng: real("lng"),

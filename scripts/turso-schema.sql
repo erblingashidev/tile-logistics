@@ -117,6 +117,8 @@ CREATE TABLE IF NOT EXISTS delivery_proofs (
   employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
   phase TEXT NOT NULL,
   photo_path TEXT,
+  photo_data BLOB,
+  photo_mime TEXT,
   notes TEXT,
   lat REAL,
   lng REAL,
