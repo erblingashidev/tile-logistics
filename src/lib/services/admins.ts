@@ -41,6 +41,28 @@ function normalizeUsername(username: string) {
   return username.trim().toLowerCase();
 }
 
+export async function getAdminByUsername(
+  username: string
+): Promise<AdminProfile | null> {
+  const normalized = normalizeUsername(username);
+  if (!normalized) return null;
+  const db = await getDb();
+  const row = await dbOne(
+    db.select().from(admins).where(eq(admins.username, normalized))
+  );
+  return row ? mapAdminRow(row) : null;
+}
+
+export async function resolveAdminIdForSession(input: {
+  adminId: number;
+  username?: string;
+}): Promise<number | null> {
+  if (input.adminId > 0) return input.adminId;
+  if (!input.username) return null;
+  const admin = await getAdminByUsername(input.username);
+  return admin?.id ?? null;
+}
+
 function mapAdminRow(row: typeof admins.$inferSelect): AdminProfile {
   return {
     id: row.id,
