@@ -26,6 +26,19 @@ CREATE TABLE IF NOT EXISTS orders (
   updated_at TEXT NOT NULL
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_invoice_number_unique ON orders(invoice_number);
+
+CREATE TABLE IF NOT EXISTS order_delivery_links (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id_a INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  order_id_b INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  note TEXT,
+  created_at TEXT NOT NULL,
+  CHECK (order_id_a < order_id_b)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_order_delivery_links_pair ON order_delivery_links(order_id_a, order_id_b);
+
 CREATE TABLE IF NOT EXISTS order_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,

@@ -80,6 +80,22 @@ async function ensureEmployeeNotificationsTable(client: Client) {
   );
 }
 
+async function ensureOrderDeliveryLinksTable(client: Client) {
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS order_delivery_links (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id_a INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      order_id_b INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      note TEXT,
+      created_at TEXT NOT NULL,
+      CHECK (order_id_a < order_id_b)
+    )
+  `);
+  await client.execute(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_order_delivery_links_pair ON order_delivery_links(order_id_a, order_id_b)"
+  );
+}
+
 async function ensureAdminsTable(client: Client) {
   await client.execute(`
     CREATE TABLE IF NOT EXISTS admins (
@@ -659,6 +675,7 @@ export async function getDb() {
         await ensureDeliveryProofPhotoColumns(clientInstance);
         await ensureEmployeeNotificationsTable(clientInstance);
         await ensureAdminsTable(clientInstance);
+        await ensureOrderDeliveryLinksTable(clientInstance);
         if (shouldRunRuntimeMigrations()) {
           await runMigrations(clientInstance);
         }
@@ -667,6 +684,10 @@ export async function getDb() {
           "@/lib/services/admins"
         );
         await backfillAdminEmployeeLinks();
+        const { backfillUniqueInvoiceNumbers } = await import(
+          "@/lib/services/orders"
+        );
+        await backfillUniqueInvoiceNumbers(clientInstance);
         if (shouldRunStartupBackfill()) {
           const { backfillOrderSalesOwnership } = await import(
             "@/lib/services/sales-portal"

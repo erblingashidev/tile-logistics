@@ -1,7 +1,3 @@
-import { eq } from "drizzle-orm";
-import { getDb } from "@/lib/db";
-import { dbOne } from "@/lib/db/query";
-import { orders } from "@/lib/db/schema";
 import {
   detectAgimiDocumentKind,
   parseAgimiInvoice,
@@ -14,6 +10,7 @@ import { resolveSalesOwnership } from "@/lib/services/sales-portal";
 import {
   appendOrderItems,
   createOrder,
+  findOrderByInvoiceNumber,
   type OrderPayload,
 } from "@/lib/services/orders";
 import { normalizeScannedInvoiceNumber } from "@/lib/invoices/scan-utils";
@@ -84,14 +81,8 @@ function applyInvoiceOverride(
 async function buildImportEntry(
   parsed: ParsedAgimiInvoice
 ): Promise<InvoiceImportEntry> {
-  const db = await getDb();
   const existing = parsed.invoiceNumber
-    ? await dbOne(
-        db
-          .select({ id: orders.id })
-          .from(orders)
-          .where(eq(orders.invoiceNumber, parsed.invoiceNumber))
-      )
+    ? await findOrderByInvoiceNumber(parsed.invoiceNumber)
     : null;
 
   return {

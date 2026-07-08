@@ -1,4 +1,5 @@
 import { eq, and, gte, lte, desc, sql, like, or, inArray } from "drizzle-orm";
+import type { Client } from "@libsql/client";
 import { getDb } from "@/lib/db";
 import { dbAll, dbOne } from "@/lib/db/query";
 import {
@@ -9,6 +10,7 @@ import {
   activityLogs,
   employees,
   orderEmployeeAssignments,
+  deliveryProofs,
 } from "@/lib/db/schema";
 import {
   getOrderStaff,
@@ -29,6 +31,7 @@ import {
 } from "@/lib/services/products";
 import { getLearnedUnitForItem } from "@/lib/services/product-learning";
 import { validateTruckForOrder } from "@/lib/dispatch/validate-assignment";
+import { normalizeScannedInvoiceNumber } from "@/lib/invoices/scan-utils";
 import {
   isOrderReadyToShip,
   normalizeDeliveryTimePreference,
@@ -338,6 +341,10 @@ export async function listOrders(filters?: {
           db.select().from(orders).orderBy(desc(orders.orderDate))
         );
 
+  const linkMap = await (
+    await import("@/lib/services/order-delivery-links")
+  ).getDeliveryLinksByOrderIds(rows.map((row) => row.id));
+
   const mapped = await Promise.all(
     rows.map(async (order) => {
       try {
@@ -354,6 +361,7 @@ export async function listOrders(filters?: {
           deliveryStage,
           deliveryStageLabel: ORDER_STAGE_LABELS[deliveryStage],
           ...(await getOrderLoadStatus(order.id)),
+          deliveryLinks: linkMap.get(order.id) ?? [],
           items: await dbAll(
             db
               .select()
@@ -376,13 +384,15 @@ export async function listOrders(filters?: {
           loadNotes: null,
           canMarkLoaded: false,
           loadBlockedReason: null,
+          deliveryLinks: linkMap.get(order.id) ?? [],
           items: [],
         };
       }
     })
   );
 
-  return mapped.filter((order) => {
+  return dedupeOrdersByInvoiceNumber(
+    mapped.filter((order) => {
     if (filters?.readyToShip && !isOrderReadyToShip(order, filters.shipAsOfDate)) {
       return false;
     }
@@ -395,7 +405,8 @@ export async function listOrders(filters?: {
     }
     if (!filters?.hideDelivered) return true;
     return order.deliveryStage !== "delivered";
-  });
+    })
+  );
 }
 
 export async function getOrder(id: number) {
@@ -427,6 +438,9 @@ export async function getOrder(id: number) {
     deliveryStage,
     deliveryStageLabel: ORDER_STAGE_LABELS[deliveryStage],
     ...(await getOrderLoadStatus(id)),
+    deliveryLinks: await (
+      await import("@/lib/services/order-delivery-links")
+    ).listLinkedOrders(id),
   };
 }
 
@@ -492,6 +506,208 @@ async function getOrderAssignment(orderId: number) {
   return { ...row, driverName };
 }
 
+export function normalizeStoredInvoiceNumber(invoiceNumber: string): string {
+  return normalizeScannedInvoiceNumber(invoiceNumber);
+}
+
+export function dedupeOrdersByInvoiceNumber<
+  T extends { id: number; invoiceNumber: string },
+>(orderRows: T[]): T[] {
+  const byInvoice = new Map<string, T>();
+  const withoutInvoice: T[] = [];
+
+  for (const order of orderRows) {
+    const key = normalizeStoredInvoiceNumber(order.invoiceNumber);
+    if (!key) {
+      withoutInvoice.push(order);
+      continue;
+    }
+    const existing = byInvoice.get(key);
+    if (!existing || order.id > existing.id) {
+      byInvoice.set(key, order);
+    }
+  }
+
+  return [...byInvoice.values(), ...withoutInvoice].sort((a, b) => b.id - a.id);
+}
+
+export async function findOrderByInvoiceNumber(invoiceNumber: string) {
+  const normalized = normalizeStoredInvoiceNumber(invoiceNumber);
+  if (!normalized) return null;
+
+  const db = await getDb();
+  const exact = await dbOne(
+    db
+      .select({ id: orders.id, invoiceNumber: orders.invoiceNumber })
+      .from(orders)
+      .where(eq(orders.invoiceNumber, normalized))
+  );
+  if (exact) return exact;
+
+  const rows = await dbAll(
+    db.select({ id: orders.id, invoiceNumber: orders.invoiceNumber }).from(orders)
+  );
+
+  for (const row of rows) {
+    if (normalizeStoredInvoiceNumber(row.invoiceNumber) === normalized) {
+      return row;
+    }
+  }
+  return null;
+}
+
+export async function getOrderByInvoiceNumber(invoiceNumber: string) {
+  const existing = await findOrderByInvoiceNumber(invoiceNumber);
+  if (!existing) return null;
+  return getOrder(existing.id);
+}
+
+async function assertUniqueInvoiceNumber(
+  invoiceNumber: string,
+  excludeOrderId?: number
+) {
+  const existing = await findOrderByInvoiceNumber(invoiceNumber);
+  if (existing && existing.id !== excludeOrderId) {
+    throw new Error(
+      `Invoice ${normalizeStoredInvoiceNumber(invoiceNumber)} already exists (order #${existing.id})`
+    );
+  }
+}
+
+async function mergeDuplicateOrderInto(keeperId: number, duplicateId: number) {
+  if (keeperId === duplicateId) return;
+
+  const db = await getDb();
+  const keeper = await getOrder(keeperId);
+  const duplicate = await getOrder(duplicateId);
+  if (!keeper || !duplicate) return;
+
+  const keeperStaff = await getOrderStaff(keeperId);
+  const sameContent =
+    keeper.totalM2 === duplicate.totalM2 &&
+    keeper.price === duplicate.price &&
+    keeper.items.length === duplicate.items.length;
+
+  if (!sameContent && duplicate.items.length > 0) {
+    await appendOrderItems(
+      keeperId,
+      duplicate.items.map((item) => mapStoredItemToPayload(item)),
+      {
+        addPrice: duplicate.price,
+        notesAppend: duplicate.notes ?? undefined,
+      }
+    );
+  }
+
+  if (!keeper.assignment && duplicate.assignment) {
+    await db
+      .update(assignments)
+      .set({ orderId: keeperId })
+      .where(eq(assignments.orderId, duplicateId));
+  }
+
+  const duplicateStaff = await dbAll(
+    db
+      .select()
+      .from(orderEmployeeAssignments)
+      .where(eq(orderEmployeeAssignments.orderId, duplicateId))
+  );
+  for (const row of duplicateStaff) {
+    const keeperHasSameRole = keeperStaff.staff.some((s) => s.role === row.role);
+    const keeperHasSamePerson = keeperStaff.staff.some(
+      (s) => s.role === row.role && s.employeeId === row.employeeId
+    );
+    if (!keeperHasSameRole && !keeperHasSamePerson) {
+      await db
+        .update(orderEmployeeAssignments)
+        .set({ orderId: keeperId })
+        .where(eq(orderEmployeeAssignments.id, row.id));
+    }
+  }
+
+  await db
+    .update(deliveryProofs)
+    .set({ orderId: keeperId })
+    .where(eq(deliveryProofs.orderId, duplicateId));
+
+  await db
+    .update(orders)
+    .set({
+      invoiceNumber: normalizeStoredInvoiceNumber(keeper.invoiceNumber),
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(orders.id, keeperId));
+
+  await deleteOrder(duplicateId);
+}
+
+let backfillUniqueInvoiceNumbersPromise: Promise<void> | null = null;
+
+/** Normalize invoice numbers, merge duplicates, and enforce DB uniqueness. */
+export async function backfillUniqueInvoiceNumbers(client?: Client) {
+  if (!backfillUniqueInvoiceNumbersPromise) {
+    backfillUniqueInvoiceNumbersPromise = (async () => {
+      const db = await getDb();
+      const rows = await dbAll(
+        db
+          .select({ id: orders.id, invoiceNumber: orders.invoiceNumber })
+          .from(orders)
+          .orderBy(orders.id)
+      );
+
+      const groups = new Map<string, number[]>();
+      for (const row of rows) {
+        const key = normalizeStoredInvoiceNumber(row.invoiceNumber);
+        if (!key) continue;
+        const ids = groups.get(key) ?? [];
+        ids.push(row.id);
+        groups.set(key, ids);
+      }
+
+      let merged = 0;
+      for (const ids of groups.values()) {
+        if (ids.length <= 1) {
+          const [onlyId] = ids;
+          const row = rows.find((entry) => entry.id === onlyId);
+          if (!row) continue;
+          const normalized = normalizeStoredInvoiceNumber(row.invoiceNumber);
+          if (normalized !== row.invoiceNumber) {
+            await db
+              .update(orders)
+              .set({ invoiceNumber: normalized })
+              .where(eq(orders.id, onlyId));
+          }
+          continue;
+        }
+
+        const sorted = [...ids].sort((a, b) => b - a);
+        const keeperId = sorted[0]!;
+        for (const duplicateId of sorted.slice(1)) {
+          await mergeDuplicateOrderInto(keeperId, duplicateId);
+          merged += 1;
+        }
+      }
+
+      if (client) {
+        await client.execute(
+          "CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_invoice_number_unique ON orders(invoice_number)"
+        );
+      }
+
+      if (merged > 0) {
+        console.log(
+          `[backfillUniqueInvoiceNumbers] merged ${merged} duplicate order(s) by invoice number`
+        );
+      }
+    })().catch((err) => {
+      backfillUniqueInvoiceNumbersPromise = null;
+      throw err;
+    });
+  }
+
+  return backfillUniqueInvoiceNumbersPromise;
+}
+
 export async function createOrder(payload: OrderPayload) {
   const db = await getDb();
   const now = new Date().toISOString();
@@ -507,6 +723,12 @@ export async function createOrder(payload: OrderPayload) {
   if (scheduleError) {
     throw new Error(scheduleError);
   }
+
+  const invoiceNumber = normalizeStoredInvoiceNumber(payload.invoiceNumber);
+  if (!invoiceNumber) {
+    throw new Error("Invoice number is required");
+  }
+  await assertUniqueInvoiceNumber(invoiceNumber);
 
   const itemsInput = await itemsWithCatalog(payload.items);
   const totals = calculateOrderTotals(itemsInput);
@@ -524,7 +746,7 @@ export async function createOrder(payload: OrderPayload) {
     db
       .insert(orders)
       .values({
-        invoiceNumber: payload.invoiceNumber,
+        invoiceNumber,
         customerName: payload.customerName,
         location: locFields.location,
         locationId: locFields.locationId,
@@ -563,7 +785,7 @@ export async function createOrder(payload: OrderPayload) {
     "order",
     orderId,
     orderCreatedMessage({
-      invoiceNumber: payload.invoiceNumber,
+      invoiceNumber,
       customerName: payload.customerName,
       location: payload.location,
       totalM2: totals.totalM2,
@@ -573,7 +795,7 @@ export async function createOrder(payload: OrderPayload) {
     {
       category: "orders",
       details: {
-        invoiceNumber: payload.invoiceNumber,
+        invoiceNumber,
         location: payload.location,
         totals,
       },
@@ -705,6 +927,12 @@ export async function updateOrder(id: number, payload: OrderPayload) {
     throw new Error(scheduleError);
   }
 
+  const invoiceNumber = normalizeStoredInvoiceNumber(payload.invoiceNumber);
+  if (!invoiceNumber) {
+    throw new Error("Invoice number is required");
+  }
+  await assertUniqueInvoiceNumber(invoiceNumber, id);
+
   const itemsInput = await itemsWithCatalog(payload.items);
   const totals = calculateOrderTotals(itemsInput);
   const enriched = enrichItems(itemsInput);
@@ -720,7 +948,7 @@ export async function updateOrder(id: number, payload: OrderPayload) {
   await db
     .update(orders)
     .set({
-      invoiceNumber: payload.invoiceNumber,
+      invoiceNumber,
       customerName: payload.customerName,
       location: locFields.location,
       locationId: locFields.locationId,
@@ -751,8 +979,8 @@ export async function updateOrder(id: number, payload: OrderPayload) {
   }
 
   const changes: string[] = [];
-  if (existing.invoiceNumber !== payload.invoiceNumber) {
-    changes.push(`invoice ${existing.invoiceNumber} → ${payload.invoiceNumber}`);
+  if (existing.invoiceNumber !== invoiceNumber) {
+    changes.push(`invoice ${existing.invoiceNumber} → ${invoiceNumber}`);
   }
   if (existing.customerName !== payload.customerName) {
     changes.push(`customer ${existing.customerName} → ${payload.customerName}`);
@@ -774,11 +1002,11 @@ export async function updateOrder(id: number, payload: OrderPayload) {
     "update",
     "order",
     id,
-    orderUpdatedMessage(payload.invoiceNumber, changes),
+    orderUpdatedMessage(invoiceNumber, changes),
     {
       category: "orders",
       details: {
-        invoiceNumber: payload.invoiceNumber,
+        invoiceNumber,
         changes,
         totals,
       },
@@ -812,8 +1040,9 @@ export async function assignOrderToVehicle(
   deliveryRound: number,
   ignoreWeightWarning = false,
   ignoreCraneRule = false,
-  options?: { explicitRound?: boolean }
+  options?: { explicitRound?: boolean; ignoreLinkedWarning?: boolean }
 ) {
+  const ignoreLinkedWarning = options?.ignoreLinkedWarning ?? false;
   let round = deliveryRound;
   let roundReason: string | undefined;
   if (options?.explicitRound === false) {
@@ -841,6 +1070,18 @@ export async function assignOrderToVehicle(
       ok: false as const,
       error: craneCheck.error,
       requiresCrane: craneCheck.requiresCrane,
+    };
+  }
+
+  const { getLinkedTruckConflictMessage, getLinkedSplitReminder } = await import(
+    "@/lib/services/order-delivery-links"
+  );
+  const linkedConflict = await getLinkedTruckConflictMessage(orderId, vehicleId);
+  if (linkedConflict && !ignoreLinkedWarning) {
+    return {
+      ok: false as const,
+      isLinkedWarning: true,
+      error: linkedConflict,
     };
   }
 
@@ -996,6 +1237,7 @@ export async function assignOrderToVehicle(
     capacity,
     weightWarning: capacity.weightWarning,
     craneWarning: craneCheck.ok ? craneCheck.warning : undefined,
+    linkedWarning: await getLinkedSplitReminder(orderId),
     deliveryRound: round,
     deliveryRoundReason: roundReason,
     order: await getOrder(orderId),
@@ -1284,6 +1526,7 @@ export async function assignOrderBundle(input: {
   autoAssignTeam?: boolean;
   ignoreWeightWarning?: boolean;
   ignoreCraneRule?: boolean;
+  ignoreLinkedWarning?: boolean;
   explicitDeliveryRound?: boolean;
 }) {
   const truck = await assignOrderToVehicle(
@@ -1292,7 +1535,10 @@ export async function assignOrderBundle(input: {
     input.deliveryRound,
     input.ignoreWeightWarning ?? false,
     input.ignoreCraneRule ?? false,
-    { explicitRound: input.explicitDeliveryRound === false ? false : true }
+    {
+      explicitRound: input.explicitDeliveryRound === false ? false : true,
+      ignoreLinkedWarning: input.ignoreLinkedWarning ?? false,
+    }
   );
   if (!truck.ok) return truck;
 
@@ -1347,6 +1593,7 @@ export async function assignOrderBundle(input: {
     order: await getOrder(input.orderId),
     craneWarning: truck.craneWarning,
     scheduleWarning: scheduleAssignmentWarning(order),
+    linkedWarning: truck.linkedWarning,
     deliveryRound: usedRound,
     deliveryRoundReason: truck.deliveryRoundReason,
   };
@@ -1801,6 +2048,7 @@ export async function transferOrdersToVehicle(input: {
   preservePicker?: boolean;
   ignoreWeightWarning?: boolean;
   ignoreCraneRule?: boolean;
+  ignoreLinkedWarning?: boolean;
 }) {
   const db = await getDb();
   const vehicle = await dbOne(
@@ -1810,12 +2058,31 @@ export async function transferOrdersToVehicle(input: {
     return { ok: false as const, error: "Vehicle not found", results: [] };
   }
 
+  if (!input.ignoreLinkedWarning) {
+    const { getBulkLinkedConflictMessage } = await import(
+      "@/lib/services/order-delivery-links"
+    );
+    const linkedMessage = await getBulkLinkedConflictMessage(
+      input.orderIds,
+      input.vehicleId
+    );
+    if (linkedMessage) {
+      return {
+        ok: false as const,
+        isLinkedWarning: true,
+        error: linkedMessage,
+        results: [],
+      };
+    }
+  }
+
   const results: Array<{
     orderId: number;
     ok: boolean;
     error?: string;
     requiresCrane?: boolean;
     isWeightWarning?: boolean;
+    isLinkedWarning?: boolean;
     invoiceNumber?: string;
   }> = [];
 
@@ -1851,6 +2118,7 @@ export async function transferOrdersToVehicle(input: {
       autoAssignTeam: pickerId == null,
       ignoreWeightWarning: input.ignoreWeightWarning ?? false,
       ignoreCraneRule: input.ignoreCraneRule ?? false,
+      ignoreLinkedWarning: input.ignoreLinkedWarning ?? false,
       explicitDeliveryRound: true,
     });
 
@@ -1863,9 +2131,14 @@ export async function transferOrdersToVehicle(input: {
           "requiresCrane" in result ? result.requiresCrane : undefined,
         isWeightWarning:
           "isWeightWarning" in result ? result.isWeightWarning : undefined,
+        isLinkedWarning:
+          "isLinkedWarning" in result ? result.isLinkedWarning : undefined,
         invoiceNumber: order.invoiceNumber,
       });
       if ("isWeightWarning" in result && result.isWeightWarning) {
+        break;
+      }
+      if ("isLinkedWarning" in result && result.isLinkedWarning) {
         break;
       }
       if (!("requiresCrane" in result && result.requiresCrane)) {

@@ -106,6 +106,17 @@ interface Order {
   totalPieces: number;
   totalPallets: number;
   totalWeightKg: number;
+  deliveryLinks?: Array<{
+    id: number;
+    invoiceNumber: string;
+    customerName: string;
+    location: string;
+    assignment?: {
+      vehicleId: number;
+      vehicleName: string;
+      deliveryRound: number;
+    } | null;
+  }>;
   items: Array<{
     unit: string;
     productEan?: string | null;
@@ -582,7 +593,8 @@ export default function OrdersPage() {
 
   async function bulkTransferToTruck(
     ignoreWeightWarning = false,
-    ignoreCraneRule = false
+    ignoreCraneRule = false,
+    ignoreLinkedWarning = false
   ) {
     const ids = [...selectedOrderIds];
     if (ids.length === 0) {
@@ -620,16 +632,23 @@ export default function OrdersPage() {
         preservePicker: !transferPickerId,
         ignoreWeightWarning,
         ignoreCraneRule,
+        ignoreLinkedWarning,
       }),
     });
     const data = await res.json();
+    if (res.status === 422 && data.isLinkedWarning) {
+      if (confirm(`${data.error ?? "Linked delivery warning"}\n\nContinue anyway?`)) {
+        await bulkTransferToTruck(ignoreWeightWarning, ignoreCraneRule, true);
+      }
+      return;
+    }
     if (res.status === 422 && data.results) {
       if (
         confirm(
           `${data.results.find((r: { error?: string }) => r.error)?.error ?? "Weight warning"}\n\nTransfer anyway?`
         )
       ) {
-        await bulkTransferToTruck(true, ignoreCraneRule);
+        await bulkTransferToTruck(true, ignoreCraneRule, ignoreLinkedWarning);
       }
       return;
     }
@@ -639,7 +658,7 @@ export default function OrdersPage() {
           "One or more orders need the crane truck.\n\nOverride and transfer anyway?"
         )
       ) {
-        await bulkTransferToTruck(ignoreWeightWarning, true);
+        await bulkTransferToTruck(ignoreWeightWarning, true, ignoreLinkedWarning);
       }
       return;
     }
@@ -657,6 +676,75 @@ export default function OrdersPage() {
     );
     setTimeout(() => setWarning(""), 4000);
     setSelectedOrderIds(new Set());
+    load();
+  }
+
+  function selectionHasDeliveryLink() {
+    for (const order of orders) {
+      if (!selectedOrderIds.has(order.id)) continue;
+      for (const link of order.deliveryLinks ?? []) {
+        if (selectedOrderIds.has(link.id)) return true;
+      }
+    }
+    return false;
+  }
+
+  async function bulkLinkForSameDelivery() {
+    const ids = [...selectedOrderIds];
+    if (ids.length < 2) {
+      setError("Select at least two orders to link for same delivery.");
+      return;
+    }
+    const labels = orders
+      .filter((order) => selectedOrderIds.has(order.id))
+      .map((order) => order.invoiceNumber);
+    if (
+      !confirm(
+        `Link these invoices for same delivery?\n\n${labels.join("\n")}\n\nThey will be suggested together when assigning trucks, but you can still split them if needed.`
+      )
+    ) {
+      return;
+    }
+    setError("");
+    const res = await fetch("/api/orders/delivery-links", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderIds: ids }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data.error ?? "Could not link orders");
+      return;
+    }
+    setWarning(
+      `Linked for same delivery: ${(data.invoiceNumbers ?? labels).join(", ")}`
+    );
+    setTimeout(() => setWarning(""), 4000);
+    load();
+  }
+
+  async function bulkUnlinkDelivery() {
+    const ids = [...selectedOrderIds];
+    if (ids.length < 2) {
+      setError("Select the linked orders you want to unlink.");
+      return;
+    }
+    if (!confirm(`Remove the delivery link between the selected orders?`)) {
+      return;
+    }
+    setError("");
+    const res = await fetch("/api/orders/delivery-links", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderIds: ids }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data.error ?? "Could not unlink orders");
+      return;
+    }
+    setWarning("Delivery link removed.");
+    setTimeout(() => setWarning(""), 3000);
     load();
   }
 
@@ -1680,6 +1768,24 @@ export default function OrdersPage() {
             <span className="text-sm font-medium text-violet-900">
               {selectedOrderIds.size} selected
             </span>
+            {selectedOrderIds.size >= 2 && (
+              <Button
+                variant="secondary"
+                className="text-xs"
+                onClick={() => bulkLinkForSameDelivery()}
+              >
+                Link for same delivery
+              </Button>
+            )}
+            {selectedOrderIds.size >= 2 && selectionHasDeliveryLink() && (
+              <Button
+                variant="ghost"
+                className="text-xs"
+                onClick={() => bulkUnlinkDelivery()}
+              >
+                Unlink delivery
+              </Button>
+            )}
             {filters.vehicleId && (
               <Button
                 variant="secondary"

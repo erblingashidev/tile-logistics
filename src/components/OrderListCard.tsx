@@ -222,6 +222,14 @@ export function OrderListCard({
                   {order.invoiceNumber}
                 </h3>
                 {isOrderUrgent(order) && <Badge tone="red">URGENT</Badge>}
+                {(order.deliveryLinks?.length ?? 0) > 0 && (
+                  <Badge tone="blue">
+                    Together ·{" "}
+                    {order.deliveryLinks!
+                      .map((link) => link.invoiceNumber)
+                      .join(", ")}
+                  </Badge>
+                )}
               </div>
               <p className="mt-1 text-base font-semibold text-zinc-800">
                 {order.customerName}
@@ -422,6 +430,7 @@ export function OrderListCard({
             }
             loadStatus={order.loadStatus}
             staffOptions={staffOptionsFromOrder(order)}
+            deliveryLinks={order.deliveryLinks}
             draft={draft}
             vehicles={vehicles}
             pickers={pickers}

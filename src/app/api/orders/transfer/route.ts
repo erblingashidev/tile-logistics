@@ -19,6 +19,7 @@ export async function POST(request: NextRequest) {
   const preservePicker = body.preservePicker !== false;
   const ignoreWeightWarning = Boolean(body.ignoreWeightWarning);
   const ignoreCraneRule = Boolean(body.ignoreCraneRule);
+  const ignoreLinkedWarning = Boolean(body.ignoreLinkedWarning);
 
   if (!vehicleId || orderIds.length === 0) {
     return NextResponse.json(
@@ -35,7 +36,12 @@ export async function POST(request: NextRequest) {
     preservePicker: pickerId == null && preservePicker,
     ignoreWeightWarning,
     ignoreCraneRule,
+    ignoreLinkedWarning,
   });
+
+  if ("isLinkedWarning" in result && result.isLinkedWarning) {
+    return NextResponse.json(result, { status: 422 });
+  }
 
   const weightWarn = result.results.find((r) => r.isWeightWarning);
   if (weightWarn) {

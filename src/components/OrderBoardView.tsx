@@ -265,6 +265,7 @@ function OrderRow({
               }
               loadStatus={order.loadStatus}
               staffOptions={staffOptionsFromOrder(order)}
+              deliveryLinks={order.deliveryLinks}
               draft={draft}
               vehicles={vehicles}
               pickers={pickers}
@@ -380,6 +381,7 @@ function OrderRow({
             }
             loadStatus={order.loadStatus}
             staffOptions={staffOptionsFromOrder(order)}
+            deliveryLinks={order.deliveryLinks}
             draft={draft}
             vehicles={vehicles}
             pickers={pickers}

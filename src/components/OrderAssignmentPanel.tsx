@@ -44,6 +44,12 @@ interface OrderAssignmentPanelProps {
   prepStatus?: "pending" | "prepared";
   loadStatus?: "pending" | "loaded" | "load_skipped";
   staffOptions?: Array<{ id: number; name: string; role: string }>;
+  deliveryLinks?: Array<{
+    id: number;
+    invoiceNumber: string;
+    customerName: string;
+    assignment?: { vehicleName: string; deliveryRound: number } | null;
+  }>;
   draft: AssignmentDraft;
   vehicles: VehicleOption[];
   pickers: PickerOption[];
@@ -106,6 +112,7 @@ export function OrderAssignmentPanel({
   prepStatus,
   loadStatus,
   staffOptions = [],
+  deliveryLinks = [],
   draft,
   vehicles,
   pickers,
@@ -163,6 +170,7 @@ export function OrderAssignmentPanel({
   async function saveBundle(
     ignoreWeightWarning = false,
     ignoreCraneRule = false,
+    ignoreLinkedWarning = false,
     overrideDraft?: AssignmentDraft
   ) {
     const active = overrideDraft ?? draft;
@@ -182,6 +190,7 @@ export function OrderAssignmentPanel({
         autoAssignTeam: true,
         ignoreWeightWarning,
         ignoreCraneRule,
+        ignoreLinkedWarning,
       }),
     });
     const data = await res.json();
@@ -193,7 +202,13 @@ export function OrderAssignmentPanel({
           `${data.error}\n\nThis is a weight warning only. Assign anyway?`
         )
       ) {
-        await saveBundle(true, ignoreCraneRule, active);
+        await saveBundle(true, ignoreCraneRule, ignoreLinkedWarning, active);
+      }
+      return;
+    }
+    if (res.status === 422 && data.isLinkedWarning) {
+      if (confirm(`${data.error}\n\nAssign to a separate truck anyway?`)) {
+        await saveBundle(ignoreWeightWarning, ignoreCraneRule, true, active);
       }
       return;
     }
@@ -203,7 +218,7 @@ export function OrderAssignmentPanel({
           `${data.error}\n\nOverride and assign to this truck anyway?`
         )
       ) {
-        await saveBundle(ignoreWeightWarning, true, active);
+        await saveBundle(ignoreWeightWarning, true, ignoreLinkedWarning, active);
       }
       return;
     }
@@ -214,6 +229,7 @@ export function OrderAssignmentPanel({
     if (data.weightWarning) onWarning(data.weightWarning);
     if (data.craneWarning) onWarning(data.craneWarning);
     if (data.scheduleWarning) onWarning(data.scheduleWarning);
+    if (data.linkedWarning) onWarning(data.linkedWarning);
     if (data.deliveryRoundReason && data.deliveryRound !== Number(active.round)) {
       onWarning(
         `Assigned to round ${data.deliveryRound} (auto-adjusted). ${data.deliveryRoundReason}`
@@ -232,7 +248,7 @@ export function OrderAssignmentPanel({
     const next = { ...draft, vehicleId };
     onDraftChange(next);
     if (quickAssign && vehicleId) {
-      void saveBundle(false, false, next);
+      void saveBundle(false, false, false, next);
     }
   }
 
@@ -353,6 +369,23 @@ export function OrderAssignmentPanel({
 
   return (
     <div className="flex w-full flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-3">
+      {deliveryLinks.length > 0 && (
+        <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+          <p className="font-semibold">Same delivery group</p>
+          <p className="mt-1">
+            Usually sent together with{" "}
+            {deliveryLinks
+              .map((link) => {
+                const truck = link.assignment
+                  ? ` on ${link.assignment.vehicleName}`
+                  : "";
+                return `${link.invoiceNumber}${truck}`;
+              })
+              .join(", ")}
+            .
+          </p>
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
           Assign

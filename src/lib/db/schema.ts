@@ -1,8 +1,8 @@
-import { sqliteTable, text, integer, real, blob } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, blob, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const orders = sqliteTable("orders", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  invoiceNumber: text("invoice_number").notNull(),
+  invoiceNumber: text("invoice_number").notNull().unique(),
   customerName: text("customer_name").notNull(),
   location: text("location").notNull(),
   locationId: text("location_id"),
@@ -30,6 +30,28 @@ export const orders = sqliteTable("orders", {
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
+
+/** Pairwise link: these invoices should go on the same truck (soft suggestion). */
+export const orderDeliveryLinks = sqliteTable(
+  "order_delivery_links",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    orderIdA: integer("order_id_a")
+      .notNull()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    orderIdB: integer("order_id_b")
+      .notNull()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    note: text("note"),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => ({
+    pairIdx: uniqueIndex("idx_order_delivery_links_pair").on(
+      table.orderIdA,
+      table.orderIdB
+    ),
+  })
+);
 
 export const orderItems = sqliteTable("order_items", {
   id: integer("id").primaryKey({ autoIncrement: true }),

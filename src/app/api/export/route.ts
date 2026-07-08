@@ -3,6 +3,7 @@ import {
   buildOrdersExcel,
   buildLocationGroupedExcel,
 } from "@/lib/export/excel";
+import type { WorkDayFilter } from "@/lib/delivery-schedule";
 
 export const runtime = "nodejs";
 
@@ -11,6 +12,7 @@ function parseExportFilters(sp: URLSearchParams) {
     const v = sp.get(key);
     return v ? Number(v) : undefined;
   };
+  const workDay = sp.get("workDay");
   return {
     dateFrom: sp.get("dateFrom") ?? undefined,
     dateTo: sp.get("dateTo") ?? undefined,
@@ -29,6 +31,22 @@ function parseExportFilters(sp: URLSearchParams) {
     status: sp.get("status") ?? undefined,
     search: sp.get("search") ?? undefined,
     unassigned: sp.get("unassigned") === "true" ? true : undefined,
+    hideDelivered: sp.get("hideDelivered") === "true" ? true : undefined,
+    vehicleId: num("vehicleId"),
+    deliveryRound: num("deliveryRound"),
+    vehicleScope:
+      sp.get("vehicleScope") === "workspace" ||
+      sp.get("vehicleScope") === "on_truck" ||
+      sp.get("vehicleScope") === "unassigned"
+        ? (sp.get("vehicleScope") as "workspace" | "on_truck" | "unassigned")
+        : undefined,
+    workDay:
+      workDay === "today" ||
+      workDay === "yesterday" ||
+      workDay === "overdue" ||
+      workDay === "all"
+        ? (workDay as WorkDayFilter)
+        : undefined,
   };
 }
 

@@ -7,16 +7,16 @@ import {
 
 export async function buildOrdersExcel(filters?: Parameters<typeof listOrders>[0]) {
   const orders = await listOrders(filters);
-  const lineRows = buildOrderLineRows(orders);
   const summaryRows = buildOrderSummaryRows(orders);
+  const lineRows = buildOrderLineRows(orders);
 
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(lineRows), "Line Items");
   XLSX.utils.book_append_sheet(
     wb,
     XLSX.utils.json_to_sheet(summaryRows),
     "Order Summary"
   );
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(lineRows), "Line Items");
   return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
 }
 

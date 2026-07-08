@@ -19,6 +19,7 @@ export async function POST(
   const autoAssignTeam = body.autoAssignTeam !== false;
   const ignoreWeightWarning = Boolean(body.ignoreWeightWarning);
   const ignoreCraneRule = Boolean(body.ignoreCraneRule);
+  const ignoreLinkedWarning = Boolean(body.ignoreLinkedWarning);
 
   if (!vehicleId) {
     return NextResponse.json({ error: "vehicleId is required" }, { status: 400 });
@@ -32,11 +33,16 @@ export async function POST(
     autoAssignTeam,
     ignoreWeightWarning,
     ignoreCraneRule,
+    ignoreLinkedWarning,
   });
 
   if (!result.ok) {
     const status =
-      "isWeightWarning" in result && result.isWeightWarning ? 422 : 409;
+      "isWeightWarning" in result && result.isWeightWarning
+        ? 422
+        : "isLinkedWarning" in result && result.isLinkedWarning
+          ? 422
+          : 409;
     return NextResponse.json(result, { status });
   }
 

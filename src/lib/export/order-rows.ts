@@ -1,6 +1,6 @@
 import { normalizeOrderUnit } from "@/lib/constants";
-import type { listOrders } from "@/lib/services/orders";
 import { formatDeliverySchedule } from "@/lib/delivery-schedule";
+import type { listOrders } from "@/lib/services/orders";
 
 export type ExportOrder = Awaited<ReturnType<typeof listOrders>>[number];
 
@@ -23,6 +23,7 @@ function orderHeaderFields(order: ExportOrder) {
     order.staff?.driver?.employeeName ?? assignment?.driverName ?? "";
 
   return {
+    "Order ID": order.id,
     Invoice: order.invoiceNumber,
     Customer: order.customerName,
     Region: order.region ?? "",
@@ -59,6 +60,41 @@ function orderHeaderFields(order: ExportOrder) {
     "Order total pieces": order.totalPieces,
     "Order total pallets": order.totalPallets,
     "Order total weight (kg)": order.totalWeightKg,
+  };
+}
+
+function emptyOrderHeaderFields(): Record<string, string | number> {
+  return {
+    "Order ID": "",
+    Invoice: "",
+    Customer: "",
+    Region: "",
+    City: "",
+    "Delivery details": "",
+    Latitude: "",
+    Longitude: "",
+    "Order date": "",
+    "Requested delivery date": "",
+    "Delivery time preference": "",
+    "Delivery schedule": "",
+    "Created at": "",
+    Price: "",
+    Status: "",
+    "Delivery stage": "",
+    "Load status": "",
+    "Load notes": "",
+    Notes: "",
+    Picker: "",
+    Driver: "",
+    Vehicle: "",
+    "Plate number": "",
+    "Delivery round": "",
+    "Truck assigned at": "",
+    "Proof steps completed": "",
+    "Order total m²": "",
+    "Order total pieces": "",
+    "Order total pallets": "",
+    "Order total weight (kg)": "",
   };
 }
 
@@ -102,7 +138,7 @@ function lineItemFields(
   };
 }
 
-/** One spreadsheet row per order line, with full order + logistics context. */
+/** One spreadsheet row per product line; order details only on the first line. */
 export function buildOrderLineRows(orders: ExportOrder[]) {
   const rows: Record<string, string | number>[] = [];
   for (const order of orders) {
@@ -118,7 +154,7 @@ export function buildOrderLineRows(orders: ExportOrder[]) {
 
     for (let idx = 0; idx < order.items.length; idx++) {
       rows.push({
-        ...header,
+        ...(idx === 0 ? header : emptyOrderHeaderFields()),
         ...lineItemFields(order.items[idx], idx + 1),
       });
     }

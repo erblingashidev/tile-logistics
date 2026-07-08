@@ -78,6 +78,17 @@ export interface OrderInvoiceData {
     photoUrl?: string | null;
     notes?: string | null;
   }>;
+  deliveryLinks?: Array<{
+    id: number;
+    invoiceNumber: string;
+    customerName: string;
+    location: string;
+    assignment?: {
+      vehicleId: number;
+      vehicleName: string;
+      deliveryRound: number;
+    } | null;
+  }>;
 }
 
 function formatPrice(value: number) {
