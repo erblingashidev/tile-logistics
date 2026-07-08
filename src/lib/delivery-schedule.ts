@@ -23,7 +23,53 @@ export function normalizeDeliveryTimePreference(
 }
 
 export function todayDateString(asOf = new Date()): string {
-  return asOf.toISOString().slice(0, 10);
+  const year = asOf.getFullYear();
+  const month = String(asOf.getMonth() + 1).padStart(2, "0");
+  const day = String(asOf.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function addDaysToDateString(date: string, days: number): string {
+  const [year, month, day] = date.split("-").map(Number);
+  const base = new Date(year, month - 1, day);
+  base.setDate(base.getDate() + days);
+  return todayDateString(base);
+}
+
+/** Warehouse work-day bucket: scheduled delivery date, else invoice order date. */
+export function orderWorkDate(order: {
+  requestedDeliveryDate?: string | null;
+  orderDate: string;
+}): string {
+  return order.requestedDeliveryDate?.trim() || order.orderDate;
+}
+
+export type WorkDayFilter = "today" | "yesterday" | "overdue" | "all";
+
+export function matchesWorkDay(
+  order: {
+    requestedDeliveryDate?: string | null;
+    orderDate: string;
+    deliveryStage?: string;
+    status?: string;
+  },
+  workDay: WorkDayFilter,
+  asOfDate?: string
+): boolean {
+  if (workDay === "all") return true;
+  const asOf = asOfDate ?? todayDateString();
+  const workDate = orderWorkDate(order);
+  const stage = order.deliveryStage ?? order.status ?? "pending";
+  const finished = stage === "delivered" || stage === "cancelled";
+
+  if (workDay === "today") return workDate === asOf;
+  if (workDay === "yesterday") {
+    return workDate === addDaysToDateString(asOf, -1) && !finished;
+  }
+  if (workDay === "overdue") {
+    return workDate < asOf && !finished;
+  }
+  return true;
 }
 
 export function isOrderReadyToShip(

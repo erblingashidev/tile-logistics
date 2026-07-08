@@ -2,7 +2,9 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui";
+import { AdminManualProofPanel } from "@/components/AdminManualProofPanel";
 import { deliveryRoundSelectOptions } from "@/lib/delivery-rounds";
+import type { OrderDisplayStage } from "@/lib/order-display";
 import {
   TruckWorkspaceStatus,
   type TruckWorkspaceSnapshot,
@@ -37,6 +39,11 @@ interface OrderAssignmentPanelProps {
   orderPallets?: number;
   hasAssignment: boolean;
   hasProgress: boolean;
+  proofPhases?: string[];
+  deliveryStage?: OrderDisplayStage;
+  prepStatus?: "pending" | "prepared";
+  loadStatus?: "pending" | "loaded" | "load_skipped";
+  staffOptions?: Array<{ id: number; name: string; role: string }>;
   draft: AssignmentDraft;
   vehicles: VehicleOption[];
   pickers: PickerOption[];
@@ -94,6 +101,11 @@ export function OrderAssignmentPanel({
   orderPallets = 0,
   hasAssignment,
   hasProgress,
+  proofPhases = [],
+  deliveryStage,
+  prepStatus,
+  loadStatus,
+  staffOptions = [],
   draft,
   vehicles,
   pickers,
@@ -569,6 +581,18 @@ export function OrderAssignmentPanel({
           </Button>
         )}
       </div>
+
+      <AdminManualProofPanel
+        orderId={orderId}
+        invoiceNumber={invoiceNumber}
+        proofPhases={proofPhases}
+        deliveryStage={deliveryStage}
+        prepStatus={prepStatus}
+        loadStatus={loadStatus}
+        staffOptions={staffOptions}
+        onSaved={onSaved}
+        onError={onError}
+      />
     </div>
   );
 }

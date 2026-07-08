@@ -117,6 +117,43 @@ function MetricBlock({
   );
 }
 
+function staffOptionsFromOrder(order: OrderListCardOrder) {
+  const options: Array<{ id: number; name: string; role: string }> = [];
+  const staff = order.staff as
+    | {
+        picker?: { employeeId?: number; employeeName: string } | null;
+        driver?: { employeeId?: number; employeeName: string } | null;
+        staff?: Array<{ employeeId?: number; employeeName: string; role: string }>;
+      }
+    | undefined;
+  if (staff?.picker?.employeeId) {
+    options.push({
+      id: staff.picker.employeeId,
+      name: staff.picker.employeeName,
+      role: "picker",
+    });
+  }
+  if (staff?.driver?.employeeId) {
+    options.push({
+      id: staff.driver.employeeId,
+      name: staff.driver.employeeName,
+      role: "driver",
+    });
+  }
+  for (const member of staff?.staff ?? []) {
+    if (!member.employeeId) continue;
+    if (options.some((option) => option.id === member.employeeId)) continue;
+    options.push({
+      id: member.employeeId,
+      name: member.employeeName,
+      role: member.role,
+    });
+  }
+  return options;
+}
+
+export { staffOptionsFromOrder };
+
 export function OrderListCard({
   order,
   selected,
@@ -141,6 +178,7 @@ export function OrderListCard({
   onQuickAssignToFocus,
 }: OrderListCardProps) {
   const stage = (order.deliveryStage ?? order.status) as OrderDisplayStage;
+  const isDelivered = stage === "delivered";
   const isComplete = stage === "delivered" || stage === "arrived";
   const hasAnyAssignment = Boolean(
     order.assignment ||
@@ -367,12 +405,8 @@ export function OrderListCard({
       </div>
 
       <div className="bg-zinc-50 px-4 py-3">
-        {isComplete ? (
-          <p className="text-sm font-medium text-green-700">
-            {stage === "delivered"
-              ? "Delivery complete"
-              : "Arrived at customer"}
-          </p>
+        {isDelivered ? (
+          <p className="text-sm font-medium text-green-700">Delivery complete</p>
         ) : (
           <OrderAssignmentPanel
             orderId={order.id!}
@@ -380,6 +414,14 @@ export function OrderListCard({
             orderPallets={order.totalPallets}
             hasAssignment={hasAnyAssignment}
             hasProgress={hasProgress}
+            proofPhases={(order.proofs ?? []).map((proof) => proof.phase)}
+            deliveryStage={stage}
+            prepStatus={
+              (order as OrderListCardOrder & { prepStatus?: "pending" | "prepared" })
+                .prepStatus
+            }
+            loadStatus={order.loadStatus}
+            staffOptions={staffOptionsFromOrder(order)}
             draft={draft}
             vehicles={vehicles}
             pickers={pickers}

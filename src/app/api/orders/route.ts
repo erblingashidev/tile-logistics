@@ -6,6 +6,7 @@ import {
   type OrderPayload,
 } from "@/lib/services/orders";
 import { resolveSalesOwnership } from "@/lib/services/sales-portal";
+import { todayDateString } from "@/lib/delivery-schedule";
 
 export const runtime = "nodejs";
 
@@ -48,6 +49,14 @@ export async function GET(request: NextRequest) {
       status: sp.get("status") ?? undefined,
       search: sp.get("search") ?? undefined,
       hideDelivered: sp.get("hideDelivered") === "true",
+      workDay:
+        sp.get("workDay") === "today" ||
+        sp.get("workDay") === "yesterday" ||
+        sp.get("workDay") === "overdue" ||
+        sp.get("workDay") === "all"
+          ? (sp.get("workDay") as "today" | "yesterday" | "overdue" | "all")
+          : undefined,
+      shipAsOfDate: sp.get("shipAsOfDate") ?? undefined,
     });
     return NextResponse.json(orders, {
       headers: {
@@ -87,7 +96,7 @@ export async function POST(request: NextRequest) {
     const order = await createOrder({
       ...body,
       location: body.location?.trim() || body.region || "—",
-      orderDate: body.orderDate ?? new Date().toISOString().slice(0, 10),
+      orderDate: body.orderDate?.trim() || todayDateString(),
       items: body.items ?? [],
       salesEmployeeId: ownership.salesEmployeeId,
       salesAgentName: ownership.salesAgentName,

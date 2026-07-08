@@ -15,6 +15,7 @@ import {
 } from "@/lib/order-display";
 import { isOrderUrgent } from "@/lib/order-priority";
 import type { OrderListCardOrder } from "@/components/OrderListCard";
+import { staffOptionsFromOrder } from "@/components/OrderListCard";
 import { OrderBoardDetail } from "@/components/OrderBoardDetail";
 
 interface VehicleOption {
@@ -177,6 +178,7 @@ function OrderRow({
     Boolean(focusVehicleId) &&
     order.assignment?.vehicleId === Number(focusVehicleId) &&
     order.assignment?.deliveryRound === focusRound;
+  const isDelivered = stage === "delivered";
   const isComplete = stage === "delivered" || stage === "arrived";
 
   const shellClass = `overflow-hidden rounded-lg border border-zinc-200/80 transition ${orderListRowClass(stage)} ${
@@ -247,7 +249,7 @@ function OrderRow({
             <OrderBoardDetail order={order} />
           </div>
         )}
-        {assignOpen && !isComplete && (
+        {assignOpen && !isDelivered && (
           <div className="border-t border-zinc-100 bg-zinc-50 p-3">
             <OrderAssignmentPanel
               orderId={order.id!}
@@ -255,6 +257,14 @@ function OrderRow({
               orderPallets={order.totalPallets}
               hasAssignment={Boolean(order.assignment)}
               hasProgress={(order.proofs?.length ?? 0) > 0}
+              proofPhases={(order.proofs ?? []).map((proof) => proof.phase)}
+              deliveryStage={stage}
+              prepStatus={
+                (order as OrderListCardOrder & { prepStatus?: "pending" | "prepared" })
+                  .prepStatus
+              }
+              loadStatus={order.loadStatus}
+              staffOptions={staffOptionsFromOrder(order)}
               draft={draft}
               vehicles={vehicles}
               pickers={pickers}
@@ -348,7 +358,7 @@ function OrderRow({
           <OrderBoardDetail order={order} />
         </div>
       )}
-      {assignOpen && !isComplete && (
+      {assignOpen && !isDelivered && (
         <div className="border-t border-zinc-100 bg-zinc-50 px-3 py-3">
           <OrderAssignmentPanel
             orderId={order.id!}
@@ -362,6 +372,14 @@ function OrderRow({
                 )
             )}
             hasProgress={(order.proofs?.length ?? 0) > 0}
+            proofPhases={(order.proofs ?? []).map((proof) => proof.phase)}
+            deliveryStage={stage}
+            prepStatus={
+              (order as OrderListCardOrder & { prepStatus?: "pending" | "prepared" })
+                .prepStatus
+            }
+            loadStatus={order.loadStatus}
+            staffOptions={staffOptionsFromOrder(order)}
             draft={draft}
             vehicles={vehicles}
             pickers={pickers}

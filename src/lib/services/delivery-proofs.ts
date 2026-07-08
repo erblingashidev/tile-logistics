@@ -635,6 +635,251 @@ export function getProofPhasesForRoles(roles: EmployeeRole[]) {
   );
 }
 
+async function resolveProofActorEmployeeId(
+  orderId: number,
+  phase: DeliveryProofPhase,
+  explicitEmployeeId?: number
+): Promise<number | null> {
+  if (explicitEmployeeId) return explicitEmployeeId;
+
+  const staff = await getOrderStaff(orderId);
+  if (LOADER_PHASES.has(phase)) {
+    return (
+      staff.picker?.employeeId ??
+      staff.staff.find((member) => member.role === "unloader")?.employeeId ??
+      staff.staff.find((member) => member.role === "picker")?.employeeId ??
+      null
+    );
+  }
+
+  if (staff.driver?.employeeId) return staff.driver.employeeId;
+
+  const db = await getDb();
+  const assignment = await dbOne(
+    db
+      .select({ driverEmployeeId: assignments.driverEmployeeId })
+      .from(assignments)
+      .where(eq(assignments.orderId, orderId))
+  );
+  return assignment?.driverEmployeeId ?? null;
+}
+
+/** Admin manually records a warehouse/driver proof step (phone confirmation, etc.). */
+export async function submitAdminDeliveryProof(input: {
+  orderId: number;
+  phase: DeliveryProofPhase;
+  employeeId?: number;
+  notes?: string;
+  photoBuffer?: Buffer;
+  photoMime?: string;
+  force?: boolean;
+  allowDeliveredWithoutPhoto?: boolean;
+}) {
+  const phaseDef = DELIVERY_PROOF_PHASES.find((p) => p.id === input.phase);
+  if (!phaseDef) return { ok: false as const, error: "Invalid phase" };
+
+  if (phaseDef.notesRequired && !input.notes?.trim()) {
+    return {
+      ok: false as const,
+      error: "Please explain why this order could not be loaded.",
+    };
+  }
+
+  const actorId = await resolveProofActorEmployeeId(
+    input.orderId,
+    input.phase,
+    input.employeeId
+  );
+  if (!actorId) {
+    return {
+      ok: false as const,
+      error:
+        "Assign a picker or driver to this order first, or choose who performed the action.",
+    };
+  }
+
+  if (
+    phaseDef.photoRequired &&
+    !input.photoBuffer &&
+    !(input.allowDeliveredWithoutPhoto && input.notes?.trim())
+  ) {
+    return {
+      ok: false as const,
+      error:
+        "Delivery needs a photo, or add a note explaining the phone confirmation.",
+    };
+  }
+
+  const db = await getDb();
+  const order = await dbOne(
+    db.select().from(orders).where(eq(orders.id, input.orderId))
+  );
+  if (!order) return { ok: false as const, error: "Order not found" };
+
+  const loadStatus = await getOrderLoadStatus(input.orderId);
+
+  if (input.phase === "prepared") {
+    if (loadStatus.prepStatus === "prepared") {
+      return { ok: false as const, error: "This order is already marked as prepared." };
+    }
+  }
+
+  if (input.phase === "loaded" && !input.force) {
+    const loadCheck = await assertLoaderCanMarkLoaded(input.orderId);
+    if (!loadCheck.ok) {
+      return { ok: false as const, error: loadCheck.error };
+    }
+  }
+
+  if (input.phase === "departed") {
+    if (!(await isDriverAuthorizedForOrder(input.orderId, actorId)) && !input.force) {
+      const staff = await getOrderStaff(input.orderId);
+      if (!staff.driver?.employeeId) {
+        return {
+          ok: false as const,
+          error: "Assign a driver to this truck before marking departure.",
+        };
+      }
+    }
+    const depart = await departTruckForOrder(
+      input.orderId,
+      actorId,
+      input.photoBuffer,
+      input.photoMime
+    );
+    if (!depart.ok) return depart;
+    await logActivity(
+      "delivery_proof",
+      "order",
+      input.orderId,
+      `Admin recorded departure for ${order.invoiceNumber}`,
+      {
+        category: "deliveries",
+        details: {
+          phase: "departed",
+          adminOverride: true,
+          employeeId: actorId,
+          notes: input.notes?.trim() || null,
+        },
+      }
+    );
+    return {
+      ok: true as const,
+      proofs: await listDeliveryProofs(input.orderId),
+      orderStatus: "in_transit",
+      warning: undefined,
+    };
+  }
+
+  if (input.phase === "arrived" || input.phase === "delivered") {
+    if (!(await orderWasLoaded(input.orderId))) {
+      if (!input.force) {
+        return {
+          ok: false as const,
+          error: "This order was not loaded — mark loaded first or use force.",
+        };
+      }
+    } else if (!(await orderHasDeparted(input.orderId)) && !input.force) {
+      return {
+        ok: false as const,
+        error: "Truck has not departed — mark departed first or use force.",
+      };
+    }
+  }
+
+  const existing = await dbOne(
+    db
+      .select({ id: deliveryProofs.id })
+      .from(deliveryProofs)
+      .where(
+        and(
+          eq(deliveryProofs.orderId, input.orderId),
+          eq(deliveryProofs.phase, input.phase)
+        )
+      )
+  );
+  if (existing) {
+    return {
+      ok: false as const,
+      error: `"${phaseDef.label}" was already recorded for this order`,
+    };
+  }
+
+  let storedPhoto: StoredProofPhoto = {
+    photoPath: null,
+    photoData: null,
+    photoMime: null,
+  };
+  if (input.photoBuffer && input.photoMime) {
+    storedPhoto = storeProofPhoto(
+      input.orderId,
+      input.phase,
+      input.photoBuffer,
+      input.photoMime
+    );
+  }
+
+  const employee = await dbOne(
+    db.select({ name: employees.name }).from(employees).where(eq(employees.id, actorId))
+  );
+
+  const proofNotes = [
+    input.notes?.trim(),
+    input.allowDeliveredWithoutPhoto && input.phase === "delivered"
+      ? "Admin manual close (phone confirmation)"
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  await insertProofRecord({
+    orderId: input.orderId,
+    employeeId: actorId,
+    phase: input.phase,
+    ...storedPhoto,
+    notes: proofNotes || undefined,
+  });
+
+  await updateOrderStatus(input.orderId, phaseDef.nextOrderStatus, actorId);
+
+  await logProof(
+    order,
+    input.orderId,
+    `${phaseDef.label} (admin)`,
+    employee?.name ?? "Staff",
+    input.phase,
+    actorId,
+    hasStoredPhoto(storedPhoto)
+  );
+
+  await logActivity(
+    "delivery_proof",
+    "order",
+    input.orderId,
+    `Admin manually recorded ${phaseDef.label} for ${order.invoiceNumber}`,
+    {
+      category: "deliveries",
+      details: {
+        phase: input.phase,
+        adminOverride: true,
+        employeeId: actorId,
+        notes: proofNotes || null,
+        force: Boolean(input.force),
+      },
+    }
+  );
+
+  if (input.phase === "delivered") {
+    await syncAfterOrderDelivered(input.orderId);
+  }
+
+  return {
+    ok: true as const,
+    proofs: await listDeliveryProofs(input.orderId),
+    orderStatus: phaseDef.nextOrderStatus,
+  };
+}
+
 /** Admin reset — removes all proof rows (photos remain on disk). */
 export async function deleteDeliveryProofsForOrder(orderId: number): Promise<number> {
   const db = await getDb();

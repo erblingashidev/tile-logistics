@@ -34,6 +34,9 @@ import {
   normalizeDeliveryTimePreference,
   validateRequestedDeliveryDate,
   DELIVERY_TIME_PREFERENCE_LABELS,
+  matchesWorkDay,
+  todayDateString,
+  type WorkDayFilter,
 } from "@/lib/delivery-schedule";
 import {
   getOrderLoadStatus,
@@ -231,6 +234,7 @@ export async function listOrders(filters?: {
   hideDelivered?: boolean;
   readyToShip?: boolean;
   shipAsOfDate?: string;
+  workDay?: WorkDayFilter;
   salesEmployeeId?: number;
 }) {
   const db = await getDb();
@@ -382,6 +386,13 @@ export async function listOrders(filters?: {
     if (filters?.readyToShip && !isOrderReadyToShip(order, filters.shipAsOfDate)) {
       return false;
     }
+    if (
+      filters?.workDay &&
+      filters.workDay !== "all" &&
+      !matchesWorkDay(order, filters.workDay, filters.shipAsOfDate)
+    ) {
+      return false;
+    }
     if (!filters?.hideDelivered) return true;
     return order.deliveryStage !== "delivered";
   });
@@ -484,12 +495,13 @@ async function getOrderAssignment(orderId: number) {
 export async function createOrder(payload: OrderPayload) {
   const db = await getDb();
   const now = new Date().toISOString();
+  const orderDate = payload.orderDate?.trim() || todayDateString();
   const requestedDeliveryDate = payload.requestedDeliveryDate?.trim() || null;
   const deliveryTimePreference = normalizeDeliveryTimePreference(
     payload.deliveryTimePreference
   );
   const scheduleError = validateRequestedDeliveryDate(
-    payload.orderDate,
+    orderDate,
     requestedDeliveryDate
   );
   if (scheduleError) {
@@ -521,7 +533,7 @@ export async function createOrder(payload: OrderPayload) {
         lat: locFields.lat,
         lng: locFields.lng,
         price: payload.price,
-        orderDate: payload.orderDate,
+        orderDate,
         requestedDeliveryDate,
         deliveryTimePreference,
         status: payload.status ?? "pending",
@@ -1724,6 +1736,60 @@ export async function assignRouteToVehicle(
     }
   }
   return results;
+}
+
+/** Move unfinished orders to another delivery day (warehouse work bucket). */
+export async function bulkRescheduleOrders(input: {
+  orderIds: number[];
+  requestedDeliveryDate: string;
+}) {
+  const date = input.requestedDeliveryDate.trim();
+  if (!date) {
+    return { ok: false as const, error: "Delivery date is required" };
+  }
+
+  const db = await getDb();
+  const now = new Date().toISOString();
+  let updated = 0;
+  const skipped: number[] = [];
+
+  for (const orderId of input.orderIds) {
+    const order = await getOrder(orderId);
+    if (!order) {
+      skipped.push(orderId);
+      continue;
+    }
+    if (order.deliveryStage === "delivered" || order.status === "cancelled") {
+      skipped.push(orderId);
+      continue;
+    }
+    const dateError = validateRequestedDeliveryDate(order.orderDate, date);
+    if (dateError) {
+      return { ok: false as const, error: `${order.invoiceNumber}: ${dateError}` };
+    }
+
+    await db
+      .update(orders)
+      .set({ requestedDeliveryDate: date, updatedAt: now })
+      .where(eq(orders.id, orderId));
+
+    await logActivity(
+      "update",
+      "order",
+      orderId,
+      `Rescheduled ${order.invoiceNumber} to ${date}`,
+      {
+        category: "orders",
+        details: {
+          requestedDeliveryDate: date,
+          previousRequestedDeliveryDate: order.requestedDeliveryDate ?? null,
+        },
+      }
+    );
+    updated += 1;
+  }
+
+  return { ok: true as const, updated, skipped };
 }
 
 /** Move one or more orders to another truck (e.g. breakdown). Keeps picker by default. */

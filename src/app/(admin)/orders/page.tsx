@@ -53,6 +53,8 @@ import {
 import {
   DELIVERY_TIME_PREFERENCE_LABELS,
   DELIVERY_TIME_PREFERENCES,
+  addDaysToDateString,
+  todayDateString,
 } from "@/lib/delivery-schedule";
 import { deliveryRoundSelectOptions, formatDeliveryRound } from "@/lib/delivery-rounds";
 import { isOrderUrgent } from "@/lib/order-priority";
@@ -93,6 +95,7 @@ interface Order {
   deliveryTimePreference?: string | null;
   status: string;
   loadStatus?: "pending" | "loaded" | "load_skipped";
+  prepStatus?: "pending" | "prepared";
   loadNotes?: string | null;
   deliveryStage?: OrderDisplayStage;
   deliveryStageLabel?: string;
@@ -193,7 +196,7 @@ function createEmptyOrderForm() {
     lat: undefined as number | undefined,
     lng: undefined as number | undefined,
     price: "",
-    orderDate: new Date().toISOString().slice(0, 10),
+    orderDate: todayDateString(),
     requestedDeliveryDate: "",
     deliveryTimePreference: "flexible" as "flexible" | "morning" | "afternoon",
     priority: "normal" as "normal" | "urgent",
@@ -218,6 +221,7 @@ export default function OrdersPage() {
     driverId: "",
     search: "",
     hideDelivered: "true",
+    workDay: "today" as "today" | "yesterday" | "overdue" | "all",
     vehicleId: "",
     deliveryRound: "1",
     vehicleScope: "workspace" as "workspace" | "on_truck" | "unassigned",
@@ -243,6 +247,7 @@ export default function OrdersPage() {
   const [transferVehicleId, setTransferVehicleId] = useState("");
   const [transferRound, setTransferRound] = useState("1");
   const [transferPickerId, setTransferPickerId] = useState("");
+  const [rescheduleDate, setRescheduleDate] = useState(() => todayDateString());
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
   const [truckWorkspace, setTruckWorkspace] =
@@ -285,6 +290,17 @@ export default function OrdersPage() {
     const interval = setInterval(load, 15000);
     return () => clearInterval(interval);
   }, [load]);
+
+  useEffect(() => {
+    const today = todayDateString();
+    if (filters.workDay === "yesterday" || filters.workDay === "overdue") {
+      setRescheduleDate(today);
+      return;
+    }
+    if (filters.workDay === "today") {
+      setRescheduleDate(addDaysToDateString(today, 1));
+    }
+  }, [filters.workDay]);
 
   useEffect(() => {
     if (!filters.vehicleId) {
@@ -638,6 +654,40 @@ export default function OrdersPage() {
     }
     setWarning(
       `Transferred ${data.transferred ?? ids.length} order(s) to ${data.vehicleName ?? "truck"}`
+    );
+    setTimeout(() => setWarning(""), 4000);
+    setSelectedOrderIds(new Set());
+    load();
+  }
+
+  async function bulkRescheduleSelected(targetDate?: string) {
+    const ids = [...selectedOrderIds];
+    if (ids.length === 0) return;
+    const date = targetDate ?? rescheduleDate;
+    if (
+      !confirm(
+        `Move ${ids.length} order(s) to delivery date ${date}?`
+      )
+    ) {
+      return;
+    }
+    const res = await fetch("/api/orders/bulk-reschedule", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        orderIds: ids,
+        requestedDeliveryDate: date,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setError(data.error ?? "Could not reschedule orders");
+      return;
+    }
+    setWarning(
+      `Moved ${data.updated ?? ids.length} order(s) to ${date}${
+        data.skipped?.length ? ` (${data.skipped.length} skipped)` : ""
+      }`
     );
     setTimeout(() => setWarning(""), 4000);
     setSelectedOrderIds(new Set());
@@ -998,6 +1048,45 @@ export default function OrdersPage() {
         </Card>
       </PageSection>
 
+      <PageSection title="Work day">
+        <Card className="p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            {(
+              [
+                { id: "today", label: "Today" },
+                { id: "yesterday", label: "Yesterday unfinished" },
+                { id: "overdue", label: "Overdue" },
+                { id: "all", label: "All days" },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() =>
+                  setFilters((current) => ({ ...current, workDay: tab.id }))
+                }
+                className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
+                  filters.workDay === tab.id
+                    ? "bg-zinc-900 text-white"
+                    : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-3 text-sm text-zinc-600">
+            {filters.workDay === "today" &&
+              `New orders you add today appear here automatically unless you set a different requested delivery date. Showing ${todayDateString()}.`}
+            {filters.workDay === "yesterday" &&
+              `Unfinished orders from ${addDaysToDateString(todayDateString(), -1)}. Select only the ones you still need, then move them to today.`}
+            {filters.workDay === "overdue" &&
+              "Unfinished orders scheduled before today. Select the ones to carry forward and move them to today."}
+            {filters.workDay === "all" && "Showing orders from all delivery days."}
+          </p>
+        </Card>
+      </PageSection>
+
       <PageSection title="Filters">
         <Card className="p-4">
         <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
@@ -1220,6 +1309,10 @@ export default function OrdersPage() {
                   setForm({ ...form, requestedDeliveryDate: e.target.value })
                 }
               />
+              <p className="-mt-2 text-xs text-zinc-500 sm:col-span-2">
+                Leave blank to put this order on today&apos;s work list. Set a
+                date only when delivery should happen on another day.
+              </p>
               <Select
                 label="Delivery time preference"
                 value={form.deliveryTimePreference}
@@ -1609,6 +1702,31 @@ export default function OrdersPage() {
               onClick={() => bulkClearSelected({ truck: true })}
             >
               Clear trucks only
+            </Button>
+            {(filters.workDay === "yesterday" || filters.workDay === "overdue") && (
+              <Button
+                variant="primary"
+                className="text-xs"
+                onClick={() => bulkRescheduleSelected(todayDateString())}
+              >
+                Move selected to today
+              </Button>
+            )}
+            <input
+              type="date"
+              value={rescheduleDate}
+              onChange={(e) => setRescheduleDate(e.target.value)}
+              className="rounded border border-violet-200 bg-white px-2 py-1 text-xs"
+              aria-label="Delivery date"
+            />
+            <Button
+              variant="secondary"
+              className="text-xs"
+              onClick={() => bulkRescheduleSelected()}
+            >
+              {filters.workDay === "yesterday" || filters.workDay === "overdue"
+                ? "Move to another date"
+                : "Move to delivery date"}
             </Button>
             <select
               className="rounded border border-violet-200 bg-white px-2 py-1 text-xs"
