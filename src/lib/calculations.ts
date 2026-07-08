@@ -527,7 +527,7 @@ export function checkVehicleCapacity(
   }
 
   if (!weightOk) {
-    weightWarning = `Weight recommendation exceeded: ${nextWeight.toFixed(0)} kg vs suggested max ${maxWeightKg} kg. You can still assign.`;
+    weightWarning = `Weight advisory exceeded (${nextWeight.toFixed(0)} kg / ${maxWeightKg} kg max). Assignment allowed.`;
   }
 
   return {

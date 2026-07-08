@@ -110,7 +110,7 @@ export default function SettingsPage() {
   return (
     <AppShell
       title="Profile"
-      description="Edit your admin account and password"
+      description="Account and password."
     >
       {loading ? (
         <LoadingState title="Loading profile…" />

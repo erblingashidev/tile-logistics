@@ -15,7 +15,7 @@ const nav = [
   { href: "/vehicles", label: "Vehicles" },
   { href: "/vehicles/maintenance", label: "Maintenance" },
   { href: "/employees", label: "Employees" },
-  { href: "/admins", label: "Admin users" },
+  { href: "/admins", label: "Admins" },
   { href: "/logs", label: "Logs" },
   { href: "/reports", label: "Reports" },
   { href: "/settings", label: "Profile" },

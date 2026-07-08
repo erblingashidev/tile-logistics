@@ -30,7 +30,7 @@ export async function validateTruckForOrder(
     return {
       ok: false,
       error:
-        "This order has jumbo tiles (>2 pieces) — must use the crane truck. Override only if you accept the risk.",
+        "Jumbo tiles require the crane truck. Proceed without crane?",
       requiresCrane: true,
     };
   }

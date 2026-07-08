@@ -598,7 +598,7 @@ export function InvoiceImportPanel({
             <ImportOptionCard
               title="Photo"
               icon="📷"
-              description="Camera or gallery. Low contrast or blur often merges table columns into wrong product names."
+              description="Camera or gallery."
               active={mode === "photo"}
               dragActive={dragOver === "photo"}
               onDragOver={(e) => {
@@ -669,7 +669,7 @@ export function InvoiceImportPanel({
             <ImportOptionCard
               title="PDF"
               icon="📄"
-              description="Best option: share or download the PDF from Pro-Data. Scanned PDFs fall back to OCR."
+              description="Pro-Data PDF export preferred."
               active={mode === "pdf"}
               dragActive={dragOver === "pdf"}
               onDragOver={(e) => {

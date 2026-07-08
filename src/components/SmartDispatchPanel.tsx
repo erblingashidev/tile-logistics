@@ -126,7 +126,7 @@ export function SmartDispatchPanel({
     if (res.status === 422 && !ignoreWeightWarning) {
       if (
         confirm(
-          "Some routes exceed weight advisory limits.\n\nApply anyway?"
+          "Some routes exceed weight limits.\n\nProceed?"
         )
       ) {
         await applyRecommendations(recommendationIds, true, ignoreCraneRule);
@@ -137,7 +137,7 @@ export function SmartDispatchPanel({
     if (res.status === 409 && !ignoreCraneRule) {
       if (
         confirm(
-          "Crane rule blocked an assignment.\n\nOverride crane requirement and apply anyway?"
+          "Crane truck required.\n\nProceed?"
         )
       ) {
         await applyRecommendations(recommendationIds, ignoreWeightWarning, true);
@@ -154,7 +154,7 @@ export function SmartDispatchPanel({
     }
 
     onWarning(
-      `Applied ${data.applied ?? recommendationIds?.length ?? plan.recommendations.length} route suggestion(s). You can still edit any assignment on the orders above.`
+      `Applied ${data.applied ?? recommendationIds?.length ?? plan.recommendations.length} route(s).`
     );
     onApplied();
     loadPlan();
@@ -164,12 +164,12 @@ export function SmartDispatchPanel({
   const recommendationCount = plan?.recommendations.length ?? 0;
 
   const collapsedStatus = loading
-    ? "Calculating routes…"
+    ? "Calculating…"
     : recommendationCount > 0
-      ? `${recommendationCount} route suggestion${recommendationCount === 1 ? "" : "s"} ready`
+      ? `${recommendationCount} route${recommendationCount === 1 ? "" : "s"} ready`
       : unassignedCount === 0
-        ? "No unassigned orders to plan"
-        : "No routes suggested yet";
+        ? "No open orders"
+        : "No routes matched";
 
   return (
     <section className="mt-8">
@@ -190,7 +190,7 @@ export function SmartDispatchPanel({
               ▸
             </span>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-zinc-900">Smart dispatch</p>
+              <p className="text-sm font-semibold text-zinc-900">Route suggestions</p>
               {!expanded && (
                 <p className="truncate text-xs text-zinc-500">{collapsedStatus}</p>
               )}
@@ -208,7 +208,7 @@ export function SmartDispatchPanel({
               disabled={applying || loading || recommendationCount === 0}
               onClick={() => applyRecommendations()}
             >
-              {applying ? "Applying…" : "Apply all"}
+              {applying ? "Applying…" : "Apply all routes"}
             </Button>
           </div>
         </div>
@@ -216,10 +216,6 @@ export function SmartDispatchPanel({
         {expanded && (
           <div className="space-y-4 border-t border-zinc-100 px-4 py-4">
             <div className="flex flex-wrap items-end justify-between gap-3">
-              <p className="w-full text-xs text-zinc-500">
-                Groups orders by region first (e.g. all Prishtinë together), then
-                by distance inside that area — no mixed Prishtinë ↔ Mitrovicë runs.
-              </p>
               <div className="grid flex-1 gap-3 sm:grid-cols-3">
                 <Select
                   label="Delivery round"

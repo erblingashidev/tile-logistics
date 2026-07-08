@@ -20,7 +20,7 @@ export default async function DashboardPage() {
   const wh = BRAND.warehouse;
 
   return (
-    <AppShell title="Dashboard" description="Overview and quick navigation.">
+    <AppShell title="Dashboard" description="Overview.">
       <Card className="mb-6 p-4">
         <p className="text-sm font-medium text-zinc-900">{BRAND.name}</p>
         <p className="mt-1 text-sm text-zinc-600">{wh.address}, {wh.country}</p>

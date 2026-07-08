@@ -227,7 +227,7 @@ export default function EmployeesPage() {
   }
 
   return (
-    <AppShell title="Employees" description="Roles, contact details, and portal access.">
+    <AppShell title="Employees" description="Staff roles and portal access.">
       <div className="mb-4">
         <Button onClick={() => setShowForm(true)}>Add employee</Button>
       </div>

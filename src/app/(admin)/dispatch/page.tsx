@@ -149,7 +149,7 @@ export default function DispatchPage() {
     const data = await res.json();
     setBusyOrderId(null);
     if (res.status === 422 && !ignoreWeight) {
-      if (confirm(`${data.error ?? "Weight warning"}\n\nAssign anyway?`)) {
+      if (confirm(`${data.error ?? "Weight limit exceeded"}\n\nProceed?`)) {
         await applyUrgent(orderId, opt, true);
       }
       return;
@@ -176,7 +176,7 @@ export default function DispatchPage() {
   return (
     <AppShell
       title="Dispatch board"
-      description="Live trucks, rounds, pickers, and pallet load."
+      description="Live fleet load and assignments."
     >
       {message && (
         <div className="mb-4">
@@ -267,7 +267,7 @@ export default function DispatchPage() {
                         disabled={busyOrderId === o.id}
                         onClick={() => loadUrgentOptions(o.id)}
                       >
-                        Find best truck
+                        Suggest truck
                       </Button>
                     </div>
                     {(urgentOptions[o.id] ?? []).length > 0 && (

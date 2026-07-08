@@ -162,7 +162,7 @@ export default function WarehouseProductsPage() {
   return (
     <AppShell
       title="Product catalog"
-      description="Set pallet specs here — linked products use them for order weight and truck space."
+      description="Pallet specs for weight and capacity."
     >
       <Link href="/warehouse" className="mb-4 inline-block text-sm text-zinc-500">
         ← Warehouse

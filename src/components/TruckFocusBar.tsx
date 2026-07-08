@@ -16,8 +16,10 @@ interface TruckFocusBarProps {
   vehicles: VehicleChip[];
   selectedVehicleId: string;
   deliveryRound: string;
+  fleetRoundFilter?: boolean;
   onSelectVehicle: (vehicleId: string) => void;
   onSelectRound: (round: string) => void;
+  onClearFleetRoundFilter?: () => void;
   onClear: () => void;
 }
 
@@ -31,8 +33,10 @@ export function TruckFocusBar({
   vehicles,
   selectedVehicleId,
   deliveryRound,
+  fleetRoundFilter = false,
   onSelectVehicle,
   onSelectRound,
+  onClearFleetRoundFilter,
   onClear,
 }: TruckFocusBarProps) {
   const round = Number(deliveryRound) || 1;
@@ -41,15 +45,15 @@ export function TruckFocusBar({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
-          Click a truck to focus
+          Delivery round
         </p>
-        {selectedVehicleId && (
+        {!selectedVehicleId && fleetRoundFilter && onClearFleetRoundFilter && (
           <button
             type="button"
             className="text-xs text-zinc-500 underline hover:text-zinc-800"
-            onClick={onClear}
+            onClick={onClearFleetRoundFilter}
           >
-            Show all trucks
+            All rounds
           </button>
         )}
       </div>
@@ -60,17 +64,37 @@ export function TruckFocusBar({
             key={value}
             type="button"
             aria-pressed={deliveryRound === value}
-            disabled={!selectedVehicleId}
             onClick={() => onSelectRound(value)}
             className={`inline-flex items-center rounded-md border-2 px-2.5 py-1 text-xs font-medium transition ${
               deliveryRound === value
                 ? "border-blue-600 bg-blue-600 text-white"
                 : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400"
-            } ${!selectedVehicleId ? "cursor-not-allowed opacity-60" : ""}`}
+            }`}
           >
             R{value}
           </button>
         ))}
+      </div>
+
+      {!selectedVehicleId && fleetRoundFilter && (
+        <p className="text-xs text-blue-700">
+          Showing orders assigned to R{deliveryRound} on all trucks
+        </p>
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+        <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+          Focus truck
+        </p>
+        {selectedVehicleId && (
+          <button
+            type="button"
+            className="text-xs text-zinc-500 underline hover:text-zinc-800"
+            onClick={onClear}
+          >
+            Show all trucks
+          </button>
+        )}
       </div>
 
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">

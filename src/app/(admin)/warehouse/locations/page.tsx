@@ -217,7 +217,7 @@ export default function WarehouseLocationsPage() {
   return (
     <AppShell
       title="Warehouse locations"
-      description="All storage bins and the stock held at each one."
+      description="Storage locations and stock."
     >
       <Link href="/warehouse" className="mb-4 inline-block text-sm text-zinc-500">
         ← Warehouse
@@ -463,9 +463,6 @@ export default function WarehouseLocationsPage() {
               </tbody>
             </table>
           </Card>
-          <p className="mt-2 text-xs text-zinc-500">
-            Click a row to view stock. Use Edit to change code, zone, label, or notes.
-          </p>
         </>
       )}
     </AppShell>

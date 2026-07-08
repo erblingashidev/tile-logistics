@@ -34,7 +34,7 @@ const links = [
 
 export default function WarehouseHomePage() {
   return (
-    <AppShell title="Warehouse (WMS)" description="Stock, catalog, and inventory.">
+    <AppShell title="Warehouse" description="Stock and catalog.">
       <div className="grid gap-4 sm:grid-cols-2">
         {links.map((item) => (
           <Link key={item.href} href={item.href}>

@@ -117,7 +117,7 @@ export default function VehiclesPage() {
   }
 
   return (
-    <AppShell title="Vehicles" description="Fleet capacity, drivers, and default crews.">
+    <AppShell title="Vehicles" description="Fleet capacity and crews.">
       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
         <Button className="w-full sm:w-auto" onClick={() => setShowForm(true)}>
           Add vehicle

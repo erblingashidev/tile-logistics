@@ -191,7 +191,7 @@ export async function linkOrdersForSameDelivery(
 ) {
   const unique = [...new Set(orderIds.filter((id) => Number.isFinite(id) && id > 0))];
   if (unique.length < 2) {
-    throw new Error("Select at least two orders to link for same delivery");
+    throw new Error("Select at least two orders");
   }
 
   const db = await getDb();
@@ -218,7 +218,7 @@ export async function linkOrdersForSameDelivery(
     "link_delivery",
     "order",
     unique[0],
-    `Linked for same delivery: ${labels.join(", ")}`,
+    `Linked delivery: ${labels.join(", ")}`,
     {
       category: "orders",
       details: { orderIds: unique, invoiceNumbers: labels, note: note?.trim() || null },
@@ -302,7 +302,7 @@ export async function getLinkedTruckConflictMessage(
     )
     .join("; ");
 
-  return `${self?.invoiceNumber ?? "This order"} is linked for same delivery with ${partnerText}. Assign to a different truck anyway?`;
+  return `${self?.invoiceNumber ?? "Order"} is linked with ${partnerText}. Assign to a different truck?`;
 }
 
 export async function getLinkedSplitReminder(
@@ -321,10 +321,10 @@ export async function getLinkedSplitReminder(
   );
 
   if (unassigned.length > 0) {
-    return `Reminder: linked invoice${unassigned.length > 1 ? "s" : ""} ${unassigned.map((p) => p.invoiceNumber).join(", ")} should usually go on the same truck.`;
+    return `Linked: ${unassigned.map((p) => p.invoiceNumber).join(", ")} not assigned.`;
   }
   if (otherTrucks.length > 0) {
-    return `Reminder: linked invoices are on separate trucks (${otherTrucks.map((p) => `${p.invoiceNumber} → ${p.assignment!.vehicleName}`).join("; ")}).`;
+    return `Linked orders split: ${otherTrucks.map((p) => `${p.invoiceNumber} → ${p.assignment!.vehicleName}`).join("; ")}.`;
   }
   return undefined;
 }
@@ -363,5 +363,5 @@ export async function getBulkLinkedConflictMessage(
   }
 
   if (messages.size === 0) return undefined;
-  return `${[...messages].join(". ")}. These orders are usually sent together — assign to separate trucks anyway?`;
+  return `${[...messages].join(". ")}. Proceed with separate trucks?`;
 }

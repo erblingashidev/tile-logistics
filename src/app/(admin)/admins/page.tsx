@@ -115,7 +115,7 @@ export default function AdminsPage() {
   return (
     <AppShell
       title="Admin users"
-      description="Managers and leaders with full dashboard access"
+      description="Dashboard administrators."
     >
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-zinc-600">

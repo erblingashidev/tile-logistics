@@ -202,7 +202,7 @@ export default function WarehouseReportsAdminPage() {
   return (
     <AppShell
       title="Warehouse reports"
-      description="Wednesday weekly reports plus incidents for each reporting week."
+      description="Weekly reports and incidents."
     >
       <Link href="/warehouse" className="mb-4 inline-block text-sm text-zinc-500">
         ← Warehouse

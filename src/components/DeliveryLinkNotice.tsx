@@ -12,8 +12,8 @@ export type DeliveryLinkInfo = {
 function partnerLine(link: DeliveryLinkInfo) {
   const truck = link.assignment
     ? `${link.assignment.vehicleName} · R${link.assignment.deliveryRound}`
-    : "not on a truck yet";
-  return `${link.invoiceNumber} (${truck})`;
+    : "Unassigned";
+  return `${link.invoiceNumber} · ${truck}`;
 }
 
 export function hasDeliveryLinks(
@@ -37,7 +37,7 @@ export function DeliveryLinkBadge({
 }) {
   if (!hasDeliveryLinks(links)) return null;
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-sky-600 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-white">
+    <span className="inline-flex items-center rounded-full bg-sky-600 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-white">
       Linked
     </span>
   );
@@ -58,17 +58,17 @@ export function DeliveryLinkNotice({
         compact ? "px-2.5 py-1.5 text-xs" : "px-3 py-2 text-sm"
       }`}
       role="note"
-      aria-label="Linked for same delivery"
+      aria-label="Linked delivery group"
     >
       <span className={compact ? "text-sm" : "text-base"} aria-hidden>
         🔗
       </span>
       <div className="min-w-0">
         <p className={`font-semibold ${compact ? "text-xs" : "text-sm"}`}>
-          Same delivery — send together
+          Linked delivery
         </p>
         <p className={`mt-0.5 text-sky-900 ${compact ? "text-[11px]" : "text-xs"}`}>
-          With {links.map(partnerLine).join(" · ")}
+          {links.map(partnerLine).join(" · ")}
         </p>
       </div>
     </div>

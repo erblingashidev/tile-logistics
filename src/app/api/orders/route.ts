@@ -39,6 +39,7 @@ export async function GET(request: NextRequest) {
       deliveryRound: sp.get("deliveryRound")
         ? Number(sp.get("deliveryRound"))
         : undefined,
+      fleetRoundFilter: sp.get("fleetRoundFilter") === "true",
       vehicleScope:
         sp.get("vehicleScope") === "on_truck" ||
         sp.get("vehicleScope") === "unassigned" ||

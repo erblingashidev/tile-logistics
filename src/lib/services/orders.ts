@@ -230,6 +230,8 @@ export async function listOrders(filters?: {
   unassigned?: boolean;
   vehicleId?: number;
   deliveryRound?: number;
+  /** When no vehicleId: show orders assigned on deliveryRound across all trucks */
+  fleetRoundFilter?: boolean;
   /** When vehicleId set: workspace = on truck + unassigned; on_truck; unassigned */
   vehicleScope?: "workspace" | "on_truck" | "unassigned";
   status?: string;
@@ -317,6 +319,13 @@ export async function listOrders(filters?: {
         )`
       );
     }
+  } else if (
+    filters?.fleetRoundFilter &&
+    filters.deliveryRound != null
+  ) {
+    conditions.push(
+      sql`EXISTS (SELECT 1 FROM assignments a WHERE a.order_id = ${orders.id} AND a.delivery_round = ${filters.deliveryRound})`
+    );
   }
   if (filters?.search) {
     conditions.push(
@@ -1506,7 +1515,7 @@ function scheduleAssignmentWarning(
   order: NonNullable<Awaited<ReturnType<typeof getOrder>>>
 ): string | undefined {
   if (order.requestedDeliveryDate && !isOrderReadyToShip(order)) {
-    return `Customer requested delivery on ${order.requestedDeliveryDate}. You can assign now, but do not ship before that date.`;
+    return `Requested delivery ${order.requestedDeliveryDate}. Do not ship before that date.`;
   }
   const pref = normalizeDeliveryTimePreference(order.deliveryTimePreference);
   if (pref === "morning") {

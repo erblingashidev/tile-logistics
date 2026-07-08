@@ -194,6 +194,36 @@ function buildOrderNotes(salesAgent: string, customerPhone: string): string | un
   return parts.length > 0 ? parts.join(" · ") : undefined;
 }
 
+type OrderListFilters = {
+  dateFrom: string;
+  dateTo: string;
+  minM2: string;
+  maxM2: string;
+  minPallets: string;
+  region: string;
+  employeeId: string;
+  pickerId: string;
+  driverId: string;
+  search: string;
+  hideDelivered: string;
+  workDay: "today" | "yesterday" | "overdue" | "all";
+  vehicleId: string;
+  deliveryRound: string;
+  fleetRoundFilter: boolean;
+  vehicleScope: "workspace" | "on_truck" | "unassigned";
+};
+
+function appendOrderFilterParams(params: URLSearchParams, filters: OrderListFilters) {
+  Object.entries(filters).forEach(([k, v]) => {
+    if (k === "fleetRoundFilter") {
+      if (v && !filters.vehicleId) params.set(k, "true");
+      return;
+    }
+    if (typeof v === "boolean") return;
+    if (v) params.set(k, v);
+  });
+}
+
 function createEmptyOrderForm() {
   return {
     invoiceNumber: "",
@@ -235,6 +265,7 @@ export default function OrdersPage() {
     workDay: "today" as "today" | "yesterday" | "overdue" | "all",
     vehicleId: "",
     deliveryRound: "1",
+    fleetRoundFilter: false,
     vehicleScope: "workspace" as "workspace" | "on_truck" | "unassigned",
   });
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
@@ -269,7 +300,7 @@ export default function OrdersPage() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      Object.entries(filters).forEach(([k, v]) => v && params.set(k, v));
+      appendOrderFilterParams(params, filters);
       const [ordersRes, vehiclesRes, employeesRes] = await Promise.all([
         fetch(`/api/orders?${params}`, { cache: "no-store" }),
         fetch("/api/vehicles", { cache: "no-store" }),
@@ -637,7 +668,7 @@ export default function OrdersPage() {
     });
     const data = await res.json();
     if (res.status === 422 && data.isLinkedWarning) {
-      if (confirm(`${data.error ?? "Linked delivery warning"}\n\nContinue anyway?`)) {
+      if (confirm(`${data.error ?? "Linked delivery conflict"}\n\nProceed?`)) {
         await bulkTransferToTruck(ignoreWeightWarning, ignoreCraneRule, true);
       }
       return;
@@ -645,7 +676,7 @@ export default function OrdersPage() {
     if (res.status === 422 && data.results) {
       if (
         confirm(
-          `${data.results.find((r: { error?: string }) => r.error)?.error ?? "Weight warning"}\n\nTransfer anyway?`
+          `${data.results.find((r: { error?: string }) => r.error)?.error ?? "Weight limit exceeded"}\n\nProceed?`
         )
       ) {
         await bulkTransferToTruck(true, ignoreCraneRule, ignoreLinkedWarning);
@@ -655,7 +686,7 @@ export default function OrdersPage() {
     if (res.status === 409 && data.results?.some((r: { requiresCrane?: boolean }) => r.requiresCrane)) {
       if (
         confirm(
-          "One or more orders need the crane truck.\n\nOverride and transfer anyway?"
+          "Crane truck required for one or more orders.\n\nProceed?"
         )
       ) {
         await bulkTransferToTruck(ignoreWeightWarning, true, ignoreLinkedWarning);
@@ -700,7 +731,7 @@ export default function OrdersPage() {
       .map((order) => order.invoiceNumber);
     if (
       !confirm(
-        `Link these invoices for same delivery?\n\n${labels.join("\n")}\n\nThey will be suggested together when assigning trucks, but you can still split them if needed.`
+        `Link ${labels.length} invoices for shared delivery?\n\n${labels.join("\n")}`
       )
     ) {
       return;
@@ -716,9 +747,7 @@ export default function OrdersPage() {
       setError(data.error ?? "Could not link orders");
       return;
     }
-    setWarning(
-      `Linked for same delivery — look for the blue LINKED badge: ${(data.invoiceNumbers ?? labels).join(", ")}`
-    );
+    setWarning(`Linked: ${(data.invoiceNumbers ?? labels).join(", ")}`);
     setTimeout(() => setWarning(""), 4000);
     load();
   }
@@ -1003,7 +1032,7 @@ export default function OrdersPage() {
   return (
     <AppShell
       title="Orders"
-      description="Invoices, truck assignment, and delivery tracking."
+      description="Orders, assignments, and delivery."
     >
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2">
@@ -1012,7 +1041,7 @@ export default function OrdersPage() {
             variant="secondary"
             onClick={() => {
               const params = new URLSearchParams({ type: "orders" });
-              Object.entries(filters).forEach(([k, v]) => v && params.set(k, v));
+              appendOrderFilterParams(params, filters);
               window.open(`/api/export?${params}`, "_blank");
             }}
           >
@@ -1047,16 +1076,13 @@ export default function OrdersPage() {
         </div>
       )}
 
-      <PageSection title="Truck workspace">
+      <PageSection title="Truck focus">
         <Card className="border-blue-200 bg-gradient-to-br from-blue-50/80 to-white p-4">
-          <p className="mb-3 text-sm text-zinc-500">
-            Click a truck to focus the list — then assign orders with one click per
-            truck chip on each card.
-          </p>
           <TruckFocusBar
             vehicles={vehicles}
             selectedVehicleId={filters.vehicleId}
             deliveryRound={filters.deliveryRound}
+            fleetRoundFilter={filters.fleetRoundFilter}
             onSelectVehicle={(vehicleId) =>
               setFilters({
                 ...filters,
@@ -1065,7 +1091,14 @@ export default function OrdersPage() {
               })
             }
             onSelectRound={(deliveryRound) =>
-              setFilters({ ...filters, deliveryRound })
+              setFilters((f) => ({
+                ...f,
+                deliveryRound,
+                fleetRoundFilter: f.vehicleId ? f.fleetRoundFilter : true,
+              }))
+            }
+            onClearFleetRoundFilter={() =>
+              setFilters((f) => ({ ...f, fleetRoundFilter: false }))
             }
             onClear={() =>
               setFilters({
@@ -1080,9 +1113,9 @@ export default function OrdersPage() {
               <span className="text-xs font-medium text-zinc-500">Show:</span>
               {(
                 [
-                  ["workspace", "On truck + available"],
-                  ["on_truck", "On truck only"],
-                  ["unassigned", "Available only"],
+                  ["workspace", "Truck + open"],
+                  ["on_truck", "On truck"],
+                  ["unassigned", "Open only"],
                 ] as const
               ).map(([value, label]) => (
                 <button
@@ -1142,7 +1175,7 @@ export default function OrdersPage() {
             {(
               [
                 { id: "today", label: "Today" },
-                { id: "yesterday", label: "Yesterday unfinished" },
+                { id: "yesterday", label: "Yesterday open" },
                 { id: "overdue", label: "Overdue" },
                 { id: "all", label: "All days" },
               ] as const
@@ -1163,15 +1196,6 @@ export default function OrdersPage() {
               </button>
             ))}
           </div>
-          <p className="mt-3 text-sm text-zinc-600">
-            {filters.workDay === "today" &&
-              `New orders you add today appear here automatically unless you set a different requested delivery date. Showing ${todayDateString()}.`}
-            {filters.workDay === "yesterday" &&
-              `Unfinished orders from ${addDaysToDateString(todayDateString(), -1)}. Select only the ones you still need, then move them to today.`}
-            {filters.workDay === "overdue" &&
-              "Unfinished orders scheduled before today. Select the ones to carry forward and move them to today."}
-            {filters.workDay === "all" && "Showing orders from all delivery days."}
-          </p>
         </Card>
       </PageSection>
 
@@ -1389,7 +1413,7 @@ export default function OrdersPage() {
                 }
               />
               <Input
-                label="Requested delivery date (optional)"
+                label="Requested delivery"
                 type="date"
                 min={form.orderDate}
                 value={form.requestedDeliveryDate}
@@ -1397,12 +1421,8 @@ export default function OrdersPage() {
                   setForm({ ...form, requestedDeliveryDate: e.target.value })
                 }
               />
-              <p className="-mt-2 text-xs text-zinc-500 sm:col-span-2">
-                Leave blank to put this order on today&apos;s work list. Set a
-                date only when delivery should happen on another day.
-              </p>
               <Select
-                label="Delivery time preference"
+                label="Delivery time"
                 value={form.deliveryTimePreference}
                 onChange={(e) =>
                   setForm({
@@ -1774,7 +1794,7 @@ export default function OrdersPage() {
                 className="text-xs"
                 onClick={() => bulkLinkForSameDelivery()}
               >
-                Link for same delivery
+                Link deliveries
               </Button>
             )}
             {selectedOrderIds.size >= 2 && selectionHasDeliveryLink() && (
@@ -1783,7 +1803,7 @@ export default function OrdersPage() {
                 className="text-xs"
                 onClick={() => bulkUnlinkDelivery()}
               >
-                Unlink delivery
+                Unlink
               </Button>
             )}
             {filters.vehicleId && (
@@ -1815,7 +1835,7 @@ export default function OrdersPage() {
                 className="text-xs"
                 onClick={() => bulkRescheduleSelected(todayDateString())}
               >
-                Move selected to today
+                Move to today
               </Button>
             )}
             <input
@@ -1831,8 +1851,8 @@ export default function OrdersPage() {
               onClick={() => bulkRescheduleSelected()}
             >
               {filters.workDay === "yesterday" || filters.workDay === "overdue"
-                ? "Move to another date"
-                : "Move to delivery date"}
+                ? "Move to date"
+                : "Reschedule"}
             </Button>
             <select
               className="rounded border border-violet-200 bg-white px-2 py-1 text-xs"

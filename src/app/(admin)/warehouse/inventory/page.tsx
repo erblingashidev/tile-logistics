@@ -640,7 +640,7 @@ export default function WarehouseInventoryPage() {
   return (
     <AppShell
       title="Annual inventory"
-      description="Count by warehouse zone, close each sector, then finalize stock and variance report."
+      description="Zone counts and variance."
     >
       <Link href="/warehouse" className="mb-4 inline-block text-sm text-zinc-500">
         ← Warehouse

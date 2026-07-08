@@ -403,7 +403,7 @@ export function OrderListCard({
                   className="text-xs"
                   onClick={onSuggestUrgentRoute}
                 >
-                  Find best truck
+                  Suggest truck
                 </Button>
                 <Link
                   href="/dispatch"

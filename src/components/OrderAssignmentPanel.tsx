@@ -176,7 +176,7 @@ export function OrderAssignmentPanel({
   ) {
     const active = overrideDraft ?? draft;
     if (!active.vehicleId) {
-      onError("Select a truck first.");
+      onError("Select a truck.");
       return;
     }
     setBusy(true);
@@ -200,7 +200,7 @@ export function OrderAssignmentPanel({
     if (res.status === 422 && data.isWeightWarning) {
       if (
         confirm(
-          `${data.error}\n\nThis is a weight warning only. Assign anyway?`
+          `${data.error}\n\nWeight over advisory limit. Proceed?`
         )
       ) {
         await saveBundle(true, ignoreCraneRule, ignoreLinkedWarning, active);
@@ -208,7 +208,7 @@ export function OrderAssignmentPanel({
       return;
     }
     if (res.status === 422 && data.isLinkedWarning) {
-      if (confirm(`${data.error}\n\nAssign to a separate truck anyway?`)) {
+      if (confirm(`${data.error}\n\nAssign to a different truck?`)) {
         await saveBundle(ignoreWeightWarning, ignoreCraneRule, true, active);
       }
       return;
@@ -216,7 +216,7 @@ export function OrderAssignmentPanel({
     if (res.status === 409 && data.requiresCrane && !ignoreCraneRule) {
       if (
         confirm(
-          `${data.error}\n\nOverride and assign to this truck anyway?`
+          `${data.error}\n\nProceed without crane truck?`
         )
       ) {
         await saveBundle(ignoreWeightWarning, true, ignoreLinkedWarning, active);
@@ -270,7 +270,7 @@ export function OrderAssignmentPanel({
     const data = await res.json();
     setBusy(false);
     if (!res.ok || !data.ok) {
-      onError(data.error ?? "No suggestion available");
+      onError(data.error ?? "No truck match");
       return;
     }
     const rec = data.recommendation;
@@ -279,7 +279,9 @@ export function OrderAssignmentPanel({
       round: String(rec.deliveryRound),
       pickerId: rec.pickerId ? String(rec.pickerId) : "",
     });
-    onWarning(`AI suggestion loaded — review truck & picker, then save. ${rec.reasons[0] ?? ""}`);
+    onWarning(
+      `Truck suggestion applied. ${rec.reasons[0] ?? "Review picker and save."}`
+    );
   }
 
   async function clearScope(scope: {
@@ -383,7 +385,7 @@ export function OrderAssignmentPanel({
             checked={quickAssign}
             onChange={(e) => setQuickAssign(e.target.checked)}
           />
-          Assign on truck click
+          Assign on select
         </label>
       </div>
 
@@ -394,10 +396,6 @@ export function OrderAssignmentPanel({
       <div>
         <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
           Delivery round
-        </p>
-        <p className="mb-2 text-[11px] text-zinc-500">
-          Suggested round is shown above from truck status. You can override by
-          picking a different round — your choice is kept when assigning.
         </p>
         <div className="flex flex-wrap gap-1.5">
           {deliveryRoundSelectOptions().map((option) => (
@@ -544,7 +542,7 @@ export function OrderAssignmentPanel({
           disabled={busy || !draft.vehicleId}
           onClick={() => saveBundle()}
         >
-          {hasAssignment ? "Save assignment" : "Assign truck + picker"}
+          {hasAssignment ? "Save" : "Assign"}
         </Button>
         {!hasAssignment && (
           <Button
@@ -553,7 +551,7 @@ export function OrderAssignmentPanel({
             disabled={busy}
             onClick={loadSuggestion}
           >
-            AI suggest
+            Suggest truck
           </Button>
         )}
       </div>

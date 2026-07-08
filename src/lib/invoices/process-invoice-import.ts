@@ -106,7 +106,7 @@ async function createOrMergeEntry(
         return {
           ok: false,
           status: 422,
-          error: "No products found to merge — review the import preview.",
+          error: "No products to merge.",
           parsed,
           form,
         };
@@ -143,7 +143,7 @@ async function createOrMergeEntry(
       ok: false,
       status: 422,
       error:
-        "Missing invoice number or customer — review the preview and edit before saving.",
+        "Missing invoice number or customer.",
       parsed,
       form,
     };

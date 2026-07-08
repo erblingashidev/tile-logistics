@@ -209,7 +209,7 @@ export default function VehicleMaintenancePage() {
   return (
     <AppShell
       title="Vehicle maintenance"
-      description="Service history, costs, and next due dates for the fleet."
+      description="Service history and due dates."
     >
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         <Link href="/vehicles" className="text-sm text-zinc-500 underline">

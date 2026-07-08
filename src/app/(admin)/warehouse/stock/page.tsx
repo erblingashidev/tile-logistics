@@ -87,7 +87,7 @@ export default function WarehouseStockPage() {
   }
 
   return (
-    <AppShell title="Stock & locations" description="On-hand balances by product and bin.">
+    <AppShell title="Stock" description="Balances by product and location.">
       <Link href="/warehouse" className="mb-4 inline-block text-sm text-zinc-500">
         ← Warehouse
       </Link>

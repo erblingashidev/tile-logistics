@@ -159,7 +159,7 @@ export default function RoutesPage() {
       if (craneErr) {
         if (
           confirm(
-            `${craneErr.error ?? "Crane truck required for jumbo tiles"}\n\nAssign to selected truck anyway?`
+            `${craneErr.error ?? "Crane truck required"}\n\nProceed?`
           )
         ) {
           await assignRoute(plan, ignoreWeight, true);
@@ -170,7 +170,7 @@ export default function RoutesPage() {
     if (res.status === 409 && !ignoreWeight) {
       if (
         confirm(
-          `${data.results?.[0]?.error ?? "Capacity issue"}\n\nAssign anyway?`
+          `${data.results?.[0]?.error ?? "Capacity limit"}\n\nProceed?`
         )
       ) {
         await assignRoute(plan, true, ignoreCrane);
@@ -188,7 +188,7 @@ export default function RoutesPage() {
   }
 
   return (
-    <AppShell title="Route planning" description="Suggested trips from mapped deliveries.">
+    <AppShell title="Route planning" description="Suggested delivery routes.">
       <PageSection title="Filters">
         <Card className="p-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
