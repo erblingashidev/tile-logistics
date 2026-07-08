@@ -165,6 +165,8 @@ export function InvoiceImportPanel({
     InvoiceImportPreviewItem[]
   >([]);
   const [previewInvoiceNumber, setPreviewInvoiceNumber] = useState("");
+  const [extractedText, setExtractedText] = useState("");
+  const [showExtractedText, setShowExtractedText] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
@@ -207,6 +209,8 @@ export function InvoiceImportPanel({
     clearPhotoPreviews();
     lastFileRef.current = null;
     lastTextRef.current = "";
+    setExtractedText("");
+    setShowExtractedText(false);
     resetInputs();
     onError("");
   }
@@ -339,6 +343,7 @@ export function InvoiceImportPanel({
     setBusyPercent(undefined);
     setStep("extract");
     lastTextRef.current = text;
+    setExtractedText(text);
 
     const result = await previewInvoiceFromText(text);
     if (!result.ok) {
@@ -362,6 +367,8 @@ export function InvoiceImportPanel({
     setMode("pdf");
     lastFileRef.current = file;
     lastTextRef.current = "";
+    setExtractedText("");
+    setShowExtractedText(false);
     setPhotoPages([]);
     clearPhotoPreviews();
     setSelectedFile({
@@ -789,6 +796,7 @@ export function InvoiceImportPanel({
               <PreviewField
                 label="Referenti Juaj"
                 value={preview.parsed.salesAgent || "—"}
+                highlight={!preview.parsed.salesAgent}
               />
               <PreviewField label="Date" value={preview.parsed.orderDate} />
               <PreviewField
@@ -864,6 +872,44 @@ export function InvoiceImportPanel({
               </ul>
             )}
 
+            {extractedText.trim() && (
+              <div className="rounded-lg border border-zinc-200 bg-white">
+                <button
+                  type="button"
+                  onClick={() => setShowExtractedText((open) => !open)}
+                  className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-medium text-zinc-600 hover:text-zinc-900"
+                >
+                  <span>Extracted text (what OCR read)</span>
+                  <span>{showExtractedText ? "Hide" : "Show"}</span>
+                </button>
+                {showExtractedText && (
+                  <div className="border-t border-zinc-200 px-3 py-2">
+                    <p className="mb-2 text-[11px] leading-relaxed text-zinc-500">
+                      If products or Referenti are wrong, copy this text and send
+                      it with a screenshot — it shows exactly what the parser
+                      received.
+                    </p>
+                    <textarea
+                      readOnly
+                      value={extractedText}
+                      rows={10}
+                      className="w-full rounded-md border border-zinc-200 bg-zinc-50 px-2 py-2 font-mono text-[11px] leading-relaxed text-zinc-800"
+                    />
+                    <Button
+                      variant="secondary"
+                      className="mt-2"
+                      onClick={() => {
+                        void navigator.clipboard.writeText(extractedText);
+                        onWarning("Extracted text copied.");
+                      }}
+                    >
+                      Copy text
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="flex flex-wrap gap-2 border-t border-zinc-200 pt-3">
               {preview.duplicate ? (
                 <Button
@@ -907,11 +953,22 @@ export function InvoiceImportPanel({
   );
 }
 
-function PreviewField({ label, value }: { label: string; value: string }) {
+function PreviewField({
+  label,
+  value,
+  highlight = false,
+}: {
+  label: string;
+  value: string;
+  highlight?: boolean;
+}) {
   return (
     <div>
       <dt className="text-xs font-medium text-zinc-500">{label}</dt>
-      <dd className="text-zinc-900">{value}</dd>
+      <dd className={highlight ? "font-medium text-amber-700" : "text-zinc-900"}>
+        {value}
+        {highlight ? " — check invoice or enter manually" : ""}
+      </dd>
     </div>
   );
 }

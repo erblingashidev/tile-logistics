@@ -194,6 +194,31 @@ function parseSalesAgentFromDateRow(text: string): string | null {
   return null;
 }
 
+function parseSalesAgentFromProDataAdminTable(text: string): string | null {
+  if (!/Referenti\s*juaj/i.test(text)) return null;
+
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (!/\d{2}\.\d{2}\.\d{4}/.test(trimmed)) continue;
+
+    const agimiCompany = trimmed.match(/AGIMI\s+COM\s+SH[^0-9\n]*?(?=\d{3}\b)/i);
+    if (agimiCompany) {
+      const cleaned = cleanSalesAgentName(agimiCompany[0]);
+      if (cleaned) return cleaned;
+    }
+
+    const glued = trimmed.match(
+      /^(\d{2}\.\d{2}\.\d{4}).*?(\d{2}\.\d{2}\.\d{4})([A-Za-zÀ-ÿ]+?)\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\s.-]+?)\s*(\d{3})\s*$/
+    );
+    if (!glued) continue;
+
+    const referenti = cleanSalesAgentName(glued[4]);
+    if (referenti && !SALES_AGENT_HEADER_TOKENS.test(referenti)) return referenti;
+  }
+
+  return null;
+}
+
 function parseSalesAgentFromProDataPdfRow(text: string): string | null {
   const spaced = text.match(
     new RegExp(
@@ -212,6 +237,9 @@ function parseSalesAgentFromProDataPdfRow(text: string): string | null {
 function parseSalesAgent(text: string): string | null {
   const fromLabel = parseReferentiJuajLabel(text);
   if (fromLabel) return fromLabel;
+
+  const fromProDataAdmin = parseSalesAgentFromProDataAdminTable(text);
+  if (fromProDataAdmin) return fromProDataAdmin;
 
   const fromDateRow = parseSalesAgentFromDateRow(text);
   if (fromDateRow) return fromDateRow;
@@ -238,6 +266,17 @@ function cleanSalesAgentName(raw: string): string | null {
   let name = raw
     .replace(/\s+/g, " ")
     .replace(/\b001\b/g, "")
+    .trim();
+
+  if (!name || name.length < 2) return null;
+  if (/^\d+$/.test(name)) return null;
+  if (/^(QERAMIKA|Bleresi|Blerësi)$/i.test(name)) return null;
+
+  if (/^AGIMI\s*COM\s*SH/i.test(name)) {
+    return "AGIMI COM SHPK";
+  }
+
+  name = name
     .replace(/\bAGIMI\b.*$/i, "")
     .replace(/\bCOM\b.*$/i, "")
     .replace(/\bSH\.?P\.?K\.?\b.*$/i, "")
@@ -721,7 +760,8 @@ function isProductNameContinuationLine(line: string): boolean {
   if (parseAgimiTableRowLine(line)) return false;
   if (/^\d+\s+\d{3,13}\b/.test(t)) return false;
   if (/(?:\d+[.,]\d{2}\s+){2,}/.test(t)) return false;
-  if (/^(Normat|TVSH|Vlera|Batch no|BATCH NO|ANTIQUE|CARVING|Rabati|Llogaria)/i.test(t)) return false;
+  if (/^(Normat|TVSH|Vlera|ANTIQUE|CARVING|Rabati|Llogaria)/i.test(t)) return false;
+  if (/^Batch\s*no\.?\s*:?\s*\S+/i.test(t)) return true;
   if (/^(KORAL|AVNI|QYTETARET|Dentar|LIGA|FATON|Gly|ee O|PROFI FLEX)/i.test(t)) {
     return false;
   }
@@ -761,12 +801,18 @@ function shouldAttachSuffix(rowName: string): boolean {
 function sanitizeMergedProductName(name: string): string {
   let n = name.replace(/\s+/g, " ").trim();
   n = n.replace(/\s+\d+[.,]\d{2}(?=\s+[A-Z]|\s*$)/g, " ");
-  n = n.replace(/\s+BATCH NO[^|]*/gi, "");
-  n = n.replace(/\s+Batch no:.*$/i, "");
-  n = n.replace(/\s*[!;:|{}]+.*$/g, "");
+  n = n.replace(/\s*[!;|{}]+.*$/g, "");
   n = n.replace(/\s+(Llogaria|Bankare|IBAN|SWIFT|Programi|Rabati|TVSH|Vlera pa).*$/i, "");
   n = n.replace(/\s+/g, " ").trim();
   return n;
+}
+
+function looksLikeFullTableProductName(raw: string): boolean {
+  const n = sanitizeMergedProductName(raw).replace(/\s+/g, " ").trim();
+  if (n.length < 8) return false;
+  if (/^(?:QERAMIKA|AGIMI|Normat|TVSH|Bleresi|Blerësi)/i.test(n)) return false;
+  if (/(?:\d+[.,]\d{2}\s+){2,}/.test(n)) return false;
+  return /[A-Za-z]{2,}/.test(n);
 }
 
 function looksLikeCleanProductName(raw: string): boolean {
@@ -780,7 +826,9 @@ function looksLikeCleanProductName(raw: string): boolean {
 
 function finalizeProductName(raw: string): string {
   const merged = sanitizeMergedProductName(raw);
-  if (looksLikeCleanProductName(merged)) return merged.replace(/\s+/g, " ").trim();
+  if (looksLikeCleanProductName(merged) || looksLikeFullTableProductName(merged)) {
+    return merged.replace(/\s+/g, " ").trim();
+  }
   return cleanEmertimiName(merged);
 }
 
@@ -1240,6 +1288,7 @@ function tableRowToOrderItem(row: ParsedAgimiTableRow): OrderItemPayload {
   };
 }
 
+const AGIMI_COMPACT_ROW_HEAD_RE = /^(\d{1,2})(1300\d{6})$/;
 const PRODATA_PDF_ROW_HEAD_RE = /^(\d{1,2})(\d{7,13})$/;
 const SPACED_TABLE_ROW_HEAD_RE = /^(\d{1,2})\s*[=:]?\s*(\d{7,13})$/;
 const EAN_ONLY_LINE_RE = /^(\d{7,13})$/;
@@ -1260,6 +1309,12 @@ function isAgimiProductTableHeader(line: string): boolean {
 
 function matchTableRowHeadLine(line: string): { lineNumber: string; ean: string; nameStart?: string } | null {
   const trimmed = line.replace(/^[\s|;:=]+/, "").trim();
+
+  const agimiCompact = trimmed.match(AGIMI_COMPACT_ROW_HEAD_RE);
+  if (agimiCompact) {
+    return { lineNumber: agimiCompact[1], ean: agimiCompact[2] };
+  }
+
   let match = trimmed.match(PRODATA_PDF_ROW_HEAD_RE);
   if (match) return { lineNumber: match[1], ean: match[2] };
   match = trimmed.match(SPACED_TABLE_ROW_HEAD_RE);
