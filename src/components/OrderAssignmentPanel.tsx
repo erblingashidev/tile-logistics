@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui";
 import { AdminManualProofPanel } from "@/components/AdminManualProofPanel";
+import { DeliveryLinkNotice } from "@/components/DeliveryLinkNotice";
 import { deliveryRoundSelectOptions } from "@/lib/delivery-rounds";
 import type { OrderDisplayStage } from "@/lib/order-display";
 import {
@@ -370,21 +371,7 @@ export function OrderAssignmentPanel({
   return (
     <div className="flex w-full flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-3">
       {deliveryLinks.length > 0 && (
-        <div className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
-          <p className="font-semibold">Same delivery group</p>
-          <p className="mt-1">
-            Usually sent together with{" "}
-            {deliveryLinks
-              .map((link) => {
-                const truck = link.assignment
-                  ? ` on ${link.assignment.vehicleName}`
-                  : "";
-                return `${link.invoiceNumber}${truck}`;
-              })
-              .join(", ")}
-            .
-          </p>
-        </div>
+        <DeliveryLinkNotice links={deliveryLinks} compact />
       )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">

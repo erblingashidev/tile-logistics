@@ -17,6 +17,12 @@ import { isOrderUrgent } from "@/lib/order-priority";
 import type { OrderListCardOrder } from "@/components/OrderListCard";
 import { staffOptionsFromOrder } from "@/components/OrderListCard";
 import { OrderBoardDetail } from "@/components/OrderBoardDetail";
+import {
+  DeliveryLinkBadge,
+  DeliveryLinkNotice,
+  deliveryLinkCardClass,
+  hasDeliveryLinks,
+} from "@/components/DeliveryLinkNotice";
 
 interface VehicleOption {
   id: number;
@@ -181,7 +187,7 @@ function OrderRow({
   const isDelivered = stage === "delivered";
   const isComplete = stage === "delivered" || stage === "arrived";
 
-  const shellClass = `overflow-hidden rounded-lg border border-zinc-200/80 transition ${orderListRowClass(stage)} ${
+  const shellClass = `overflow-hidden rounded-lg border border-zinc-200/80 transition ${orderListRowClass(stage)} ${deliveryLinkCardClass(order.deliveryLinks)} ${
     onFocusTruck ? "ring-2 ring-blue-400 ring-offset-1" : ""
   }`;
 
@@ -220,7 +226,11 @@ function OrderRow({
             <StageBadge order={order} />
             <AssignmentBadge order={order} />
             {isOrderUrgent(order) && <Badge tone="red">URGENT</Badge>}
+            <DeliveryLinkBadge links={order.deliveryLinks} />
           </div>
+          {hasDeliveryLinks(order.deliveryLinks) && (
+            <DeliveryLinkNotice links={order.deliveryLinks} compact />
+          )}
           <p className="text-xs text-zinc-600">
             {order.totalPallets} plt · {formatM2(order.totalM2)} m²
           </p>
@@ -308,6 +318,7 @@ function OrderRow({
                 URGENT
               </span>
             )}
+            <DeliveryLinkBadge links={order.deliveryLinks} />
           </div>
           <p className="truncate text-sm text-zinc-800">{order.customerName}</p>
           <div className="min-w-0">
@@ -354,6 +365,11 @@ function OrderRow({
           </Button>
         </div>
       </div>
+      {hasDeliveryLinks(order.deliveryLinks) && (
+        <div className="border-t border-sky-100 bg-sky-50/40 px-3 py-2">
+          <DeliveryLinkNotice links={order.deliveryLinks} compact />
+        </div>
+      )}
       {detailOpen && (
         <div className="border-t border-zinc-100 bg-zinc-50/80 px-3 py-3">
           <OrderBoardDetail order={order} />

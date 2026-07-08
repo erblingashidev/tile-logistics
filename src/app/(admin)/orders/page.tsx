@@ -717,7 +717,7 @@ export default function OrdersPage() {
       return;
     }
     setWarning(
-      `Linked for same delivery: ${(data.invoiceNumbers ?? labels).join(", ")}`
+      `Linked for same delivery — look for the blue LINKED badge: ${(data.invoiceNumbers ?? labels).join(", ")}`
     );
     setTimeout(() => setWarning(""), 4000);
     load();

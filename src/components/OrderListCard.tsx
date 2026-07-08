@@ -3,6 +3,12 @@
 import Link from "next/link";
 import { OrderInvoice, type OrderInvoiceData } from "@/components/OrderInvoice";
 import {
+  DeliveryLinkBadge,
+  DeliveryLinkNotice,
+  deliveryLinkCardClass,
+  hasDeliveryLinks,
+} from "@/components/DeliveryLinkNotice";
+import {
   OrderAssignmentPanel,
   type AssignmentDraft,
 } from "@/components/OrderAssignmentPanel";
@@ -195,7 +201,7 @@ export function OrderListCard({
 
   return (
     <article
-      className={`overflow-hidden rounded-xl border shadow-sm transition-shadow hover:shadow-md ${orderListRowClass(stage)} ${
+      className={`overflow-hidden rounded-xl border shadow-sm transition-shadow hover:shadow-md ${orderListRowClass(stage)} ${deliveryLinkCardClass(order.deliveryLinks)} ${
         highlightFocus
           ? "ring-2 ring-blue-400"
           : highlightAvailable
@@ -222,14 +228,7 @@ export function OrderListCard({
                   {order.invoiceNumber}
                 </h3>
                 {isOrderUrgent(order) && <Badge tone="red">URGENT</Badge>}
-                {(order.deliveryLinks?.length ?? 0) > 0 && (
-                  <Badge tone="blue">
-                    Together ·{" "}
-                    {order.deliveryLinks!
-                      .map((link) => link.invoiceNumber)
-                      .join(", ")}
-                  </Badge>
-                )}
+                <DeliveryLinkBadge links={order.deliveryLinks} />
               </div>
               <p className="mt-1 text-base font-semibold text-zinc-800">
                 {order.customerName}
@@ -277,6 +276,12 @@ export function OrderListCard({
             </Button>
           </div>
         </div>
+
+        {hasDeliveryLinks(order.deliveryLinks) && (
+          <div className="border-b border-sky-100 bg-white px-4 py-2">
+            <DeliveryLinkNotice links={order.deliveryLinks} />
+          </div>
+        )}
 
         <div className="grid gap-3 border-b border-zinc-100 bg-zinc-50/70 px-4 py-3 sm:grid-cols-2 lg:grid-cols-5">
           <MetaItem label="Region" value={region} />
