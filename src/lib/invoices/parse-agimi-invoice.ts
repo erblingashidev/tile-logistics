@@ -84,6 +84,13 @@ function normalizeOcrInvoiceText(text: string): string {
       .replace(/Emërtim[1lI]/gi, "Emërtimi")
       .replace(/Barkod[1lI]/gi, "Barkodi")
       .replace(/Referenti\s+Juaj/gi, "Referenti Juaj")
+      .replace(/Referenti\s*[:\.]?\s*[Jj]uaj/gi, "Referenti Juaj")
+      .replace(/Referenti\s*Juaj/gi, "Referenti Juaj")
+      .replace(/Njesia|Njesía|Njësia/gi, "Njesia")
+      .replace(/Sas[1lI]a/gi, "Sasia")
+      .replace(/No\s*Kodi\s*Emertimi/gi, "No Kodi Emertimi Sasia Njesia")
+      .replace(/(\d+[.,]\d+)\.\s*(M2|KG|PAKO|THAS|Cop[ée]?|Cope)\b/gi, "$1 $2")
+      .replace(/[_—«]+(?=\s*(?:M2|KG|PAKO|THAS|Cop[ée]?|Cope)\b)/gi, " ")
       .replace(/Pro\s*fatur[ëe]/gi, "Pro-faturë")
       .replace(/_—«/g, " ")
       .replace(/(\d)\.\s*(M2|KG)\b/gi, "$1 $2")
@@ -132,52 +139,96 @@ interface ParsedDestination {
 }
 
 const SALES_AGENT_HEADER_TOKENS =
-  /^(?:Lokacioni|Referenca|User|Kushtet|Data fatura|Data e skadimit|Referenti juaj)$/i;
+  /^(?:Lokacioni|Referenca|User|Kushtet|Data fatura|Data e skadimit|Referenti juaj|Referenti Juaj)$/i;
+
+/** Short warehouse/region code between invoice dates and agent name (PR, AL, PE…). */
+const AGIMI_LOCATION_CODE = /[A-Z]{2,4}\b/;
+
+function parseReferentiJuajLabel(text: string): string | null {
+  const inline = text.match(
+    /Referenti\s+(?:Juaj\s*)?[:\-]?\s*([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\s.-]{1,50})/i
+  );
+  if (inline) {
+    const cleaned = cleanSalesAgentName(inline[1]);
+    if (cleaned && !SALES_AGENT_HEADER_TOKENS.test(cleaned)) return cleaned;
+  }
+
+  const lines = text.split("\n").map((line) => line.trim());
+  for (let i = 0; i < lines.length; i++) {
+    if (!/^Referenti\s+(?:Juaj\s*)?[:\-]?$/i.test(lines[i])) continue;
+    for (let j = i + 1; j < Math.min(lines.length, i + 3); j++) {
+      const candidate = lines[j];
+      if (!candidate || /^\d{2}\.\d{2}\.\d{4}/.test(candidate)) break;
+      const cleaned = cleanSalesAgentName(candidate);
+      if (cleaned && !SALES_AGENT_HEADER_TOKENS.test(cleaned)) return cleaned;
+    }
+  }
+
+  return null;
+}
+
+function parseSalesAgentFromDateRow(text: string): string | null {
+  for (const match of text.matchAll(
+    /(\d{2}\.\d{2}\.\d{4})\s+\1\s+([^|\n]+?)\s+(\d{3})\b/g
+  )) {
+    const segment = match[2].trim().replace(/\s+/g, " ");
+    const parts = segment.split(" ").filter(Boolean);
+    if (parts.length >= 3 && /^[A-Z]{2,4}$/.test(parts[0])) {
+      const referentiOnly = cleanSalesAgentName(parts.slice(1).join(" "));
+      if (referentiOnly) return referentiOnly;
+    }
+    const cleaned = cleanSalesAgentName(segment);
+    if (cleaned && !SALES_AGENT_HEADER_TOKENS.test(cleaned)) return cleaned;
+  }
+
+  for (const line of text.split("\n")) {
+    const withoutLocation = line.match(
+      /\d{2}\.\d{2}\.\d{4}\s+\d{2}\.\d{2}\.\d{4}\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\s.-]{2,50}?)\s+\d{3}\b/
+    );
+    if (withoutLocation) {
+      const cleaned = cleanSalesAgentName(withoutLocation[1]);
+      if (cleaned && !SALES_AGENT_HEADER_TOKENS.test(cleaned)) return cleaned;
+    }
+  }
+
+  return null;
+}
 
 function parseSalesAgentFromProDataPdfRow(text: string): string | null {
   const spaced = text.match(
-    /(\d{2}\.\d{2}\.\d{4})\s+(\d{2}\.\d{2}\.\d{4})\s+([A-Z]{2,})\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\s.-]{1,40}?)\s+(\d{3})\b/
+    new RegExp(
+      `(\\d{2}\\.\\d{2}\\.\\d{4})\\s+(\\d{2}\\.\\d{2}\\.\\d{4})\\s+(${AGIMI_LOCATION_CODE.source})\\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\\s.-]{1,40}?)\\s+(\\d{3})\\b`
+    )
   );
   if (spaced) return cleanSalesAgentName(spaced[4]);
 
   const match = text.match(
-    /(\d{2}\.\d{2}\.\d{4})(\d{2}\.\d{2}\.\d{4})([A-Z]+(?=[A-Z][a-z]))([A-Z][a-zA-ZëçÇ]+(?:\s+[A-Z][a-zA-ZëçÇ]+)*)(\d{3})\b/
+    /(\d{2}\.\d{2}\.\d{4})(\d{2}\.\d{2}\.\d{4})([A-Z]{2,4})([A-Z][a-zA-ZëçÇ]+(?:\s+[A-Z][a-zA-ZëçÇ]+)*)(\d{3})\b/
   );
   if (!match) return null;
   return cleanSalesAgentName(match[4]);
 }
 
 function parseSalesAgent(text: string): string | null {
+  const fromLabel = parseReferentiJuajLabel(text);
+  if (fromLabel) return fromLabel;
+
+  const fromDateRow = parseSalesAgentFromDateRow(text);
+  if (fromDateRow) return fromDateRow;
+
   const fromPdfRow = parseSalesAgentFromProDataPdfRow(text);
   if (fromPdfRow) return fromPdfRow;
 
-  const referenti = text.match(/Referenti\s+(?:Juaj\s*)?:?\s*([^\n|]+)/i);
-  if (referenti) {
-    const cleaned = cleanSalesAgentName(referenti[1]);
-    if (cleaned && !SALES_AGENT_HEADER_TOKENS.test(cleaned)) return cleaned;
-  }
-
   for (const line of text.split("\n")) {
     const row = line.match(
-      /\d{2}\.\d{2}\.\d{4}\s+\d{2}\.\d{2}\.\d{4}\s+[A-Z]{2,}\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\s.-]{2,40}?)\s+\d{3}\b/
+      new RegExp(
+        `\\d{2}\\.\\d{2}\\.\\d{4}\\s+\\d{2}\\.\\d{2}\\.\\d{4}\\s+${AGIMI_LOCATION_CODE.source}\\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\\s.-]{2,40}?)\\s+\\d{3}\\b`
+      )
     );
     if (row) {
       const cleaned = cleanSalesAgentName(row[1]);
       if (cleaned) return cleaned;
     }
-  }
-
-  for (const match of text.matchAll(
-    /(\d{2}\.\d{2}\.\d{4})\s+\1\s+([^|\n]+?)\s+(\d{3})\b/g
-  )) {
-    const segment = match[2].trim().replace(/\s+/g, " ");
-    const parts = segment.split(" ").filter(Boolean);
-    if (parts.length >= 3) {
-      const referentiOnly = cleanSalesAgentName(parts.slice(1).join(" "));
-      if (referentiOnly) return referentiOnly;
-    }
-    const cleaned = cleanSalesAgentName(segment);
-    if (cleaned) return cleaned;
   }
 
   return null;
@@ -981,13 +1032,24 @@ function parseAgimiTableRowHead(
   if (!trimmed) return null;
 
   const standard = trimmed.match(
-    /^(?:\(\)\s*)?(?:(\d{1,2})\s*[=:]?\s+)?(\d{3,13})\s+(.*)$/i
+    /^(?:\(\)\s*)?(?:(\d{1,2})\s*[=:]?\s+)?(\d{7,13})\s+(.*)$/i
   );
   if (standard?.[3]?.trim()) {
     return {
       lineNumber: standard[1],
       ean: standard[2],
       name: stripTrailingPriceFromName(standard[3]),
+    };
+  }
+
+  const shortBarcode = trimmed.match(
+    /^(?:\(\)\s*)?(?:(\d{1,2})\s*[=:]?\s+)?(\d{3,6})\s+(.*)$/i
+  );
+  if (shortBarcode?.[3]?.trim()) {
+    return {
+      lineNumber: shortBarcode[1],
+      ean: shortBarcode[2],
+      name: stripTrailingPriceFromName(shortBarcode[3]),
     };
   }
 
@@ -1178,16 +1240,200 @@ function tableRowToOrderItem(row: ParsedAgimiTableRow): OrderItemPayload {
   };
 }
 
-const PRODATA_PDF_ROW_HEAD_RE = /^(\d{1,2})(\d{9,13})$/;
-const SPACED_TABLE_ROW_HEAD_RE = /^(\d{1,2})\s+(\d{9,13})$/;
+const PRODATA_PDF_ROW_HEAD_RE = /^(\d{1,2})(\d{7,13})$/;
+const SPACED_TABLE_ROW_HEAD_RE = /^(\d{1,2})\s*[=:]?\s*(\d{7,13})$/;
+const EAN_ONLY_LINE_RE = /^(\d{7,13})$/;
+const ROW_NUMBER_ONLY_RE = /^(\d{1,2})$/;
+const QTY_ONLY_LINE_RE = /^([\d.,]+)$/;
+const UNIT_ONLY_LINE_RE = /^(M2|KG|MTR|MET|Metër|Meter|M(?!2)|PAKO|THAS|Copé|Copë|Cope)$/i;
 
-function matchTableRowHeadLine(line: string): { lineNumber: string; ean: string } | null {
-  const trimmed = line.trim();
+function isAgimiProductTableHeader(line: string): boolean {
+  const t = line.trim();
+  return (
+    /^No\.?\s*(?:Kodi|Barkodi|Emertimi)/i.test(t) ||
+    /NoKodiEmertimi/i.test(t) ||
+    /(?:^|\s)Kodi\s+Emertimi\s+Sasia/i.test(t) ||
+    /Emertimi\s+Sasia\s+Njesia/i.test(t) ||
+    /No\s+Kodi\s+Emertimi\s+Sasia\s+Njesia/i.test(t)
+  );
+}
+
+function matchTableRowHeadLine(line: string): { lineNumber: string; ean: string; nameStart?: string } | null {
+  const trimmed = line.replace(/^[\s|;:=]+/, "").trim();
   let match = trimmed.match(PRODATA_PDF_ROW_HEAD_RE);
   if (match) return { lineNumber: match[1], ean: match[2] };
   match = trimmed.match(SPACED_TABLE_ROW_HEAD_RE);
   if (match) return { lineNumber: match[1], ean: match[2] };
+
+  const inline = trimmed.match(/^(\d{1,2})\s*[=:]?\s*(\d{7,13})\s+(.+)$/i);
+  if (inline?.[3]?.trim()) {
+    return {
+      lineNumber: inline[1],
+      ean: inline[2],
+      nameStart: inline[3].trim(),
+    };
+  }
+
   return null;
+}
+
+function extractQtyUnitFromLines(
+  line: string,
+  nextLine?: string
+): { quantity: number; unitToken: string } | null {
+  const inlineTail = parseProDataPdfRowTail(line) ?? parseInlineQtyUnitTail(line);
+  if (inlineTail) return inlineTail;
+
+  const trimmed = line.trim();
+  const qtyMatch = trimmed.match(QTY_ONLY_LINE_RE);
+  if (qtyMatch && nextLine) {
+    const unitMatch = nextLine.trim().match(UNIT_ONLY_LINE_RE);
+    if (unitMatch) {
+      const unitToken = normalizeAgimiUnitToken(unitMatch[1]);
+      return {
+        quantity: parseAgimiLineQuantity(qtyMatch[1], unitToken),
+        unitToken,
+      };
+    }
+  }
+
+  return null;
+}
+
+function parseInlineQtyUnitTail(line: string): { quantity: number; unitToken: string } | null {
+  const match = line
+    .trim()
+    .match(
+      /\b([\d.,]+)\s*(?:_)?(M2|KG|MTR|MET|Metër|Meter|M(?!2)|PAKO|THAS|Copé|Copë|Cope)\b/i
+    );
+  if (!match) return null;
+  const unitToken = normalizeAgimiUnitToken(match[2]);
+  return {
+    quantity: parseAgimiLineQuantity(match[1], unitToken),
+    unitToken,
+  };
+}
+
+function findAgimiProductTableBounds(lines: string[]): { start: number; end: number } {
+  let headerIdx = lines.findIndex((line) => isAgimiProductTableHeader(line.trim()));
+  if (headerIdx < 0) {
+    headerIdx = lines.findIndex(
+      (line) =>
+        /^No\.?\s*(?:Kodi|Barkodi|Emertimi)/i.test(line.trim()) ||
+        /NoKodiEmertimi/i.test(line.trim())
+    );
+  }
+
+  let start = headerIdx >= 0 ? headerIdx + 1 : -1;
+  if (start < 0) {
+    start = lines.findIndex(
+      (line) =>
+        parseAgimiTableRowLine(line) !== null || matchTableRowHeadLine(line) !== null
+    );
+  }
+  if (start < 0) start = 0;
+
+  const end = lines.findIndex(
+    (line, idx) =>
+      idx > start && isAgimiTableEndLine(line.replace(/^[\s|;:]+/, "").trim())
+  );
+
+  return { start, end: end >= 0 ? end : lines.length };
+}
+
+/** OCR often splits No / Kodi / Emertimi / Sasia / Njesia into separate lines per row. */
+function parseAgimiColumnarTableLineItems(text: string): OrderItemPayload[] {
+  const lines = text
+    .split("\n")
+    .map((line) => line.replace(/^[\s|;:]+/, "").trim());
+
+  const { start, end } = findAgimiProductTableBounds(lines);
+  const tableLines = lines.slice(start, end);
+  const rows: ParsedAgimiTableRow[] = [];
+
+  for (let i = 0; i < tableLines.length; i++) {
+    const line = tableLines[i];
+    if (!line || isAgimiTableFooterLine(line)) continue;
+
+    const inlineRow = parseAgimiTableRowLine(line);
+    if (inlineRow) {
+      rows.push({ lineIndex: i, ...inlineRow });
+      continue;
+    }
+
+    let lineNumber: string | undefined;
+    let ean: string | undefined;
+    const nameParts: string[] = [];
+    let cursor = i;
+
+    if (ROW_NUMBER_ONLY_RE.test(line)) {
+      lineNumber = line;
+      cursor += 1;
+    }
+
+    const current = tableLines[cursor];
+    if (!current) continue;
+
+    const head = matchTableRowHeadLine(current);
+    if (head) {
+      lineNumber = head.lineNumber;
+      ean = head.ean;
+      if (head.nameStart) nameParts.push(head.nameStart);
+      cursor += 1;
+    } else if (EAN_ONLY_LINE_RE.test(current)) {
+      ean = current;
+      cursor += 1;
+    } else {
+      continue;
+    }
+
+    if (!ean) continue;
+
+    let quantity = 0;
+    let unitToken = "M2";
+
+    for (; cursor < tableLines.length; cursor++) {
+      const part = tableLines[cursor];
+      if (!part) continue;
+      if (isAgimiTableFooterLine(part)) break;
+      if (matchTableRowHeadLine(part) || ROW_NUMBER_ONLY_RE.test(part)) break;
+
+      const inline = parseAgimiTableRowLine(part);
+      if (inline && inline.ean === ean) {
+        quantity = inline.quantity;
+        unitToken = inline.unitToken;
+        if (inline.name) nameParts.push(inline.name);
+        cursor += 1;
+        break;
+      }
+
+      const qtyUnit = extractQtyUnitFromLines(part, tableLines[cursor + 1]);
+      if (qtyUnit) {
+        quantity = qtyUnit.quantity;
+        unitToken = qtyUnit.unitToken;
+        cursor += tableLines[cursor + 1]?.match(UNIT_ONLY_LINE_RE) ? 2 : 1;
+        break;
+      }
+
+      if (/^(?:\d+[.,]\d+\s+){2,}/.test(part)) break;
+      nameParts.push(part);
+    }
+
+    if (quantity <= 0) continue;
+
+    rows.push({
+      lineIndex: i,
+      lineNumber,
+      ean,
+      name: mergeProductNameParts(nameParts),
+      quantity,
+      unitToken,
+    });
+
+    i = Math.max(i, cursor - 1);
+  }
+
+  return rows.map(tableRowToOrderItem);
 }
 
 function countProductRowHeadsInText(text: string): number {
@@ -1199,7 +1445,7 @@ function countProductRowHeadsInText(text: string): number {
       count++;
       continue;
     }
-    if (/^\d{1,2}\s+\d{9,13}\b/.test(line)) count++;
+    if (/^\d{1,2}\s+\d{7,13}\b/.test(line)) count++;
     else if (parseAgimiTableRowLine(rawLine)) count++;
   }
   return count;
@@ -1248,6 +1494,7 @@ function isProDataPdfTableLine(line: string): boolean {
   return (
     matchTableRowHeadLine(line) !== null ||
     isProDataPdfRowTailLine(line) ||
+    isAgimiProductTableHeader(line) ||
     /No\.?\s*(?:Kodi|Barkodi|Emertimi)/i.test(line) ||
     /NoKodiEmertimi/i.test(line)
   );
@@ -1306,11 +1553,11 @@ function parseProDataPdfTableLineItems(text: string): OrderItemPayload[] {
       const line = tableLines[j];
       if (matchTableRowHeadLine(line)) break;
 
-      const tail = parseProDataPdfRowTail(line);
+      const tail = extractQtyUnitFromLines(line, tableLines[j + 1]);
       if (tail) {
         unitToken = tail.unitToken;
         quantity = tail.quantity;
-        j += 1;
+        j += tableLines[j + 1]?.match(UNIT_ONLY_LINE_RE) ? 2 : 1;
         break;
       }
 
@@ -1353,7 +1600,7 @@ function parseProDataPdfTableLineItems(text: string): OrderItemPayload[] {
 
 function findAgimiTableStartLine(lines: string[]): number {
   for (let i = 0; i < lines.length; i++) {
-    if (/^No\.?\s*(?:Kodi|Barkodi|Emertimi)/i.test(lines[i].trim())) {
+    if (isAgimiProductTableHeader(lines[i].trim())) {
       for (let j = i + 1; j < lines.length; j++) {
         if (parseAgimiTableRowLine(lines[j]) || matchTableRowHeadLine(lines[j])) {
           return j;
@@ -1418,24 +1665,18 @@ function parseAgimiStandardTableLineItems(text: string): OrderItemPayload[] {
 
 /** Parse AGIMI pro-forma / faturë product table — one order line per row. */
 export function parseAgimiTableLineItems(text: string): OrderItemPayload[] {
-  const standardItems = parseAgimiStandardTableLineItems(text);
-  const splitItems = parseProDataPdfTableLineItems(text);
-  const likelyRows = countProductRowHeadsInText(text);
+  const strategies = [
+    parseAgimiStandardTableLineItems(text),
+    parseProDataPdfTableLineItems(text),
+    parseAgimiColumnarTableLineItems(text),
+  ];
 
-  if (splitItems.length === 0) return standardItems;
-  if (standardItems.length === 0) return splitItems;
-
-  if (splitItems.length > standardItems.length) return dedupeOrderItems(splitItems);
-  if (standardItems.length < likelyRows && splitItems.length >= likelyRows) {
-    return dedupeOrderItems(splitItems);
-  }
-  if (splitItems.length >= likelyRows && standardItems.length < splitItems.length) {
-    return dedupeOrderItems(splitItems);
-  }
-
-  return dedupeOrderItems(
-    standardItems.length >= splitItems.length ? standardItems : splitItems
+  const best = strategies.reduce(
+    (winner, items) => (items.length > winner.length ? items : winner),
+    [] as OrderItemPayload[]
   );
+
+  return dedupeOrderItems(best);
 }
 
 function resolveDeliveryLocation(cityRaw: string, address: string): {
