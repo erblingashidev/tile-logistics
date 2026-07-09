@@ -113,6 +113,60 @@ export async function previewInvoiceFromPdf(file: File) {
   return readImportResponse<InvoiceImportPreviewResponse>(res);
 }
 
+export function isInvoiceExcelFile(file: File): boolean {
+  const lower = file.name.toLowerCase();
+  return (
+    lower.endsWith(".xlsx") ||
+    lower.endsWith(".xls") ||
+    file.type ===
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    file.type === "application/vnd.ms-excel"
+  );
+}
+
+export function isInvoicePdfFile(file: File): boolean {
+  return (
+    file.type === "application/pdf" ||
+    file.name.toLowerCase().endsWith(".pdf")
+  );
+}
+
+export async function previewInvoiceFromExcel(file: File) {
+  const body = new FormData();
+  body.append("file", file);
+  body.append("preview", "true");
+  const res = await fetch("/api/orders/from-invoice", {
+    method: "POST",
+    credentials: "same-origin",
+    body,
+  });
+  return readImportResponse<InvoiceImportPreviewResponse>(res);
+}
+
+export async function createOrderFromInvoiceExcel(
+  file: File,
+  options: ImportRequestOptions
+) {
+  const body = new FormData();
+  body.append("file", file);
+  body.append("create", "true");
+  if (options.invoiceNumberOverride?.trim()) {
+    body.append("invoiceNumberOverride", options.invoiceNumberOverride.trim());
+  }
+  if (options.selectedInvoiceNumber?.trim()) {
+    body.append("selectedInvoiceNumber", options.selectedInvoiceNumber.trim());
+  }
+  if (options.merge) {
+    body.append("merge", "true");
+  }
+  const res = await fetch("/api/orders/from-invoice", {
+    method: "POST",
+    credentials: "same-origin",
+    body,
+  });
+  return readImportResponse<InvoiceImportCreateResponse>(res);
+}
+
 export async function createOrderFromInvoiceText(
   text: string,
   options: ImportRequestOptions

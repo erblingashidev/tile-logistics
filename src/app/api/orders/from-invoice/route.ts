@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSessionNoSalesWrite } from "@/lib/auth/api-guard";
 import { extractPdfText } from "@/lib/invoices/extract-pdf-text";
-import { importInvoiceFromText } from "@/lib/invoices/process-invoice-import";
+import {
+  importInvoiceFromExcel,
+  importInvoiceFromText,
+} from "@/lib/invoices/process-invoice-import";
 import {
   SCANNED_PDF_CODE,
   ScannedPdfError,
@@ -110,15 +113,34 @@ export async function POST(request: NextRequest) {
   if (typeof invoiceText === "string" && invoiceText.trim()) {
     text = invoiceText;
   } else if (file && file instanceof File) {
+    const lowerName = file.name.toLowerCase();
     const isPdf =
-      file.type === "application/pdf" ||
-      file.name.toLowerCase().endsWith(".pdf");
+      file.type === "application/pdf" || lowerName.endsWith(".pdf");
+    const isExcel =
+      file.type ===
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+      file.type === "application/vnd.ms-excel" ||
+      lowerName.endsWith(".xlsx") ||
+      lowerName.endsWith(".xls");
+
+    if (isExcel) {
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const result = await importInvoiceFromExcel(
+        buffer,
+        create ? "create" : "preview",
+        {
+          invoiceNumberOverride,
+          selectedInvoiceNumber,
+          mergeIntoExisting: mergeRaw === "true",
+        }
+      );
+      return jsonFromResult(result, 200);
+    }
 
     if (!isPdf) {
       return NextResponse.json(
         {
-          error:
-            "For photos, use “Photo invoice” so the phone reads the page. PDF files can be uploaded directly.",
+          error: "Upload an Excel (.xlsx) or PDF invoice file.",
         },
         { status: 400 }
       );
@@ -140,7 +162,7 @@ export async function POST(request: NextRequest) {
     }
   } else {
     return NextResponse.json(
-      { error: "PDF file or invoice text is required" },
+      { error: "Excel or PDF file is required" },
       { status: 400 }
     );
   }
@@ -149,7 +171,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "No text found. Hold the phone steady and include the full invoice in the photo.",
+          "No text found in PDF. Try exporting from Pro-Data as Excel, or use a text-based PDF.",
       },
       { status: 422 }
     );

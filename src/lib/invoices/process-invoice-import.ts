@@ -6,6 +6,7 @@ import {
   splitTextByAgimiInvoiceNumbers,
   type ParsedAgimiInvoice,
 } from "@/lib/invoices/parse-agimi-invoice";
+import { parseAgimiExcel } from "@/lib/invoices/parse-agimi-excel";
 import { resolveSalesOwnership } from "@/lib/services/sales-portal";
 import {
   appendOrderItems,
@@ -232,7 +233,7 @@ export async function importInvoiceFromText(
       ok: false,
       status: 422,
       error:
-        "No text found. For photos, hold the phone steady and include the full invoice page.",
+        "No text found in PDF. Export from Pro-Data as Excel (.xlsx) for the most reliable import.",
     };
   }
 
@@ -244,8 +245,8 @@ export async function importInvoiceFromText(
       status: 422,
       error:
         mode === "preview"
-          ? "Could not recognize this AGIMI invoice. Try a clearer photo, a PDF export, or fill the form manually."
-          : "Could not recognize an AGIMI invoice. Use a clear photo or PDF of the full invoice page.",
+          ? "Could not recognize this AGIMI invoice. Try Excel from Pro-Data Print Preview, a PDF export, or fill the form manually."
+          : "Could not recognize an AGIMI invoice. Use Excel (.xlsx) or a PDF of the full invoice.",
       rawPreview: trimmed.slice(0, 800),
     };
   }
@@ -281,5 +282,53 @@ export async function importInvoiceFromText(
     existingOrderId: active.existingOrderId,
     multiple,
     invoices: allEntries,
+  };
+}
+
+function isRecognizedExcel(parsed: ParsedAgimiInvoice): boolean {
+  return Boolean(
+    parsed.customerName ||
+      parsed.items.length > 0 ||
+      parsed.price > 0 ||
+      parsed.invoiceNumber
+  );
+}
+
+export async function importInvoiceFromExcel(
+  buffer: Buffer,
+  mode: "preview" | "create",
+  options?: InvoiceImportOptions
+): Promise<InvoiceImportResult> {
+  const parsed = parseAgimiExcel(buffer);
+  if (options?.invoiceNumberOverride?.trim()) {
+    applyInvoiceOverride(parsed, options.invoiceNumberOverride);
+  }
+
+  if (!isRecognizedExcel(parsed)) {
+    return {
+      ok: false,
+      status: 422,
+      error:
+        "Could not recognize this AGIMI Excel export. Use Pro-Data Print Preview (.xlsx) or fill the form manually.",
+    };
+  }
+
+  const entry = await buildImportEntry(parsed);
+
+  if (mode === "create") {
+    const result = await createOrMergeEntry(entry, options);
+    if (!result.ok) return result;
+    return { ...result, multiple: false, invoices: [entry] };
+  }
+
+  return {
+    ok: true,
+    parsed: entry.parsed,
+    form: entry.form,
+    payload: entry.payload,
+    duplicate: entry.duplicate,
+    existingOrderId: entry.existingOrderId,
+    multiple: false,
+    invoices: [entry],
   };
 }

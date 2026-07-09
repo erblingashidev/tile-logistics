@@ -122,7 +122,7 @@ export function agimiDocumentKindLabel(kind: AgimiDocumentKind): string {
   return "AGIMI document";
 }
 
-function documentKindFromInvoiceNumber(invoiceNumber: string | null): AgimiDocumentKind | null {
+export function documentKindFromInvoiceNumber(invoiceNumber: string | null): AgimiDocumentKind | null {
   if (!invoiceNumber) return null;
   const upper = invoiceNumber.toUpperCase();
   if (/-PSV\d/.test(upper)) return "pro_forma";
@@ -1080,13 +1080,24 @@ function parseAgimiTableRowHead(
   if (!trimmed) return null;
 
   const standard = trimmed.match(
-    /^(?:\(\)\s*)?(?:(\d{1,2})\s*[=:]?\s+)?(\d{7,13})\s+(.*)$/i
+    /^(?:\(\)\s*)?(?:(\d{1,2})\s*[=:]?\s+)?(1300\d{5,8})\s+(.*)$/i
   );
   if (standard?.[3]?.trim()) {
     return {
       lineNumber: standard[1],
       ean: standard[2],
       name: stripTrailingPriceFromName(standard[3]),
+    };
+  }
+
+  const standardSpacedEan = trimmed.match(
+    /^(?:\(\)\s*)?(?:(\d{1,2})\s*[=:]?\s+)?(\d{7,13})\s+(.*)$/i
+  );
+  if (standardSpacedEan?.[3]?.trim()) {
+    return {
+      lineNumber: standardSpacedEan[1],
+      ean: standardSpacedEan[2],
+      name: stripTrailingPriceFromName(standardSpacedEan[3]),
     };
   }
 
@@ -1187,7 +1198,70 @@ function normalizeAgimiUnitToken(raw: string): string {
   return raw.toUpperCase();
 }
 
+function shouldSkipDeductionProduct(name: string, quantity: number): boolean {
+  if (/FURNIZIM\s+ME\s+KERAMIK/i.test(name)) return true;
+  if (quantity <= 0) return true;
+  return false;
+}
+
+/** Pro-Data PDF rows glued on one line: 1130002001QUEENS NATURAL 20X12055.20M2… */
+function parseProDataGluedInlineRowLine(
+  line: string
+): Omit<ParsedAgimiTableRow, "lineIndex"> | null {
+  const trimmed = line.replace(/^[\s|;:]+/, "").trim();
+  if (!trimmed || isProductNoiseLine(trimmed) || isAgimiTableFooterLine(trimmed)) {
+    return null;
+  }
+  if (/\d{2}-(?:SHV|SHF|PSV)\d/i.test(trimmed)) return null;
+
+  const headMatch = trimmed.match(/^(\d{1,2})(1300\d{5,8})([\s\S]+)$/i);
+  if (!headMatch?.[3]?.trim()) return null;
+
+  const lineNumber = headMatch[1];
+  const ean = headMatch[2];
+  const rest = headMatch[3];
+
+  const tileSizeGluedQty = rest.match(
+    /^(.+?)(\d{2,3}\s*[xX×]\s*\d{2,3})([\d.,]+)(M2)(?=[\d.,-])/i
+  );
+  if (tileSizeGluedQty) {
+    const name = sanitizeRowProductName(
+      `${tileSizeGluedQty[1]}${tileSizeGluedQty[2]}`.replace(/\s+/g, " ").trim()
+    );
+    const quantity = parseAgimiLineQuantity(tileSizeGluedQty[3], "M2");
+    if (!name || shouldSkipDeductionProduct(name, quantity)) return null;
+    return {
+      lineNumber,
+      ean,
+      name,
+      quantity,
+      unitToken: "M2",
+    };
+  }
+
+  const match = rest.match(
+    /^(.+?)(-?[\d.,]+)(M2|KG|MTR|MET|Metër|Meter|M(?!2)|PAKO|THAS|Copé|Copë|Cope)(?=[\d.,-])/i
+  );
+  if (!match?.[1]?.trim()) return null;
+
+  const unitToken = normalizeAgimiUnitToken(match[3]);
+  const quantity = parseAgimiLineQuantity(match[2], unitToken);
+  const name = sanitizeRowProductName(match[1].trim());
+  if (!name || shouldSkipDeductionProduct(name, quantity)) return null;
+
+  return {
+    lineNumber,
+    ean,
+    name,
+    quantity,
+    unitToken,
+  };
+}
+
 function parseAgimiTableRowLine(line: string): Omit<ParsedAgimiTableRow, "lineIndex"> | null {
+  const gluedInline = parseProDataGluedInlineRowLine(line);
+  if (gluedInline) return gluedInline;
+
   const trimmed = line.replace(/^[\s|;:]+/, "").trim();
   if (!trimmed || isProductNoiseLine(trimmed) || isAgimiTableFooterLine(trimmed)) {
     return null;
@@ -1288,7 +1362,7 @@ function tableRowToOrderItem(row: ParsedAgimiTableRow): OrderItemPayload {
   };
 }
 
-const AGIMI_COMPACT_ROW_HEAD_RE = /^(\d{1,2})(1300\d{6})$/;
+const AGIMI_COMPACT_ROW_HEAD_RE = /^(\d{1,2})(1300\d{5,8})$/;
 const PRODATA_PDF_ROW_HEAD_RE = /^(\d{1,2})(\d{7,13})$/;
 const SPACED_TABLE_ROW_HEAD_RE = /^(\d{1,2})\s*[=:]?\s*(\d{7,13})$/;
 const EAN_ONLY_LINE_RE = /^(\d{7,13})$/;

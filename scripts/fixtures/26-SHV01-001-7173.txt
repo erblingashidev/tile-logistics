@@ -1,0 +1,52 @@
+
+
+FATURE
+26-SHV01-001-7173
+AGIMI COM SH.P.K
+Add: SHKABAJ, 10000 PRISHTINE
+NUI: 812215524
+Nr. TVSH:330622218
+tel: +383 45 611 045
+e-mail: info@agimicompany.com
+Bleresi:
+ISAK SHABANI - DAAKON
+Data faturaKushtetData e skadimitUserReferencaReferenti juajLokacioni
+08.07.2026NET 1008.07.2026ErblinGjevalin  Froku001
+NoKodiEmertimiSasiaNjesia
+Cmimi pa
+TVSH
+Rabati
+%
+TVSH
+%
+Cmimi me
+TVSH
+Vlera me
+TVSH
+1130002001QUEENS NATURAL 20X12055.20M221.190.0018.0025.001,380.00
+21300043319
+14mm BOEN 3-Layer Parquet Plank
+138mm Oak Soft Brown Espressivo
+14x138x2200mm
+25.00M250.850.0018.0060.001,500.00
+3130001441FURNIZIM ME KERAMIKË-1.00M2917.540.0018.001,082.70-1,082.70
+Vlera para zbritjes:  1,523.14
+Rabati :  0.00
+Vlera pa TVSH :  1,523.14
+TVSH :  274.16
+Vlera per pagese:  1,797.30
+EUR
+Pagesa:  1,797.30
+Mbetja:  0.00
+Normat TatimoreBazaTVSHVlera
+TVSH e llogaritur 0%
+0.000.000.00
+TVSH e llogaritur 8%
+0.000.000.00
+TVSH e llogaritur 18%
+1,523.14274.161,797.30
+Faturoi:Dergoi:Pranoi:
+Llogaria Bankare: PCB 1110358211000158
+IBAN  XK051110358211000158
+SWIFT CODE  MBKOXKPRXXX
+Programi i implementuar nga Pro-Data sh.p.k. www.prodata-ks.com

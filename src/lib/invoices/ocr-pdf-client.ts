@@ -107,7 +107,7 @@ export async function ocrScannedPdf(
   const combined = pageTexts.join("\n\n").trim();
   if (combined.length < 20) {
     throw new Error(
-      "Could not read enough text from the PDF scan. Try a clearer scan or photograph the invoice."
+      "Could not read enough text from the PDF scan. Export from Pro-Data as Excel, or use a clearer PDF."
     );
   }
 

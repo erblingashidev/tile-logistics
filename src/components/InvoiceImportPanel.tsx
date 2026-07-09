@@ -4,22 +4,18 @@ import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Card } from "@/components/ui";
 import { normalizeOrderUnit } from "@/lib/constants";
 import {
+  createOrderFromInvoiceExcel,
   createOrderFromInvoicePdf,
-  createOrderFromInvoiceText,
+  isInvoiceExcelFile,
+  isInvoicePdfFile,
+  previewInvoiceFromExcel,
   previewInvoiceFromPdf,
-  previewInvoiceFromText,
   type InvoiceImportPreviewResponse,
   type InvoiceImportPreviewItem,
 } from "@/lib/invoices/import-client";
-import {
-  createPhotoPreviewUrl,
-  isInvoiceImageFile,
-  isInvoicePdfFile,
-  ocrInvoiceImages,
-  type OcrProgress,
-} from "@/lib/invoices/ocr-image-client";
 import { agimiDocumentKindLabel } from "@/lib/invoices/parse-agimi-invoice";
 import { ocrScannedPdf } from "@/lib/invoices/ocr-pdf-client";
+import type { OcrProgress } from "@/lib/invoices/ocr-image-client";
 import { isScannedPdfErrorMessage } from "@/lib/invoices/scanned-pdf-error";
 
 type FormState = {
@@ -57,7 +53,7 @@ interface InvoiceImportPanelProps {
   onWarning: (message: string) => void;
 }
 
-type ImportMode = "photo" | "pdf" | null;
+type ImportMode = "excel" | "pdf" | null;
 type ImportStep = "pick" | "extract" | "review";
 
 function ProgressBar({ percent }: { percent?: number }) {
@@ -131,18 +127,12 @@ export function InvoiceImportPanel({
   onError,
   onWarning,
 }: InvoiceImportPanelProps) {
-  const cameraInputRef = useRef<HTMLInputElement>(null);
-  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const excelInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
   const lastFileRef = useRef<File | null>(null);
-  const lastTextRef = useRef<string>("");
-  const photoPreviewUrlsRef = useRef<string[]>([]);
 
   const [step, setStep] = useState<ImportStep>("pick");
   const [mode, setMode] = useState<ImportMode>(null);
-  const [photoPages, setPhotoPages] = useState<
-    Array<{ file: File; previewUrl: string; name: string }>
-  >([]);
   const [busy, setBusy] = useState(false);
   const [busyLabel, setBusyLabel] = useState("");
   const [busyPercent, setBusyPercent] = useState<number | undefined>();
@@ -165,8 +155,6 @@ export function InvoiceImportPanel({
     InvoiceImportPreviewItem[]
   >([]);
   const [previewInvoiceNumber, setPreviewInvoiceNumber] = useState("");
-  const [extractedText, setExtractedText] = useState("");
-  const [showExtractedText, setShowExtractedText] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
@@ -175,24 +163,8 @@ export function InvoiceImportPanel({
     }
   }, [busy, preview]);
 
-  useEffect(() => {
-    return () => {
-      for (const url of photoPreviewUrlsRef.current) {
-        URL.revokeObjectURL(url);
-      }
-    };
-  }, []);
-
-  function clearPhotoPreviews() {
-    for (const url of photoPreviewUrlsRef.current) {
-      URL.revokeObjectURL(url);
-    }
-    photoPreviewUrlsRef.current = [];
-  }
-
   function resetInputs() {
-    if (cameraInputRef.current) cameraInputRef.current.value = "";
-    if (galleryInputRef.current) galleryInputRef.current.value = "";
+    if (excelInputRef.current) excelInputRef.current.value = "";
     if (pdfInputRef.current) pdfInputRef.current.value = "";
   }
 
@@ -200,60 +172,14 @@ export function InvoiceImportPanel({
     setPreview(null);
     setDetectedInvoices([]);
     setPreviewInvoiceNumber("");
-    setPhotoPages([]);
     setSelectedFile(null);
     setPanelError("");
     setPanelHint("");
     setStep("pick");
     setMode(null);
-    clearPhotoPreviews();
     lastFileRef.current = null;
-    lastTextRef.current = "";
-    setExtractedText("");
-    setShowExtractedText(false);
     resetInputs();
     onError("");
-  }
-
-  function addPhotoPages(files: FileList | File[] | null) {
-    if (!files?.length) return;
-    const next = Array.from(files)
-      .filter(isInvoiceImageFile)
-      .filter((file) => file.size <= 20 * 1024 * 1024)
-      .map((file) => {
-        const previewUrl = createPhotoPreviewUrl(file);
-        photoPreviewUrlsRef.current.push(previewUrl);
-        return {
-          file,
-          previewUrl,
-          name: file.name || "Photo",
-        };
-      });
-
-    if (next.length === 0) {
-      showFailure("Choose valid invoice photos (max 20 MB each)");
-      return;
-    }
-
-    setMode("photo");
-    setPhotoPages((prev) => [...prev, ...next]);
-    setPreview(null);
-    setPanelError("");
-    setPanelHint("");
-    onError("");
-  }
-
-  function removePhotoPage(index: number) {
-    setPhotoPages((prev) => {
-      const removed = prev[index];
-      if (removed) {
-        URL.revokeObjectURL(removed.previewUrl);
-        photoPreviewUrlsRef.current = photoPreviewUrlsRef.current.filter(
-          (url) => url !== removed.previewUrl
-        );
-      }
-      return prev.filter((_, i) => i !== index);
-    });
   }
 
   function patchPreviewInvoiceNumber(
@@ -337,19 +263,34 @@ export function InvoiceImportPanel({
     }
   }
 
-  async function previewFromText(text: string) {
-    setBusy(true);
-    setBusyLabel("Extracting invoice fields…");
-    setBusyPercent(undefined);
-    setStep("extract");
-    lastTextRef.current = text;
-    setExtractedText(text);
+  async function handleExcelFile(file: File | null) {
+    if (busy) return;
+    if (!file || !isInvoiceExcelFile(file)) {
+      showFailure("Choose an Excel invoice file (.xlsx)");
+      return;
+    }
 
-    const result = await previewInvoiceFromText(text);
-    if (!result.ok) {
-      showFailure(result.error, result.rawPreview);
-    } else {
+    setMode("excel");
+    lastFileRef.current = file;
+    setSelectedFile({
+      name: file.name || "Invoice.xlsx",
+      size: file.size,
+      kind: "excel",
+    });
+    setPreview(null);
+    setBusy(true);
+    setBusyLabel("Reading Excel…");
+    setBusyPercent(undefined);
+    setPanelError("");
+    setPanelHint("");
+    setStep("extract");
+    onError("");
+
+    const result = await previewInvoiceFromExcel(file);
+    if (result.ok) {
       applyPreview(result.data);
+    } else {
+      showFailure(result.error, result.rawPreview);
     }
 
     setBusy(false);
@@ -366,11 +307,6 @@ export function InvoiceImportPanel({
 
     setMode("pdf");
     lastFileRef.current = file;
-    lastTextRef.current = "";
-    setExtractedText("");
-    setShowExtractedText(false);
-    setPhotoPages([]);
-    clearPhotoPreviews();
     setSelectedFile({
       name: file.name || "Invoice.pdf",
       size: file.size,
@@ -395,7 +331,18 @@ export function InvoiceImportPanel({
           setBusyLabel(progress.label);
           setBusyPercent(progress.percent);
         });
-        await previewFromText(text);
+        const retry = await fetch("/api/orders/from-invoice", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text, preview: true }),
+        });
+        const payload = await retry.json();
+        if (!retry.ok) {
+          showFailure((payload.error as string) ?? "Could not read the scanned PDF.");
+        } else {
+          applyPreview(payload as InvoiceImportPreviewResponse);
+        }
       } catch (err) {
         showFailure(
           err instanceof Error
@@ -409,38 +356,7 @@ export function InvoiceImportPanel({
 
     setBusy(false);
     setBusyLabel("");
-  }
-
-  async function extractFromPhotoPages() {
-    if (busy || photoPages.length === 0) return;
-
-    setBusy(true);
     setBusyPercent(undefined);
-    setPanelError("");
-    setPanelHint("");
-    setStep("extract");
-    onError("");
-
-    try {
-      const text = await ocrInvoiceImages(
-        photoPages.map((page) => page.file),
-        (progress: OcrProgress) => {
-          setBusyLabel(progress.label);
-          setBusyPercent(progress.percent);
-        }
-      );
-      lastFileRef.current = null;
-      await previewFromText(text);
-    } catch (err) {
-      showFailure(
-        err instanceof Error
-          ? err.message
-          : "Could not read the photos. Include full pages with good lighting."
-      );
-      setBusy(false);
-      setBusyLabel("");
-      setBusyPercent(undefined);
-    }
   }
 
   async function createNow(merge = false) {
@@ -462,11 +378,13 @@ export function InvoiceImportPanel({
       merge,
     };
 
-    const result = lastTextRef.current.trim()
-      ? await createOrderFromInvoiceText(lastTextRef.current, importOptions)
-      : lastFileRef.current && isInvoicePdfFile(lastFileRef.current)
-        ? await createOrderFromInvoicePdf(lastFileRef.current, importOptions)
-        : null;
+    const result = lastFileRef.current
+      ? isInvoiceExcelFile(lastFileRef.current)
+        ? await createOrderFromInvoiceExcel(lastFileRef.current, importOptions)
+        : isInvoicePdfFile(lastFileRef.current)
+          ? await createOrderFromInvoicePdf(lastFileRef.current, importOptions)
+          : null
+      : null;
 
     if (!result) {
       showFailure("Import again — no invoice data in memory");
@@ -506,7 +424,7 @@ export function InvoiceImportPanel({
   function handleDrop(kind: ImportMode, file: File | null) {
     setDragOver(null);
     if (!file || !kind) return;
-    if (kind === "photo") addPhotoPages([file]);
+    if (kind === "excel") void handleExcelFile(file);
     else void handlePdfFile(file);
   }
 
@@ -541,8 +459,8 @@ export function InvoiceImportPanel({
           </p>
           <p className="mt-1 text-sm text-zinc-500">
             {expanded
-              ? "Photo or PDF — click to collapse"
-              : "Photo or PDF — click to expand and import"}
+              ? "Excel or PDF — click to collapse"
+              : "Excel or PDF — click to expand and import"}
           </p>
         </div>
         <span
@@ -558,8 +476,8 @@ export function InvoiceImportPanel({
       {expanded && (
       <div className="space-y-4 p-5">
         <p className="text-xs text-zinc-500">
-          Pro-faturë, Faturë, or Fletë dërgese. PDF exported from Pro-Data on PC
-          gives the cleanest import; photos need sharp focus and strong contrast.
+          Pro-faturë, Faturë, or Fletë dërgese. Export from Pro-Data Print Preview
+          as Excel (.xlsx) for the most reliable import; PDF still works.
         </p>
         {panelError && (
           <Alert tone="error">
@@ -571,26 +489,11 @@ export function InvoiceImportPanel({
         )}
 
         <input
-          ref={cameraInputRef}
+          ref={excelInputRef}
           type="file"
-          accept="image/*"
-          capture="environment"
+          accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
           className="hidden"
-          onChange={(e) => {
-            addPhotoPages(e.target.files);
-            e.target.value = "";
-          }}
-        />
-        <input
-          ref={galleryInputRef}
-          type="file"
-          accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif"
-          multiple
-          className="hidden"
-          onChange={(e) => {
-            addPhotoPages(e.target.files);
-            e.target.value = "";
-          }}
+          onChange={(e) => void handleExcelFile(e.target.files?.[0] ?? null)}
         />
         <input
           ref={pdfInputRef}
@@ -603,74 +506,33 @@ export function InvoiceImportPanel({
         {!preview && (
           <div className="grid gap-4 lg:grid-cols-2">
             <ImportOptionCard
-              title="Photo"
-              icon="📷"
-              description="Camera or gallery."
-              active={mode === "photo"}
-              dragActive={dragOver === "photo"}
+              title="Excel"
+              icon="📊"
+              description="Pro-Data Print Preview (.xlsx) — recommended."
+              active={mode === "excel"}
+              dragActive={dragOver === "excel"}
               onDragOver={(e) => {
                 e.preventDefault();
-                setDragOver("photo");
+                setDragOver("excel");
               }}
               onDragLeave={() => setDragOver(null)}
               onDrop={(e) => {
                 e.preventDefault();
-                const files = e.dataTransfer.files;
-                if (files && files.length > 1) {
-                  addPhotoPages(files);
-                } else {
-                  handleDrop("photo", files?.[0] ?? null);
+                const file = e.dataTransfer.files?.[0] ?? null;
+                if (file && !isInvoiceExcelFile(file)) {
+                  showFailure("Drop an Excel file (.xlsx) in this area");
+                  return;
                 }
+                handleDrop("excel", file);
               }}
             >
-              <div className="mt-auto flex flex-wrap gap-2">
-                <Button disabled={busy} onClick={() => cameraInputRef.current?.click()}>
-                  Add page (camera)
-                </Button>
-                <Button
-                  variant="secondary"
-                  disabled={busy}
-                  onClick={() => galleryInputRef.current?.click()}
-                >
-                  Add page(s)
-                </Button>
-              </div>
-              {photoPages.length > 0 && (
-                <div className="mt-4 space-y-3 border-t border-zinc-100 pt-4">
-                  <p className="text-xs font-medium text-zinc-600">
-                    {photoPages.length} page{photoPages.length === 1 ? "" : "s"} ready
-                  </p>
-                  <div className="grid grid-cols-3 gap-2">
-                    {photoPages.map((page, index) => (
-                      <div key={`${page.name}-${index}`} className="relative">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={page.previewUrl}
-                          alt={`Page ${index + 1}`}
-                          className="aspect-[3/4] w-full rounded-lg border border-zinc-200 object-cover"
-                        />
-                        <button
-                          type="button"
-                          className="absolute right-1 top-1 rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-medium text-white"
-                          onClick={() => removePhotoPage(index)}
-                        >
-                          Remove
-                        </button>
-                        <p className="mt-1 truncate text-[10px] text-zinc-500">
-                          Page {index + 1}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                  <Button
-                    className="w-full"
-                    disabled={busy}
-                    onClick={() => void extractFromPhotoPages()}
-                  >
-                    Read {photoPages.length} page{photoPages.length === 1 ? "" : "s"}
-                  </Button>
-                </div>
-              )}
+              <Button
+                className="mt-auto self-start"
+                disabled={busy}
+                onClick={() => excelInputRef.current?.click()}
+              >
+                Choose Excel
+              </Button>
             </ImportOptionCard>
 
             <ImportOptionCard
@@ -716,7 +578,7 @@ export function InvoiceImportPanel({
           </div>
         )}
 
-        {selectedFile?.kind === "pdf" && step !== "review" && (
+        {selectedFile && step !== "review" && (
           <p className="text-xs text-zinc-500">{selectedFile.name}</p>
         )}
 
@@ -870,44 +732,6 @@ export function InvoiceImportPanel({
                   <li key={w}>• {w}</li>
                 ))}
               </ul>
-            )}
-
-            {extractedText.trim() && (
-              <div className="rounded-lg border border-zinc-200 bg-white">
-                <button
-                  type="button"
-                  onClick={() => setShowExtractedText((open) => !open)}
-                  className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-medium text-zinc-600 hover:text-zinc-900"
-                >
-                  <span>Extracted text (what OCR read)</span>
-                  <span>{showExtractedText ? "Hide" : "Show"}</span>
-                </button>
-                {showExtractedText && (
-                  <div className="border-t border-zinc-200 px-3 py-2">
-                    <p className="mb-2 text-[11px] leading-relaxed text-zinc-500">
-                      If products or Referenti are wrong, copy this text and send
-                      it with a screenshot — it shows exactly what the parser
-                      received.
-                    </p>
-                    <textarea
-                      readOnly
-                      value={extractedText}
-                      rows={10}
-                      className="w-full rounded-md border border-zinc-200 bg-zinc-50 px-2 py-2 font-mono text-[11px] leading-relaxed text-zinc-800"
-                    />
-                    <Button
-                      variant="secondary"
-                      className="mt-2"
-                      onClick={() => {
-                        void navigator.clipboard.writeText(extractedText);
-                        onWarning("Extracted text copied.");
-                      }}
-                    >
-                      Copy text
-                    </Button>
-                  </div>
-                )}
-              </div>
             )}
 
             <div className="flex flex-wrap gap-2 border-t border-zinc-200 pt-3">
