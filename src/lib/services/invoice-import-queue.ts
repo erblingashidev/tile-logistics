@@ -211,7 +211,7 @@ export async function approveImportQueueItem(
     db.select().from(invoiceImportQueue).where(eq(invoiceImportQueue.id, id))
   );
   if (!row) return { ok: false, error: "Queue item not found", status: 404 };
-  if (row.status !== "pending") {
+  if (row.status !== "pending" && row.status !== "rejected") {
     return { ok: false, error: `Already ${row.status}`, status: 409 };
   }
 
@@ -285,6 +285,33 @@ export async function rejectImportQueueItem(
       status: "rejected",
       adminNote: adminNote?.trim() || null,
       reviewedAt: nowIso(),
+    })
+    .where(eq(invoiceImportQueue.id, id));
+
+  return { ok: true };
+}
+
+export async function restoreImportQueueItem(
+  id: number
+): Promise<{ ok: true } | { ok: false; error: string; status?: number }> {
+  const db = await getDb();
+  const row = await dbOne(
+    db.select({ id: invoiceImportQueue.id, status: invoiceImportQueue.status })
+      .from(invoiceImportQueue)
+      .where(eq(invoiceImportQueue.id, id))
+  );
+  if (!row) return { ok: false, error: "Queue item not found", status: 404 };
+  if (row.status !== "rejected") {
+    return { ok: false, error: `Cannot restore — status is ${row.status}`, status: 409 };
+  }
+
+  await db
+    .update(invoiceImportQueue)
+    .set({
+      status: "pending",
+      reviewedAt: null,
+      adminNote: null,
+      errorMessage: null,
     })
     .where(eq(invoiceImportQueue.id, id));
 
@@ -456,6 +483,17 @@ export async function pendingImportQueueCount(): Promise<number> {
       .select({ id: invoiceImportQueue.id })
       .from(invoiceImportQueue)
       .where(eq(invoiceImportQueue.status, "pending"))
+  );
+  return rows.length;
+}
+
+export async function rejectedImportQueueCount(): Promise<number> {
+  const db = await getDb();
+  const rows = await dbAll(
+    db
+      .select({ id: invoiceImportQueue.id })
+      .from(invoiceImportQueue)
+      .where(eq(invoiceImportQueue.status, "rejected"))
   );
   return rows.length;
 }

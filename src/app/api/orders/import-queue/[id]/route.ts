@@ -3,6 +3,7 @@ import { requireApiAdmin } from "@/lib/auth/api-guard";
 import {
   approveImportQueueItem,
   rejectImportQueueItem,
+  restoreImportQueueItem,
 } from "@/lib/services/invoice-import-queue";
 
 export const runtime = "nodejs";
@@ -45,6 +46,17 @@ export async function PATCH(
       id,
       typeof body.adminNote === "string" ? body.adminNote : undefined
     );
+    if (!result.ok) {
+      return NextResponse.json(
+        { error: result.error },
+        { status: result.status ?? 422 }
+      );
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  if (action === "restore") {
+    const result = await restoreImportQueueItem(id);
     if (!result.ok) {
       return NextResponse.json(
         { error: result.error },

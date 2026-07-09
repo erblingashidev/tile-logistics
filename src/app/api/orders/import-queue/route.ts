@@ -3,6 +3,7 @@ import { requireApiSessionNoSalesWrite } from "@/lib/auth/api-guard";
 import {
   listImportQueue,
   pendingImportQueueCount,
+  rejectedImportQueueCount,
   scanInvoiceWatchRoot,
 } from "@/lib/services/invoice-import-queue";
 import { getInvoiceWatchRoot } from "@/lib/services/app-settings";
@@ -32,14 +33,16 @@ export async function GET(request: NextRequest) {
 
   const watchRoot = (await getInvoiceWatchRoot()) ?? "";
 
-  const [items, pendingCount] = await Promise.all([
+  const [items, pendingCount, rejectedCount] = await Promise.all([
     listImportQueue(status),
     pendingImportQueueCount(),
+    rejectedImportQueueCount(),
   ]);
 
   return NextResponse.json({
     items,
     pendingCount,
+    rejectedCount,
     watchRoot,
     configured: Boolean(watchRoot),
   });

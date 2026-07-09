@@ -15,7 +15,9 @@ type QueueItem = {
   sourceFolderDate: string | null;
   duplicateOrderId: number | null;
   errorMessage: string | null;
+  adminNote?: string | null;
   submittedAt: string;
+  reviewedAt?: string | null;
   parsed: {
     invoiceNumber: string;
     customerName: string;
@@ -55,7 +57,10 @@ export function InvoiceImportQueuePanel({
   onWarning,
 }: InvoiceImportQueuePanelProps) {
   const [expanded, setExpanded] = useState(true);
+  const [tab, setTab] = useState<"pending" | "rejected">("pending");
   const [items, setItems] = useState<QueueItem[]>([]);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [rejectedCount, setRejectedCount] = useState(0);
   const [watchRoot, setWatchRoot] = useState("");
   const [configured, setConfigured] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -67,16 +72,18 @@ export function InvoiceImportQueuePanel({
   const [scanHint, setScanHint] = useState("");
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/orders/import-queue?status=pending", {
+    const res = await fetch(`/api/orders/import-queue?status=${tab}`, {
       credentials: "same-origin",
     });
     if (!res.ok) return;
     const data = await res.json();
     setItems(data.items ?? []);
+    setPendingCount(data.pendingCount ?? 0);
+    setRejectedCount(data.rejectedCount ?? 0);
     setWatchRoot(data.watchRoot ?? "");
     setConfigured(Boolean(data.configured));
     if ((data.pendingCount ?? 0) > 0) setExpanded(true);
-  }, []);
+  }, [tab]);
 
   useEffect(() => {
     void load();
@@ -129,7 +136,11 @@ export function InvoiceImportQueuePanel({
     }
   }
 
-  async function review(id: number, action: "approve" | "reject", merge = false) {
+  async function review(
+    id: number,
+    action: "approve" | "reject" | "restore",
+    merge = false
+  ) {
     setBusyId(id);
     onError("");
     try {
@@ -155,6 +166,9 @@ export function InvoiceImportQueuePanel({
             : `Approved — order ${data.invoiceNumber} created`
         );
         onChanged();
+      } else if (action === "restore") {
+        onWarning("Restored to pending queue");
+        setTab("pending");
       }
       await load();
     } finally {
@@ -172,7 +186,7 @@ export function InvoiceImportQueuePanel({
         <div>
           <p className="text-base font-semibold text-zinc-900">
             Import queue
-            {items.length > 0 ? ` (${items.length} pending)` : ""}
+            {pendingCount > 0 ? ` (${pendingCount} pending)` : ""}
           </p>
           <p className="mt-1 text-sm text-zinc-600">
             Approve, decline, or edit before orders are created
@@ -212,10 +226,36 @@ export function InvoiceImportQueuePanel({
             <Alert tone="warning">{scanHint}</Alert>
           )}
 
+          <div className="flex flex-wrap gap-2 border-b border-zinc-100 pb-3">
+            <button
+              type="button"
+              onClick={() => setTab("pending")}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+                tab === "pending"
+                  ? "bg-zinc-900 text-white"
+                  : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+              }`}
+            >
+              Pending{pendingCount > 0 ? ` (${pendingCount})` : ""}
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab("rejected")}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+                tab === "rejected"
+                  ? "bg-zinc-900 text-white"
+                  : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+              }`}
+            >
+              Declined{rejectedCount > 0 ? ` (${rejectedCount})` : ""}
+            </button>
+          </div>
+
           {items.length === 0 ? (
             <p className="text-sm text-zinc-500">
-              No pending imports. Save Excel (.xlsx) files into a date folder on
-              the HP PC while the watcher is running.
+              {tab === "pending"
+                ? "No pending imports. Save Excel (.xlsx) files into a date folder on the HP PC while the watcher is running."
+                : "No declined imports. Declined items stay here so you can restore or approve them later."}
             </p>
           ) : (
             <div className="space-y-3">
@@ -241,6 +281,9 @@ export function InvoiceImportQueuePanel({
                           {new Date(item.submittedAt).toLocaleString()} ·{" "}
                           {item.parsed.items.length} product(s) ·{" "}
                           {agimiDocumentKindLabel(item.parsed.documentKind)}
+                          {item.reviewedAt && tab === "rejected"
+                            ? ` · declined ${new Date(item.reviewedAt).toLocaleString()}`
+                            : ""}
                         </p>
                       </div>
                       {item.duplicateOrderId ? (
@@ -323,13 +366,23 @@ export function InvoiceImportQueuePanel({
                       >
                         Edit
                       </Button>
-                      <Button
-                        variant="ghost"
-                        disabled={busyId === item.id}
-                        onClick={() => void review(item.id, "reject")}
-                      >
-                        Decline
-                      </Button>
+                      {tab === "pending" ? (
+                        <Button
+                          variant="ghost"
+                          disabled={busyId === item.id}
+                          onClick={() => void review(item.id, "reject")}
+                        >
+                          Decline
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          disabled={busyId === item.id}
+                          onClick={() => void review(item.id, "restore")}
+                        >
+                          Restore to pending
+                        </Button>
+                      )}
                     </div>
                   </Card>
                 );
