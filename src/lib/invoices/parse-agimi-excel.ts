@@ -113,30 +113,253 @@ type ColumnMap = {
   njesia: number;
 };
 
-function findProductHeader(rows: unknown[][]): { headerRow: number; cols: ColumnMap } | null {
-  for (let r = 0; r < rows.length; r++) {
-    const cols: Partial<ColumnMap> = {};
-    for (let c = 0; c < rows[r].length; c++) {
-      const cell = normalizeCell(rows[r][c]).toLowerCase();
-      if (cell === "no" || cell === "no.") cols.no = c;
-      if (cell === "kodi") cols.kodi = c;
-      if (cell === "emertimi" || cell === "emërtimi") cols.emertimi = c;
-      if (cell === "sasia") cols.sasia = c;
-      if (cell === "njesia" || cell === "njësia") cols.njesia = c;
-    }
-    if (
-      cols.kodi != null &&
-      cols.emertimi != null &&
-      cols.sasia != null &&
-      cols.njesia != null
-    ) {
-      return {
-        headerRow: r,
-        cols: cols as ColumnMap,
-      };
+type ProductTable = {
+  headerRow: number;
+  cols: ColumnMap;
+};
+
+function normalizeHeaderToken(value: unknown): string {
+  return normalizeCell(value)
+    .toLowerCase()
+    .replace(/[.:]+$/g, "")
+    .trim();
+}
+
+function isProductHeaderToken(token: string): keyof ColumnMap | null {
+  if (token === "no") return "no";
+  if (token === "kodi") return "kodi";
+  if (token === "emertimi" || token === "emërtimi") return "emertimi";
+  if (token === "sasia") return "sasia";
+  if (token === "njesia" || token === "njësia") return "njesia";
+  return null;
+}
+
+function isProductTableFooter(name: string, row: unknown[]): boolean {
+  if (!name) {
+    return row.every((cell) => !normalizeCell(cell));
+  }
+  return (
+    /^Normat\s+Tatimore/i.test(name) ||
+    /^Vlera(\s+me\s+TVSH|\s+per\s+pagese)?/i.test(name) ||
+    /^Faturoi:/i.test(name) ||
+    /^TVSH\s+e\s+llogaritur/i.test(name) ||
+    /^Programi\s+i\s+implementuar/i.test(name)
+  );
+}
+
+function findNearestDataColumn(
+  row: unknown[],
+  preferred: number,
+  matches: (value: unknown) => boolean,
+  span = 3
+): number {
+  for (let delta = 0; delta <= span; delta++) {
+    const offsets = delta === 0 ? [0] : [-delta, delta];
+    for (const offset of offsets) {
+      const idx = preferred + offset;
+      if (idx < 0 || idx >= row.length) continue;
+      if (matches(row[idx])) return idx;
     }
   }
-  return null;
+  return preferred;
+}
+
+function isKodiCell(value: unknown): boolean {
+  const digits = normalizeCell(value).replace(/\D/g, "");
+  return digits.length >= 7;
+}
+
+function isQuantityCell(value: unknown): boolean {
+  if (typeof value === "number") return value !== 0;
+  const text = normalizeCell(value);
+  if (!text) return false;
+  return /^-?\d/.test(text);
+}
+
+function isUnitCell(value: unknown): boolean {
+  const token = normalizeUnitToken(normalizeCell(value));
+  return ["M2", "KG", "THAS", "PAKO", "COPE", "METER"].includes(token);
+}
+
+function readColumnsFromHeaderRow(row: unknown[]): Partial<ColumnMap> {
+  const cols: Partial<ColumnMap> = {};
+  for (let c = 0; c < row.length; c++) {
+    const key = isProductHeaderToken(normalizeHeaderToken(row[c]));
+    if (key) cols[key] = c;
+  }
+  return cols;
+}
+
+function findProductNameInRow(
+  row: unknown[],
+  kodiCol: number,
+  sasiaCol: number
+): string {
+  const start = Math.min(kodiCol, sasiaCol) + 1;
+  const end = Math.max(kodiCol, sasiaCol);
+  let best = "";
+  for (let c = start; c <= end && c < row.length; c++) {
+    const text = normalizeCell(row[c]);
+    if (!text || isKodiCell(row[c]) || isQuantityCell(row[c]) || isUnitCell(row[c])) {
+      continue;
+    }
+    if (text.length > best.length) best = text;
+  }
+  return best;
+}
+
+function extractProductFromRow(
+  row: unknown[],
+  cols: ColumnMap
+): { ean: string; name: string; quantity: number; unitToken: string } | null {
+  const kodiCol = findNearestDataColumn(row, cols.kodi, isKodiCell);
+  const sasiaCol = findNearestDataColumn(row, cols.sasia, isQuantityCell);
+  const njesiaCol = findNearestDataColumn(row, cols.njesia, isUnitCell);
+
+  const ean = normalizeCell(row[kodiCol]).replace(/\D/g, "");
+  let name = normalizeCell(row[cols.emertimi]);
+  if (name.length < 3) {
+    name = findProductNameInRow(row, kodiCol, sasiaCol);
+  }
+
+  const quantity = parseNumber(row[sasiaCol]);
+  const unitRaw = normalizeCell(row[njesiaCol]);
+
+  if (!ean && !name) return null;
+  if (!name || name.length < 2) return null;
+  if (/^(no|kodi|emertimi|sasia|njesia)$/i.test(name)) return null;
+  if (!unitRaw) return null;
+  if (shouldSkipDeductionProduct(name, quantity)) return null;
+
+  return { ean, name, quantity, unitToken: unitRaw };
+}
+
+function looksLikeProductRow(row: unknown[], cols: ColumnMap): boolean {
+  return extractProductFromRow(row, cols) != null;
+}
+
+function calibrateProductColumns(
+  rows: unknown[][],
+  headerRow: number,
+  cols: ColumnMap
+): ColumnMap {
+  const sampleRows = rows.slice(headerRow + 1, headerRow + 8);
+  const sampleRow = sampleRows.find((row) => looksLikeProductRow(row, cols));
+  if (!sampleRow) return cols;
+
+  const noShift =
+    cols.no != null &&
+    cols.no > 0 &&
+    /^\d+$/.test(normalizeCell(sampleRow[cols.no - 1])) &&
+    !normalizeCell(sampleRow[cols.no])
+      ? 1
+      : 0;
+
+  const base = {
+    no: cols.no,
+    kodi: cols.kodi - noShift,
+    emertimi: cols.emertimi,
+    sasia: cols.sasia - noShift,
+    njesia: cols.njesia - noShift,
+  };
+
+  return {
+    no: base.no,
+    kodi: findNearestDataColumn(sampleRow, base.kodi, isKodiCell),
+    emertimi: base.emertimi,
+    sasia: findNearestDataColumn(sampleRow, base.sasia, isQuantityCell),
+    njesia: findNearestDataColumn(sampleRow, base.njesia, isUnitCell),
+  };
+}
+
+function findProductTable(rows: unknown[][]): ProductTable | null {
+  let best: ProductTable | null = null;
+  let bestScore = 0;
+
+  for (let r = 0; r < rows.length; r++) {
+    const rawCols = readColumnsFromHeaderRow(rows[r]);
+    if (
+      rawCols.kodi == null ||
+      rawCols.emertimi == null ||
+      rawCols.sasia == null ||
+      rawCols.njesia == null
+    ) {
+      continue;
+    }
+
+    const cols = calibrateProductColumns(rows, r, rawCols as ColumnMap);
+    let score = 0;
+    for (let r2 = r + 1; r2 < Math.min(r + 8, rows.length); r2++) {
+      if (looksLikeProductRow(rows[r2], cols)) score += 1;
+    }
+    if (score === 0) continue;
+
+    if (score > bestScore) {
+      bestScore = score;
+      best = { headerRow: r, cols };
+    }
+  }
+
+  return best;
+}
+
+function parseProductRows(rows: unknown[][], table: ProductTable): OrderItemPayload[] {
+  const items: OrderItemPayload[] = [];
+  const { headerRow, cols } = table;
+
+  for (let r = headerRow + 1; r < rows.length; r++) {
+    const row = rows[r];
+    const nameProbe = normalizeCell(row[cols.emertimi]);
+    if (isProductTableFooter(nameProbe, row)) break;
+
+    const product = extractProductFromRow(row, cols);
+    if (!product) {
+      if (items.length > 0 && row.every((cell) => !normalizeCell(cell))) {
+        break;
+      }
+      continue;
+    }
+
+    items.push(rowToOrderItem(product));
+  }
+
+  return items;
+}
+
+function readLabelCellBelow(
+  rows: unknown[][],
+  label: RegExp
+): unknown | undefined {
+  const anchor = findLabelColumn(rows, label);
+  if (!anchor) return undefined;
+
+  for (let r = anchor.row + 1; r < Math.min(anchor.row + 6, rows.length); r++) {
+    const value = rows[r]?.[anchor.col];
+    if (value == null || value === "") continue;
+    const text = normalizeCell(value);
+    if (!text || label.test(text)) continue;
+    if (/^(data|kushtet|referenca|lokacioni|user|referenti)/i.test(text)) {
+      continue;
+    }
+    return value;
+  }
+
+  const sameRow = rows[anchor.row][anchor.col + 1];
+  if (sameRow != null && sameRow !== "" && !label.test(normalizeCell(sameRow))) {
+    return sameRow;
+  }
+
+  return undefined;
+}
+
+function readLabelValueBelow(
+  rows: unknown[][],
+  label: RegExp
+): string | undefined {
+  const value = readLabelCellBelow(rows, label);
+  if (value == null) return undefined;
+  const text = normalizeCell(value);
+  return text || undefined;
 }
 
 function findLabelColumn(rows: unknown[][], label: RegExp): { row: number; col: number } | null {
@@ -265,17 +488,11 @@ export function parseAgimiExcel(buffer: Buffer): ParsedAgimiInvoice {
     documentKindFromInvoiceNumber(invoiceNumber) ?? findDocumentKind(rows);
   const customerName = findCustomerName(rows) ?? "";
 
-  const referentiHeader = findLabelColumn(rows, /Referenti\s*juaj/i);
-  const salesAgent =
-    referentiHeader && rows[referentiHeader.row + 1]
-      ? normalizeCell(rows[referentiHeader.row + 1][referentiHeader.col])
-      : undefined;
+  const salesAgent = readLabelValueBelow(rows, /Referenti\s*juaj/i);
 
-  const dateHeader = findLabelColumn(rows, /^Data fatura$/i);
   const orderDate =
-    (dateHeader && rows[dateHeader.row + 1]
-      ? parseExcelDateValue(rows[dateHeader.row + 1][dateHeader.col])
-      : null) ?? new Date().toISOString().slice(0, 10);
+    parseExcelDateValue(readLabelCellBelow(rows, /^Data fatura$/i)) ??
+    new Date().toISOString().slice(0, 10);
 
   let address = "";
   let cityRaw = "";
@@ -310,34 +527,8 @@ export function parseAgimiExcel(buffer: Buffer): ParsedAgimiInvoice {
   }
 
   const price = findTotalPrice(rows) ?? 0;
-  const productHeader = findProductHeader(rows);
-  const items: OrderItemPayload[] = [];
-
-  if (productHeader) {
-    const { headerRow, cols } = productHeader;
-    for (let r = headerRow + 1; r < rows.length; r++) {
-      const row = rows[r];
-      const ean = normalizeCell(row[cols.kodi]).replace(/\D/g, "");
-      const name = normalizeCell(row[cols.emertimi]);
-      const quantity = parseNumber(row[cols.sasia]);
-      const unitRaw = normalizeCell(row[cols.njesia]);
-
-      if (!ean && !name) continue;
-      if (/^Normat\s+Tatimore/i.test(name)) break;
-      if (/^Vlera\s/i.test(name)) break;
-      if (!name || !unitRaw) continue;
-      if (shouldSkipDeductionProduct(name, quantity)) continue;
-
-      items.push(
-        rowToOrderItem({
-          ean,
-          name,
-          quantity,
-          unitToken: unitRaw,
-        })
-      );
-    }
-  }
+  const productTable = findProductTable(rows);
+  const items = productTable ? parseProductRows(rows, productTable) : [];
 
   const locationFields =
     cityRaw || address
