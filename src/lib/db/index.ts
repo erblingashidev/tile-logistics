@@ -191,7 +191,37 @@ async function ensureAdminsTable(client: Client) {
   });
 }
 
+async function tableExists(client: Client, table: string): Promise<boolean> {
+  const result = await client.execute({
+    sql: "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+    args: [table],
+  });
+  return result.rows.length > 0;
+}
+
 async function ensureDeliveryProofPhotoColumns(client: Client) {
+  if (!(await tableExists(client, "delivery_proofs"))) {
+    await client.execute(`
+      CREATE TABLE IF NOT EXISTS delivery_proofs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+        employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        phase TEXT NOT NULL,
+        photo_path TEXT,
+        photo_data BLOB,
+        photo_mime TEXT,
+        notes TEXT,
+        lat REAL,
+        lng REAL,
+        captured_at TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    `);
+    await client.execute(
+      "CREATE INDEX IF NOT EXISTS idx_delivery_proofs_order ON delivery_proofs(order_id)"
+    );
+  }
+
   let proofCols = await tableColumns(client, "delivery_proofs");
   await addColumnIfMissing(
     client,
@@ -739,14 +769,14 @@ export async function getDb() {
         assertProductionSecrets();
         clientInstance = createDbClient();
         await clientInstance.execute("PRAGMA foreign_keys = ON");
+        if (shouldRunRuntimeMigrations()) {
+          await runMigrations(clientInstance);
+        }
         await ensureDeliveryProofPhotoColumns(clientInstance);
         await ensureEmployeeNotificationsTable(clientInstance);
         await ensureAdminsTable(clientInstance);
         await ensureOrderDeliveryLinksTable(clientInstance);
         await ensureInvoiceImportTables(clientInstance);
-        if (shouldRunRuntimeMigrations()) {
-          await runMigrations(clientInstance);
-        }
         dbInstance = drizzle(clientInstance, { schema });
         const { backfillAdminEmployeeLinks } = await import(
           "@/lib/services/admins"
