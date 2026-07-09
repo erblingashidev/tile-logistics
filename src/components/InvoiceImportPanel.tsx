@@ -56,6 +56,13 @@ interface InvoiceImportPanelProps {
 type ImportMode = "excel" | "pdf" | null;
 type ImportStep = "pick" | "extract" | "review";
 
+function invoiceNumberFromUploadName(fileName: string): string {
+  const match = fileName
+    .replace(/\.xlsx?$/i, "")
+    .match(/\b(\d{2}-(?:SHV|SHF|PSV)\d{2}-\d{3}-\d{3,4})\b/i);
+  return match ? match[1].toUpperCase() : "";
+}
+
 function ProgressBar({ percent }: { percent?: number }) {
   return (
     <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-zinc-200">
@@ -288,7 +295,15 @@ export function InvoiceImportPanel({
 
     const result = await previewInvoiceFromExcel(file);
     if (result.ok) {
-      applyPreview(result.data);
+      const data = result.data;
+      if (!data.parsed.invoiceNumber?.trim()) {
+        const fromName = invoiceNumberFromUploadName(file.name || "");
+        if (fromName) {
+          data.parsed = { ...data.parsed, invoiceNumber: fromName };
+          data.form = { ...data.form, invoiceNumber: fromName };
+        }
+      }
+      applyPreview(data);
     } else {
       showFailure(result.error, result.rawPreview);
     }

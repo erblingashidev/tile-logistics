@@ -373,43 +373,169 @@ function findLabelColumn(rows: unknown[][], label: RegExp): { row: number; col: 
   return null;
 }
 
-function findCustomerName(rows: unknown[][]): string | null {
-  for (let r = 0; r < rows.length; r++) {
-    for (let c = 0; c < rows[r].length; c++) {
-      const cell = normalizeCell(rows[r][c]);
-      if (!/^Bler[ëe]si:?$/i.test(cell)) continue;
-
-      for (let c2 = c + 1; c2 < rows[r].length; c2++) {
-        const value = normalizeCell(rows[r][c2]);
-        if (value && value.length > 2) return value;
-      }
-
-      for (let r2 = r + 1; r2 < Math.min(r + 5, rows.length); r2++) {
-        for (let c2 = 0; c2 < rows[r2].length; c2++) {
-          const value = normalizeCell(rows[r2][c2]);
-          if (!value || value.length < 3) continue;
-          if (/^(adresa|telefoni|no fiskal|numri unik|data fatura)/i.test(value)) {
-            continue;
-          }
-          if (/^\d+$/.test(value)) continue;
-          return value;
-        }
-      }
-    }
-  }
-  return null;
+function isPhoneLine(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed || !/[\d]/.test(trimmed)) return false;
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits.length < 8 || digits.length > 15) return false;
+  return /^(\+383|383|0)?[\d\s./-]+$/.test(trimmed.replace(/\s/g, ""));
 }
 
-function findInvoiceNumber(rows: unknown[][]): string | null {
+function isFiscalLine(text: string): boolean {
+  const digits = text.replace(/\D/g, "");
+  return (
+    digits.length >= 7 &&
+    digits.length <= 13 &&
+    /^[\d\s./-]+$/.test(text.trim())
+  );
+}
+
+function isBuyerBlockStop(text: string): boolean {
+  return /^(data fatura|no fiskal|numri unik|nui:|kushtet|user|referenca|referenti|lokacioni)/i.test(
+    text
+  );
+}
+
+function invoiceNumberFromFileName(fileName?: string): string | null {
+  if (!fileName) return null;
+  const base = fileName.replace(/\.xlsx?$/i, "");
+  const match = base.match(/\b(\d{2}-(?:SHV|SHF|PSV)\d{2}-\d{3}-\d{3,4})\b/i);
+  return match ? match[1].toUpperCase() : null;
+}
+
+function parseExcelBuyerBlock(rows: unknown[][]): {
+  customerName: string;
+  address: string;
+  cityRaw: string;
+  customerPhone?: string;
+} {
+  const bleresi = findLabelColumn(rows, /^Bler[ëe]si:?$/i);
+  if (!bleresi) {
+    return { customerName: "", address: "", cityRaw: "" };
+  }
+
+  const dataFaturaRow = findLabelColumn(rows, /^Data fatura$/i)?.row ?? rows.length;
+  const productTableRow = findProductTable(rows)?.headerRow ?? rows.length;
+  const stopRow = Math.min(dataFaturaRow, productTableRow);
+
+  const colCounts = new Map<number, number>();
+  for (let r = bleresi.row + 1; r < stopRow; r++) {
+    for (let c = 0; c < rows[r].length; c++) {
+      const value = normalizeCell(rows[r][c]);
+      if (!value || isBuyerBlockStop(value)) continue;
+      colCounts.set(c, (colCounts.get(c) ?? 0) + 1);
+    }
+  }
+
+  let valueCol = bleresi.col + 1;
+  let bestCount = 0;
+  for (const [col, count] of colCounts) {
+    if (count > bestCount) {
+      bestCount = count;
+      valueCol = col;
+    }
+  }
+  for (let c = bleresi.col + 1; c < rows[bleresi.row].length; c++) {
+    const sameRowValue = normalizeCell(rows[bleresi.row][c]);
+    if (sameRowValue.length > 2) {
+      valueCol = c;
+      break;
+    }
+  }
+
+  const lines: string[] = [];
+  for (let r = bleresi.row + 1; r < stopRow; r++) {
+    const value = normalizeCell(rows[r][valueCol]);
+    if (!value || isBuyerBlockStop(value)) continue;
+    if (/^(adresa|telefoni|qyteti)\s*:?$/i.test(value)) continue;
+    lines.push(value);
+  }
+
+  let customerName = "";
+  let address = "";
+  let cityRaw = "";
+  let customerPhone: string | undefined;
+  const addressLines: string[] = [];
+
+  for (const line of lines) {
+    if (isPhoneLine(line)) {
+      customerPhone = line.replace(/\s+/g, " ").trim();
+      continue;
+    }
+    if (isFiscalLine(line)) continue;
+    if (!customerName) {
+      customerName = line;
+      continue;
+    }
+    addressLines.push(line);
+  }
+
+  if (addressLines.length === 1) {
+    address = addressLines[0];
+    cityRaw = addressLines[0];
+  } else if (addressLines.length >= 2) {
+    address = addressLines.slice(0, -1).join(", ");
+    cityRaw = addressLines[addressLines.length - 1];
+  }
+
+  const labeledAddress = readLabelValueBelow(rows, /^Adresa\s*:?$/i);
+  const labeledCity = readLabelValueBelow(rows, /^Qyteti\s*:?$/i);
+  const labeledPhone = readLabelValueBelow(rows, /^Telefoni\s*:?$/i);
+
+  if (labeledAddress) address = labeledAddress;
+  if (labeledCity) cityRaw = labeledCity;
+  if (labeledPhone) customerPhone = labeledPhone;
+
+  if (!customerPhone) {
+    for (let r = bleresi.row + 1; r < stopRow; r++) {
+      for (let c = 0; c < rows[r].length; c++) {
+        const value = normalizeCell(rows[r][c]);
+        if (value && isPhoneLine(value)) {
+          customerPhone = value;
+          break;
+        }
+      }
+      if (customerPhone) break;
+    }
+  }
+
+  return { customerName, address, cityRaw, customerPhone };
+}
+
+function findCustomerName(rows: unknown[][]): string | null {
+  const buyer = parseExcelBuyerBlock(rows);
+  return buyer.customerName || null;
+}
+
+function findInvoiceNumber(rows: unknown[][], sourceFileName?: string): string {
   for (const row of rows) {
     for (const cell of row) {
       const text = normalizeCell(cell);
       const match = text.match(/\b(\d{2}-(?:SHV|SHF|PSV)\d{2}-\d{3}-\d{3,4})\b/i);
       if (match) return match[1].toUpperCase();
+
+      const labeled = text.match(
+        /(?:Nr\.?\s*fatur[ëe]?|Numri\s*fatur[ëe]s)\s*[:#]?\s*([\d-]{10,})/i
+      );
+      if (labeled) {
+        const normalized = labeled[1].replace(/\s+/g, "").toUpperCase();
+        if (/\d{2}-(?:SHV|SHF|PSV)/i.test(normalized)) return normalized;
+      }
     }
   }
-  return null;
+
+  const referenca = readLabelValueBelow(rows, /^Referenca$/i);
+  if (referenca) {
+    const match = referenca.match(/\b(\d{2}-(?:SHV|SHF|PSV)\d{2}-\d{3}-\d{3,4})\b/i);
+    if (match) return match[1].toUpperCase();
+  }
+
+  return invoiceNumberFromFileName(sourceFileName) ?? "";
 }
+
+export type ParseAgimiExcelOptions = {
+  sourceFileName?: string;
+};
 
 function findDocumentKind(rows: unknown[][]): AgimiDocumentKind {
   for (const row of rows) {
@@ -469,7 +595,10 @@ function resolveDeliveryFields(cityRaw: string, address: string) {
   };
 }
 
-export function parseAgimiExcel(buffer: Buffer): ParsedAgimiInvoice {
+export function parseAgimiExcel(
+  buffer: Buffer,
+  options?: ParseAgimiExcelOptions
+): ParsedAgimiInvoice {
   const workbook = XLSX.read(buffer, { type: "buffer", cellDates: false });
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) {
@@ -483,10 +612,12 @@ export function parseAgimiExcel(buffer: Buffer): ParsedAgimiInvoice {
   });
 
   const warnings: string[] = [];
-  const invoiceNumber = findInvoiceNumber(rows) ?? "";
+  const invoiceNumber =
+    findInvoiceNumber(rows, options?.sourceFileName) || "";
   const documentKind =
     documentKindFromInvoiceNumber(invoiceNumber) ?? findDocumentKind(rows);
-  const customerName = findCustomerName(rows) ?? "";
+  const buyer = parseExcelBuyerBlock(rows);
+  const customerName = buyer.customerName || findCustomerName(rows) || "";
 
   const salesAgent = readLabelValueBelow(rows, /Referenti\s*juaj/i);
 
@@ -494,37 +625,9 @@ export function parseAgimiExcel(buffer: Buffer): ParsedAgimiInvoice {
     parseExcelDateValue(readLabelCellBelow(rows, /^Data fatura$/i)) ??
     new Date().toISOString().slice(0, 10);
 
-  let address = "";
-  let cityRaw = "";
-  let customerPhone: string | undefined;
-
-  const adresaCell = findLabelColumn(rows, /^Adresa:?$/i);
-  if (adresaCell) {
-    const sameRow = normalizeCell(rows[adresaCell.row][adresaCell.col + 1]);
-    if (sameRow) address = sameRow;
-    else {
-      for (let c = 0; c < rows[adresaCell.row].length; c++) {
-        const value = normalizeCell(rows[adresaCell.row][c]);
-        if (value && !/^adresa:?$/i.test(value) && value.length > 5) {
-          address = value;
-          break;
-        }
-      }
-    }
-    const parts = address.split(/\s+/);
-    cityRaw = parts[parts.length - 1] ?? "";
-  }
-
-  const telefoniCell = findLabelColumn(rows, /^Telefoni:?$/i);
-  if (telefoniCell) {
-    for (let c = telefoniCell.col + 1; c < rows[telefoniCell.row].length; c++) {
-      const value = normalizeCell(rows[telefoniCell.row][c]);
-      if (value && /\d/.test(value)) {
-        customerPhone = value;
-        break;
-      }
-    }
-  }
+  let address = buyer.address;
+  let cityRaw = buyer.cityRaw;
+  let customerPhone = buyer.customerPhone;
 
   const price = findTotalPrice(rows) ?? 0;
   const productTable = findProductTable(rows);
@@ -543,7 +646,9 @@ export function parseAgimiExcel(buffer: Buffer): ParsedAgimiInvoice {
         };
 
   if (!invoiceNumber) {
-    warnings.push("Could not read invoice number — enter manually.");
+    warnings.push(
+      "Could not read invoice number from Excel — enter manually (or save the file as 26-SHV01-001-XXXX.xlsx)."
+    );
   }
   if (!salesAgent) {
     warnings.push("Could not read Referenti Juaj — enter manually if needed.");

@@ -132,7 +132,8 @@ export async function POST(request: NextRequest) {
           invoiceNumberOverride,
           selectedInvoiceNumber,
           mergeIntoExisting: mergeRaw === "true",
-        }
+        },
+        file.name
       );
       return jsonFromResult(result, 200);
     }

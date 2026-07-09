@@ -297,9 +297,10 @@ function isRecognizedExcel(parsed: ParsedAgimiInvoice): boolean {
 export async function importInvoiceFromExcel(
   buffer: Buffer,
   mode: "preview" | "create",
-  options?: InvoiceImportOptions
+  options?: InvoiceImportOptions,
+  sourceFileName?: string
 ): Promise<InvoiceImportResult> {
-  const parsed = parseAgimiExcel(buffer);
+  const parsed = parseAgimiExcel(buffer, { sourceFileName });
   if (options?.invoiceNumberOverride?.trim()) {
     applyInvoiceOverride(parsed, options.invoiceNumberOverride);
   }
