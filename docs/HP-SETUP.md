@@ -63,7 +63,26 @@ TURSO_AUTH_TOKEN=from-netlify
 
 You can also copy `.env.local` from your Mac (USB/email). Remove `USE_LOCAL_DATABASE=true` if present.
 
-### 4. Set invoice folder in the app
+### 4. Apply database schema (once, or after errors)
+
+After `git pull`, if the watcher shows `no such table: ...`, run:
+
+```bash
+npm run turso:apply-schema
+```
+
+You should see checkmarks for `delivery_proofs`, `app_settings`, `invoice_import_queue`, etc.
+
+**On Mac only** (if the command above still shows missing tables), with [Turso CLI](https://docs.turso.tech/cli) installed:
+
+```bash
+turso auth login
+./scripts/setup-turso.sh
+```
+
+This is safe — it only creates missing tables; it does **not** delete your orders or data.
+
+### 5. Set invoice folder in the app
 
 1. Open the live site (or `npm run dev` on HP).
 2. **Settings → Invoice import folder**
@@ -71,7 +90,7 @@ You can also copy `.env.local` from your Mac (USB/email). Remove `USE_LOCAL_DATA
    - `C:\Users\HP\Documents\Faturat-Logistics` (recommended), or
    - `C:\Users\HP\Documents\Faturat-Logistics\09.07.2026` (date folder directly)
 
-### 5. Folder layout for Pro-Data exports
+### 6. Folder layout for Pro-Data exports
 
 ```
 C:\Users\HP\Documents\Faturat-Logistics\
@@ -130,7 +149,9 @@ npm run watch:invoices:turso
 | Folder not found | Fix path in **Settings** |
 | No pending imports | Check `.xlsx` is in the date folder; watcher running on HP |
 | Scan from cloud site does nothing | Normal — cloud cannot read `C:\`. Use watcher on HP |
-| Already queued / skipped | File was scanned before — check Import queue or change file |
+| `DB_TARGET` not recognized (Windows) | Run `git pull` — watcher uses `--turso` flag now |
+| `no such table: delivery_proofs` | On HP: `npm run turso:apply-schema` then restart watcher. On Mac (Turso CLI): `./scripts/setup-turso.sh` |
+| Watcher runs but queue stays empty | Path is **typed** in Settings (not uploaded). Excel must be in a `DD.MM.YYYY` subfolder. Check watcher log for `queued N` |
 
 ---
 
