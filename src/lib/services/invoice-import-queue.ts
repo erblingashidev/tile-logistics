@@ -293,14 +293,26 @@ export async function rejectImportQueueItem(
 
 export async function scanInvoiceWatchRoot(
   rootDir: string
-): Promise<{ scanned: number; queued: number; skipped: number; errors: string[] }> {
+): Promise<{
+  scanned: number;
+  queued: number;
+  skipped: number;
+  errors: string[];
+  hint?: string;
+  watching?: string;
+  dateFolders?: string[];
+}> {
   const absoluteRoot = path.resolve(rootDir);
   if (!fs.existsSync(absoluteRoot)) {
+    const isWinPath = /^[A-Za-z]:[\\/]/.test(absoluteRoot);
     return {
       scanned: 0,
       queued: 0,
       skipped: 0,
-      errors: [`Watch folder not found: ${absoluteRoot}`],
+      errors: [`Folder not found on this computer: ${absoluteRoot}`],
+      hint: isWinPath
+        ? "Scan only works on the Windows PC where that folder exists. Open the app locally on that PC (npm run dev) or run npm run watch:invoices:turso there — not from the cloud website."
+        : "Check the path in Settings. Use the main Faturat-Logistics folder, or a date folder like 09.07.2026.",
     };
   }
 
@@ -309,22 +321,25 @@ export async function scanInvoiceWatchRoot(
   let skipped = 0;
   const errors: string[] = [];
 
-  const entries = fs.readdirSync(absoluteRoot, { withFileTypes: true });
-  for (const entry of entries) {
-    if (!entry.isDirectory() || !isDateFolderName(entry.name)) continue;
+  async function scanDirectory(dirPath: string, folderIso: string | null) {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    } catch (err) {
+      errors.push(
+        `Cannot read ${dirPath}: ${err instanceof Error ? err.message : "access denied"}`
+      );
+      return;
+    }
 
-    const folderIso = folderDateLabelToIso(entry.name);
-    const folderPath = path.join(absoluteRoot, entry.name);
-    const files = fs.readdirSync(folderPath, { withFileTypes: true });
-
-    for (const file of files) {
+    for (const file of entries) {
       if (!file.isFile()) continue;
       const lower = file.name.toLowerCase();
       if (!lower.endsWith(".xlsx") && !lower.endsWith(".xls")) continue;
       if (lower.startsWith("~$")) continue;
 
       scanned += 1;
-      const filePath = path.join(folderPath, file.name);
+      const filePath = path.join(dirPath, file.name);
       const result = await enqueueExcelFile(filePath, { folderDateIso: folderIso });
       if (!result.ok) {
         errors.push(`${file.name}: ${result.error}`);
@@ -336,7 +351,102 @@ export async function scanInvoiceWatchRoot(
     }
   }
 
-  return { scanned, queued, skipped, errors };
+  const rootName = path.basename(absoluteRoot);
+
+  // User pointed directly at a date folder (e.g. ...\09.07.2026)
+  if (isDateFolderName(rootName)) {
+    await scanDirectory(absoluteRoot, folderDateLabelToIso(rootName));
+    return {
+      scanned,
+      queued,
+      skipped,
+      errors,
+      hint:
+        scanned === 0 && errors.length === 0
+          ? `No Excel files (.xlsx) found in ${rootName}. Save Pro-Data exports there, then scan again.`
+          : undefined,
+      watching: absoluteRoot,
+      dateFolders: [rootName],
+    };
+  }
+
+  // Main folder: scan each DD.MM.YYYY subfolder
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(absoluteRoot, { withFileTypes: true });
+  } catch (err) {
+    return {
+      scanned: 0,
+      queued: 0,
+      skipped: 0,
+      errors: [
+        `Cannot read folder: ${err instanceof Error ? err.message : "access denied"}`,
+      ],
+    };
+  }
+
+  const dateFolders = entries.filter(
+    (entry) => entry.isDirectory() && isDateFolderName(entry.name)
+  );
+  const otherDirs = entries
+    .filter((entry) => entry.isDirectory() && !isDateFolderName(entry.name))
+    .map((entry) => entry.name);
+  const rootExcelFiles = entries.filter(
+    (entry) =>
+      entry.isFile() &&
+      /\.xlsx?$/i.test(entry.name) &&
+      !entry.name.toLowerCase().startsWith("~$")
+  );
+
+  if (dateFolders.length === 0) {
+    let hint =
+      "No date subfolders found (need DD.MM.YYYY, e.g. 09.07.2026). Set INVOICE_WATCH_DIR to the date folder directly, or create one.";
+    if (otherDirs.length > 0) {
+      hint += ` Subfolders here: ${otherDirs.slice(0, 5).join(", ")}.`;
+    }
+    if (rootExcelFiles.length > 0) {
+      hint += ` Found ${rootExcelFiles.length} Excel file(s) in the main folder — move them into a date subfolder.`;
+    }
+    return {
+      scanned,
+      queued,
+      skipped,
+      errors,
+      hint,
+      watching: absoluteRoot,
+      dateFolders: [],
+    };
+  }
+
+  for (const entry of dateFolders) {
+    const folderIso = folderDateLabelToIso(entry.name);
+    const folderPath = path.join(absoluteRoot, entry.name);
+    await scanDirectory(folderPath, folderIso);
+  }
+
+  if (scanned === 0 && errors.length === 0) {
+    return {
+      scanned,
+      queued,
+      skipped,
+      errors,
+      hint: `Found ${dateFolders.length} date folder(s) (${dateFolders
+        .slice(0, 3)
+        .map((e) => e.name)
+        .join(", ")}) but no Excel files. Save .xlsx exports inside one of them.`,
+      watching: absoluteRoot,
+      dateFolders: dateFolders.map((e) => e.name),
+    };
+  }
+
+  return {
+    scanned,
+    queued,
+    skipped,
+    errors,
+    watching: absoluteRoot,
+    dateFolders: dateFolders.map((e) => e.name),
+  };
 }
 
 export async function pendingImportQueueCount(): Promise<number> {

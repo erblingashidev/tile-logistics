@@ -1,13 +1,9 @@
 #!/usr/bin/env node
 /**
- * Watches the folder set in Settings (invoice_watch_root) and queues Excel invoices.
- * Run on the PC where Pro-Data saves files (Windows or Mac).
+ * Watches INVOICE_WATCH_DIR from .env.local and queues Excel invoices.
+ * Run on the PC where Pro-Data saves files (Windows HP).
  *
- *   npm run watch:invoices
  *   npm run watch:invoices:turso
- *
- * Set the folder path in the app: Settings → Invoice import folder.
- * Optional env override: INVOICE_WATCH_DIR
  */
 import fs from "fs";
 import {
@@ -32,7 +28,7 @@ async function runScan() {
   const root = await getInvoiceWatchRoot();
   if (!root) {
     console.log(
-      `[${new Date().toLocaleTimeString()}] No folder configured — set it in Settings → Invoice import folder`
+      `[${new Date().toLocaleTimeString()}] No folder configured — add INVOICE_WATCH_DIR to .env.local`
     );
     return;
   }
@@ -52,7 +48,18 @@ async function runScan() {
   if (result.errors.length > 0) {
     parts.push(`errors ${result.errors.length}`);
   }
-  console.log(`[${new Date().toLocaleTimeString()}] ${parts.join(", ")}`);
+  console.log(
+    `[${new Date().toLocaleTimeString()}] ${parts.join(", ")} — ${root}`
+  );
+  if (result.dateFolders?.length) {
+    console.log(`  date folders: ${result.dateFolders.join(", ")}`);
+  }
+  if (result.hint) {
+    console.log(`  → ${result.hint}`);
+  }
+  if (result.scanned > 0 && result.skipped === result.scanned) {
+    console.log("  → All files already in import queue (check Orders → Import queue)");
+  }
   for (const err of result.errors.slice(0, 5)) {
     console.log(`  · ${err}`);
   }
@@ -66,7 +73,14 @@ async function main() {
   console.log("Invoice folder watcher");
   console.log(`Database: ${describeScriptDatabaseTarget()}`);
   console.log(`Poll every ${POLL_MS / 1000}s — date subfolders like 09.07.2026`);
-  console.log("Configure path in app Settings on this PC.");
+  const configuredRoot = await getInvoiceWatchRoot();
+  if (configuredRoot) {
+    console.log(`Watching: ${configuredRoot}`);
+  } else {
+    console.log(
+      "No folder yet — add INVOICE_WATCH_DIR to .env.local (see docs/HP-SETUP.md)"
+    );
+  }
   console.log("Press Ctrl+C to stop.\n");
 
   await runScan();

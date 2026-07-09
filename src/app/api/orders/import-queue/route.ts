@@ -6,8 +6,17 @@ import {
   scanInvoiceWatchRoot,
 } from "@/lib/services/invoice-import-queue";
 import { getInvoiceWatchRoot } from "@/lib/services/app-settings";
+import { isNetlify } from "@/lib/config/env";
 
 export const runtime = "nodejs";
+
+function cloudScanBlocked(watchRoot: string): string | null {
+  if (!isNetlify()) return null;
+  if (/^[A-Za-z]:[\\/]/.test(watchRoot)) {
+    return "Folder scan cannot run from the cloud site — run on the HP PC: npm run watch:invoices:turso";
+  }
+  return null;
+}
 
 export async function GET(request: NextRequest) {
   const auth = await requireApiSessionNoSalesWrite(request.method);
@@ -54,7 +63,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "Invoice folder not configured. Open Settings and set the Faturat-Logistics path for this PC.",
+          "Invoice folder not configured. On the HP PC set INVOICE_WATCH_DIR in .env.local and run npm run watch:invoices:turso.",
+      },
+      { status: 422 }
+    );
+  }
+
+  const cloudBlock = cloudScanBlocked(watchRoot);
+  if (cloudBlock) {
+    return NextResponse.json(
+      {
+        error: cloudBlock,
+        scanned: 0,
+        queued: 0,
+        skipped: 0,
+        errors: [],
+        hint: cloudBlock,
       },
       { status: 422 }
     );

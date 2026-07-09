@@ -37,3 +37,7 @@ Create token: `turso db tokens create tile-logistics-prod` → Netlify → `TURS
 **Do not** set `USE_LOCAL_DATABASE` on Netlify.
 
 See [docs/DEPLOY-NETLIFY.md](docs/DEPLOY-NETLIFY.md).
+
+## HP laptop (invoice folder watcher)
+
+Pro-Data Excel auto-import on Windows: **[docs/HP-SETUP.md](docs/HP-SETUP.md)** — pull only on HP, push from Mac.

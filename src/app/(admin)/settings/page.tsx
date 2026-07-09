@@ -45,11 +45,6 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [invoiceFolder, setInvoiceFolder] = useState("");
-  const [invoiceFolderConfigured, setInvoiceFolderConfigured] = useState(false);
-  const [invoiceFolderSaving, setInvoiceFolderSaving] = useState(false);
-  const [invoiceFolderSuccess, setInvoiceFolderSuccess] = useState("");
-  const [invoiceFolderError, setInvoiceFolderError] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -77,21 +72,9 @@ export default function SettingsPage() {
     }
   }, []);
 
-  const loadInvoiceFolder = useCallback(async () => {
-    const res = await fetch("/api/settings/invoice-import", {
-      cache: "no-store",
-      credentials: "same-origin",
-    });
-    if (!res.ok) return;
-    const data = await res.json();
-    setInvoiceFolder(data.watchRoot ?? "");
-    setInvoiceFolderConfigured(Boolean(data.configured));
-  }, []);
-
   useEffect(() => {
     load();
-    void loadInvoiceFolder();
-  }, [load, loadInvoiceFolder]);
+  }, [load]);
 
   async function saveProfile(e: React.FormEvent) {
     e.preventDefault();
@@ -122,37 +105,6 @@ export default function SettingsPage() {
     setSuccess("Profile updated");
     router.refresh();
     setTimeout(() => setSuccess(""), 3000);
-  }
-
-  async function saveInvoiceFolder(e: React.FormEvent) {
-    e.preventDefault();
-    setInvoiceFolderError("");
-    setInvoiceFolderSuccess("");
-    setInvoiceFolderSaving(true);
-
-    const res = await fetch("/api/settings/invoice-import", {
-      method: "PATCH",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ watchRoot: invoiceFolder }),
-    });
-    const data = await res.json().catch(() => ({}));
-    setInvoiceFolderSaving(false);
-
-    if (!res.ok) {
-      setInvoiceFolderError(
-        (data.error as string) ??
-          (res.status === 403
-            ? "Admin access required"
-            : `Could not save folder path (${res.status})`)
-      );
-      return;
-    }
-
-    setInvoiceFolder(data.watchRoot ?? invoiceFolder);
-    setInvoiceFolderConfigured(Boolean(data.configured));
-    setInvoiceFolderSuccess("Invoice folder saved for this database");
-    setTimeout(() => setInvoiceFolderSuccess(""), 4000);
   }
 
   return (
@@ -250,49 +202,6 @@ export default function SettingsPage() {
 
           <ChangePasswordCard variant="admin" defaultOpen />
         </div>
-      )}
-
-      {!loading && profile && (
-        <Card className="mt-5 p-5">
-          <h2 className="text-lg font-semibold text-zinc-900">
-            Invoice import folder
-          </h2>
-          <p className="mt-1 text-sm text-zinc-500">
-            Main folder on this PC where Pro-Data saves Excel files. Inside it,
-            use date subfolders like{" "}
-            <span className="font-mono">09.07.2026</span> — each Excel file is
-            queued for approval on the Orders page. Change this path when you
-            switch computers (Windows or Mac).
-          </p>
-
-          <form onSubmit={saveInvoiceFolder} className="mt-5 space-y-3">
-            {invoiceFolderError && (
-              <Alert tone="error">{invoiceFolderError}</Alert>
-            )}
-            {invoiceFolderSuccess && (
-              <Alert tone="info">{invoiceFolderSuccess}</Alert>
-            )}
-
-            <Input
-              label="Main folder path"
-              value={invoiceFolder}
-              onChange={(e) => setInvoiceFolder(e.target.value)}
-              placeholder="C:\Faturat-Logistics or /Users/you/Faturat-Logistics"
-              spellCheck={false}
-              required
-            />
-
-            <p className="text-xs text-zinc-500">
-              {invoiceFolderConfigured
-                ? "Saved. Optional: run npm run watch:invoices on this PC for automatic queueing while you work."
-                : "Not configured yet — enter the path to Faturat-Logistics on this PC."}
-            </p>
-
-            <Button type="submit" disabled={invoiceFolderSaving}>
-              {invoiceFolderSaving ? "Saving…" : "Save folder path"}
-            </Button>
-          </form>
-        </Card>
       )}
     </AppShell>
   );

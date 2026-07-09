@@ -32,9 +32,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files
+# env files (never commit secrets — .env.local stays on each machine only)
 .env*
 !.env.example
+.env.local
 
 # vercel
 .vercel

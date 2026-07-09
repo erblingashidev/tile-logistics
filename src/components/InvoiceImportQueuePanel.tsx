@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Alert, Button, Card } from "@/components/ui";
 import {
@@ -65,6 +64,8 @@ export function InvoiceImportQueuePanel({
     {}
   );
 
+  const [scanHint, setScanHint] = useState("");
+
   const load = useCallback(async () => {
     const res = await fetch("/api/orders/import-queue?status=pending", {
       credentials: "same-origin",
@@ -85,11 +86,14 @@ export function InvoiceImportQueuePanel({
 
   async function scanFolder() {
     if (!configured) {
-      onError("Set the invoice folder in Settings first.");
+      onError(
+        "Folder scan runs on the HP PC only. Set INVOICE_WATCH_DIR in .env.local and run npm run watch:invoices:turso."
+      );
       return;
     }
     setScanning(true);
     onError("");
+    setScanHint("");
     try {
       const res = await fetch("/api/orders/import-queue", {
         method: "POST",
@@ -99,12 +103,26 @@ export function InvoiceImportQueuePanel({
       });
       const data = await res.json();
       if (!res.ok) {
-        onError((data.error as string) ?? "Scan failed");
+        onError((data.error as string) ?? (data.hint as string) ?? "Scan failed");
+        if (data.hint) setScanHint(data.hint as string);
         return;
       }
-      onWarning(
-        `Scanned ${data.scanned} file(s): ${data.queued} queued, ${data.skipped} skipped`
-      );
+      const errList = (data.errors as string[] | undefined) ?? [];
+      if (data.hint) setScanHint(data.hint as string);
+      if (errList.length > 0) {
+        onError(errList.slice(0, 3).join(" · "));
+      }
+      if ((data.queued as number) > 0) {
+        onWarning(
+          `Queued ${data.queued} invoice(s) from ${data.scanned} file(s) scanned`
+        );
+      } else if ((data.scanned as number) > 0 && (data.skipped as number) > 0) {
+        onWarning(
+          `Scanned ${data.scanned} file(s) — all already in queue (${data.skipped} skipped)`
+        );
+      } else if ((data.scanned as number) === 0 && !data.hint && errList.length === 0) {
+        onWarning("No Excel files found in the configured folder.");
+      }
       await load();
     } finally {
       setScanning(false);
@@ -165,15 +183,16 @@ export function InvoiceImportQueuePanel({
 
       {expanded && (
         <div className="space-y-4 p-5">
-          {!configured ? (
-            <Alert tone="warning">
-              Invoice folder not set on this PC.{" "}
-              <Link href="/settings" className="font-medium underline">
-                Open Settings
-              </Link>{" "}
-              and enter the path to your Faturat-Logistics folder.
-            </Alert>
-          ) : (
+          <Alert tone="info">
+            Invoices are picked up automatically on the HP PC. Run{" "}
+            <span className="font-mono">npm run watch:invoices:turso</span> in
+            the project folder (with{" "}
+            <span className="font-mono">INVOICE_WATCH_DIR</span> in{" "}
+            <span className="font-mono">.env.local</span>). Approve or decline
+            here on the website.
+          </Alert>
+
+          {configured ? (
             <div className="flex flex-wrap items-center gap-2">
               <Button
                 variant="secondary"
@@ -183,17 +202,20 @@ export function InvoiceImportQueuePanel({
                 {scanning ? "Scanning…" : "Scan folder now"}
               </Button>
               <p className="text-xs text-zinc-500">
-                Watching{" "}
-                <span className="font-mono">{watchRoot}</span> — date subfolders
-                like <span className="font-mono">09.07.2026</span>
+                Local path:{" "}
+                <span className="font-mono">{watchRoot}</span>
               </p>
             </div>
+          ) : null}
+
+          {scanHint && (
+            <Alert tone="warning">{scanHint}</Alert>
           )}
 
           {items.length === 0 ? (
             <p className="text-sm text-zinc-500">
-              No pending imports. Save Excel files into today&apos;s date folder,
-              then scan or run the watcher on this PC.
+              No pending imports. Save Excel (.xlsx) files into a date folder on
+              the HP PC while the watcher is running.
             </p>
           ) : (
             <div className="space-y-3">

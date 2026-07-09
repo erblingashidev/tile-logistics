@@ -2,6 +2,14 @@
 
 Use the **HP Windows PC** where Pro-Data saves Excel files. Your **Mac** is for code changes and git push. The HP only **pulls** from GitHub and runs the folder watcher.
 
+### Your HP layout (example)
+
+| What | Path |
+|------|------|
+| **Project** (run `npm` here) | `C:\Users\HP\Agimi-Logistics\tile-logistics` |
+| **Invoices** (Excel files only) | `C:\Users\HP\Documents\Faturat-Logistics` |
+| Date subfolders | `C:\Users\HP\Documents\Faturat-Logistics\09.07.2026\` |
+
 ---
 
 ## Roles
@@ -31,13 +39,20 @@ npm -v
 
 ### 2. Clone the project (once)
 
+Your repo is already at:
+
 ```bash
-git clone https://github.com/YOUR-ORG/tile-logistics.git
-cd tile-logistics
+cd C:\Users\HP\Agimi-Logistics\tile-logistics
 npm install
 ```
 
-Replace the repo URL with your real GitHub URL.
+If cloning fresh:
+
+```bash
+git clone https://github.com/YOUR-ORG/tile-logistics.git C:\Users\HP\Agimi-Logistics\tile-logistics
+cd C:\Users\HP\Agimi-Logistics\tile-logistics
+npm install
+```
 
 ### 3. Create `.env.local` (once — never commit)
 
@@ -54,12 +69,16 @@ ADMIN_PASSWORD=from-netlify
 
 TURSO_DATABASE_URL=libsql://....turso.io
 TURSO_AUTH_TOKEN=from-netlify
+
+# HP invoice folder (use forward slashes)
+INVOICE_WATCH_DIR=C:/Users/HP/Documents/Faturat-Logistics
 ```
 
 **Important for HP:**
 
 - **Do not** set `USE_LOCAL_DATABASE=true` (you want the live Turso database).
 - **Do not** commit or push `.env.local` — it stays only on this PC.
+- `INVOICE_WATCH_DIR` in `.env.local` is the **only** way to set the folder path.
 
 You can also copy `.env.local` from your Mac (USB/email). Remove `USE_LOCAL_DATABASE=true` if present.
 
@@ -82,15 +101,7 @@ turso auth login
 
 This is safe — it only creates missing tables; it does **not** delete your orders or data.
 
-### 5. Set invoice folder in the app
-
-1. Open the live site (or `npm run dev` on HP).
-2. **Settings → Invoice import folder**
-3. Save either:
-   - `C:\Users\HP\Documents\Faturat-Logistics` (recommended), or
-   - `C:\Users\HP\Documents\Faturat-Logistics\09.07.2026` (date folder directly)
-
-### 6. Folder layout for Pro-Data exports
+### 5. Folder layout for Pro-Data exports
 
 ```
 C:\Users\HP\Documents\Faturat-Logistics\
@@ -106,8 +117,14 @@ Use date folders `DD.MM.YYYY`. Files must be `.xlsx` (not open in Excel — no `
 
 ## Every work day on HP
 
-1. Open terminal in the project folder.
-2. Start the watcher (leave window open):
+1. Open **Command Prompt** or **PowerShell**.
+2. Go to the **project** folder (not Faturat-Logistics):
+
+```bash
+cd C:\Users\HP\Agimi-Logistics\tile-logistics
+```
+
+3. Start the watcher (leave window open):
 
 ```bash
 npm run watch:invoices:turso
@@ -146,12 +163,13 @@ npm run watch:invoices:turso
 | Problem | What to do |
 |---------|------------|
 | `TURSO_*` missing | Fill in `.env.local` from Netlify |
-| Folder not found | Fix path in **Settings** |
+| Folder not found | Fix `INVOICE_WATCH_DIR` in `.env.local` — use forward slashes |
 | No pending imports | Check `.xlsx` is in the date folder; watcher running on HP |
 | Scan from cloud site does nothing | Normal — cloud cannot read `C:\`. Use watcher on HP |
 | `DB_TARGET` not recognized (Windows) | Run `git pull` — watcher uses `--turso` flag now |
 | `no such table: delivery_proofs` | On HP: `npm run turso:apply-schema` then restart watcher. On Mac (Turso CLI): `./scripts/setup-turso.sh` |
-| Watcher runs but queue stays empty | Path is **typed** in Settings (not uploaded). Excel must be in a `DD.MM.YYYY` subfolder. Check watcher log for `queued N` |
+| Watcher runs but queue stays empty | Use forward slashes in `INVOICE_WATCH_DIR`. Excel must be inside `09.07.2026` (DD.MM.YYYY) |
+| `scanned 0` every 8 seconds | Read the `→` hint: wrong subfolder name, no `.xlsx` in date folder, or files already queued (`skipped` > 0 — check Import queue) |
 
 ---
 
