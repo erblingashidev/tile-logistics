@@ -21,6 +21,7 @@ import {
 import { InvoiceImportPanel,
   type InvoiceImportFormState,
 } from "@/components/InvoiceImportPanel";
+import { InvoiceImportQueuePanel } from "@/components/InvoiceImportQueuePanel";
 import { InvoiceNumberField } from "@/components/InvoiceNumberField";
 import { ProductSearchField } from "@/components/ProductSearchField";
 import { Badge, Button, Card, Input, Select, Alert, PageSection, LoadingState } from "@/components/ui";
@@ -1335,6 +1336,13 @@ export default function OrdersPage() {
         </div>
         </Card>
       </PageSection>
+
+      <InvoiceImportQueuePanel
+        onOpenForm={openFormFromInvoice}
+        onChanged={load}
+        onError={setError}
+        onWarning={setWarning}
+      />
 
       <InvoiceImportPanel
         onOpenForm={openFormFromInvoice}

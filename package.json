@@ -20,7 +20,9 @@
     "reset:local": "esbuild scripts/reset-data.ts --bundle --platform=node --format=cjs --outfile=.tmp/reset.cjs --external:@libsql/client --external:fs --external:path --external:crypto && DB_TARGET=local node .tmp/reset.cjs",
     "reset:all": "npm run reset:turso && npm run reset:local",
     "turso:info": "chmod +x scripts/setup-turso.sh && ./scripts/setup-turso.sh --info",
-    "sync:locations": "esbuild scripts/sync-warehouse-locations.ts --bundle --platform=node --format=cjs --outfile=.tmp/sync-locations.cjs --external:better-sqlite3 --external:@libsql/client --external:fs --external:path && node .tmp/sync-locations.cjs"
+    "sync:locations": "esbuild scripts/sync-warehouse-locations.ts --bundle --platform=node --format=cjs --outfile=.tmp/sync-locations.cjs --external:better-sqlite3 --external:@libsql/client --external:fs --external:path && node .tmp/sync-locations.cjs",
+    "watch:invoices": "esbuild scripts/watch-invoice-folder.ts --bundle --platform=node --format=cjs --outfile=.tmp/watch-invoices.cjs --external:@libsql/client --external:fs --external:path --external:os --external:crypto && node .tmp/watch-invoices.cjs",
+    "watch:invoices:turso": "esbuild scripts/watch-invoice-folder.ts --bundle --platform=node --format=cjs --outfile=.tmp/watch-invoices.cjs --external:@libsql/client --external:fs --external:path --external:os --external:crypto && DB_TARGET=turso node .tmp/watch-invoices.cjs"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",

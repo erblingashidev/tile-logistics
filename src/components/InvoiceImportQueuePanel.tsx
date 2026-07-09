@@ -1,0 +1,321 @@
+"use client";
+
+import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
+import { Alert, Button, Card } from "@/components/ui";
+import {
+  agimiDocumentKindLabel,
+  type AgimiDocumentKind,
+} from "@/lib/invoices/parse-agimi-invoice";
+import type { InvoiceImportFormState } from "@/components/InvoiceImportPanel";
+
+type QueueItem = {
+  id: number;
+  status: string;
+  sourceFileName: string;
+  sourceFolderDate: string | null;
+  duplicateOrderId: number | null;
+  errorMessage: string | null;
+  submittedAt: string;
+  parsed: {
+    invoiceNumber: string;
+    customerName: string;
+    customerPhone?: string;
+    salesAgent?: string;
+    address: string;
+    city: string;
+    region: string;
+    orderDate: string;
+    price: number;
+    items: Array<{
+      productEan?: string;
+      productName?: string;
+      quantityM2?: number;
+      weightKg?: number;
+      lengthM?: number;
+      manualPieces?: number;
+      unit: string;
+    }>;
+    warnings: string[];
+    documentKind: AgimiDocumentKind;
+  };
+  form: InvoiceImportFormState;
+};
+
+interface InvoiceImportQueuePanelProps {
+  onOpenForm: (form: InvoiceImportFormState) => void;
+  onChanged: () => void;
+  onError: (message: string) => void;
+  onWarning: (message: string) => void;
+}
+
+export function InvoiceImportQueuePanel({
+  onOpenForm,
+  onChanged,
+  onError,
+  onWarning,
+}: InvoiceImportQueuePanelProps) {
+  const [expanded, setExpanded] = useState(true);
+  const [items, setItems] = useState<QueueItem[]>([]);
+  const [watchRoot, setWatchRoot] = useState("");
+  const [configured, setConfigured] = useState(false);
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [invoiceOverrides, setInvoiceOverrides] = useState<Record<number, string>>(
+    {}
+  );
+
+  const load = useCallback(async () => {
+    const res = await fetch("/api/orders/import-queue?status=pending", {
+      credentials: "same-origin",
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    setItems(data.items ?? []);
+    setWatchRoot(data.watchRoot ?? "");
+    setConfigured(Boolean(data.configured));
+    if ((data.pendingCount ?? 0) > 0) setExpanded(true);
+  }, []);
+
+  useEffect(() => {
+    void load();
+    const timer = setInterval(() => void load(), 15000);
+    return () => clearInterval(timer);
+  }, [load]);
+
+  async function scanFolder() {
+    if (!configured) {
+      onError("Set the invoice folder in Settings first.");
+      return;
+    }
+    setScanning(true);
+    onError("");
+    try {
+      const res = await fetch("/api/orders/import-queue", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        onError((data.error as string) ?? "Scan failed");
+        return;
+      }
+      onWarning(
+        `Scanned ${data.scanned} file(s): ${data.queued} queued, ${data.skipped} skipped`
+      );
+      await load();
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  async function review(id: number, action: "approve" | "reject", merge = false) {
+    setBusyId(id);
+    onError("");
+    try {
+      const res = await fetch(`/api/orders/import-queue/${id}`, {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          merge,
+          invoiceNumberOverride: invoiceOverrides[id]?.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        onError((data.error as string) ?? "Action failed");
+        return;
+      }
+      if (action === "approve") {
+        onWarning(
+          merge
+            ? `Approved — merged into order ${data.invoiceNumber}`
+            : `Approved — order ${data.invoiceNumber} created`
+        );
+        onChanged();
+      }
+      await load();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <Card className="mb-4 overflow-hidden p-0">
+      <button
+        type="button"
+        onClick={() => setExpanded((open) => !open)}
+        className="flex w-full items-center justify-between gap-3 border-b border-zinc-200 bg-amber-50/80 px-5 py-4 text-left"
+      >
+        <div>
+          <p className="text-base font-semibold text-zinc-900">
+            Import queue
+            {items.length > 0 ? ` (${items.length} pending)` : ""}
+          </p>
+          <p className="mt-1 text-sm text-zinc-600">
+            Approve, decline, or edit before orders are created
+          </p>
+        </div>
+        <span className="text-sm text-zinc-400">{expanded ? "▼" : "▶"}</span>
+      </button>
+
+      {expanded && (
+        <div className="space-y-4 p-5">
+          {!configured ? (
+            <Alert tone="warning">
+              Invoice folder not set on this PC.{" "}
+              <Link href="/settings" className="font-medium underline">
+                Open Settings
+              </Link>{" "}
+              and enter the path to your Faturat-Logistics folder.
+            </Alert>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="secondary"
+                disabled={scanning}
+                onClick={() => void scanFolder()}
+              >
+                {scanning ? "Scanning…" : "Scan folder now"}
+              </Button>
+              <p className="text-xs text-zinc-500">
+                Watching{" "}
+                <span className="font-mono">{watchRoot}</span> — date subfolders
+                like <span className="font-mono">09.07.2026</span>
+              </p>
+            </div>
+          )}
+
+          {items.length === 0 ? (
+            <p className="text-sm text-zinc-500">
+              No pending imports. Save Excel files into today&apos;s date folder,
+              then scan or run the watcher on this PC.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {items.map((item) => {
+                const invoiceNumber =
+                  invoiceOverrides[item.id] ??
+                  item.parsed.invoiceNumber ??
+                  "";
+                return (
+                  <Card key={item.id} className="space-y-3 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="font-semibold text-zinc-900">
+                          {item.parsed.customerName || "—"}
+                        </p>
+                        <p className="mt-1 font-mono text-xs text-zinc-600">
+                          {item.sourceFileName}
+                          {item.sourceFolderDate
+                            ? ` · ${item.sourceFolderDate}`
+                            : ""}
+                        </p>
+                        <p className="mt-1 text-xs text-zinc-500">
+                          {new Date(item.submittedAt).toLocaleString()} ·{" "}
+                          {item.parsed.items.length} product(s) ·{" "}
+                          {agimiDocumentKindLabel(item.parsed.documentKind)}
+                        </p>
+                      </div>
+                      {item.duplicateOrderId ? (
+                        <Alert tone="warning">
+                          Invoice already exists (order #{item.duplicateOrderId})
+                        </Alert>
+                      ) : null}
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="block text-xs">
+                        <span className="mb-1 block font-medium text-zinc-600">
+                          Invoice number
+                        </span>
+                        <input
+                          value={invoiceNumber}
+                          onChange={(e) =>
+                            setInvoiceOverrides((prev) => ({
+                              ...prev,
+                              [item.id]: e.target.value,
+                            }))
+                          }
+                          className="w-full rounded-lg border border-zinc-300 px-3 py-2 font-mono text-sm"
+                          placeholder="26-SHV01-001-7200"
+                        />
+                      </label>
+                      <div className="text-sm">
+                        <p className="text-xs font-medium text-zinc-500">Referenti</p>
+                        <p>{item.parsed.salesAgent || "—"}</p>
+                        <p className="mt-2 text-xs font-medium text-zinc-500">
+                          Delivery
+                        </p>
+                        <p>
+                          {[item.parsed.address, item.parsed.city, item.parsed.region]
+                            .filter(Boolean)
+                            .join(" · ") || "—"}
+                        </p>
+                        {item.parsed.customerPhone ? (
+                          <p className="mt-1 text-zinc-700">
+                            Tel: {item.parsed.customerPhone}
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {item.parsed.warnings.length > 0 && (
+                      <ul className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                        {item.parsed.warnings.map((w) => (
+                          <li key={w}>• {w}</li>
+                        ))}
+                      </ul>
+                    )}
+
+                    {item.errorMessage && (
+                      <Alert tone="error">{item.errorMessage}</Alert>
+                    )}
+
+                    <div className="flex flex-wrap gap-2 border-t border-zinc-100 pt-3">
+                      <Button
+                        disabled={busyId === item.id || !invoiceNumber.trim()}
+                        onClick={() =>
+                          void review(
+                            item.id,
+                            "approve",
+                            Boolean(item.duplicateOrderId)
+                          )
+                        }
+                      >
+                        {item.duplicateOrderId ? "Approve (merge)" : "Approve"}
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        disabled={busyId === item.id}
+                        onClick={() => {
+                          onOpenForm({
+                            ...item.form,
+                            invoiceNumber,
+                          });
+                        }}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        disabled={busyId === item.id}
+                        onClick={() => void review(item.id, "reject")}
+                      >
+                        Decline
+                      </Button>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}

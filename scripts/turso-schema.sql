@@ -343,6 +343,34 @@ CREATE INDEX IF NOT EXISTS idx_warehouse_reports_employee
   ON warehouse_reports(employee_id);
 CREATE INDEX IF NOT EXISTS idx_warehouse_report_edit_requests_status
   ON warehouse_report_edit_requests(status);
+
+CREATE TABLE IF NOT EXISTS invoice_import_queue (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  source_file_name TEXT NOT NULL,
+  source_file_path TEXT,
+  source_folder_date TEXT,
+  file_fingerprint TEXT NOT NULL,
+  parsed_json TEXT NOT NULL,
+  duplicate_order_id INTEGER REFERENCES orders(id) ON DELETE SET NULL,
+  error_message TEXT,
+  order_id INTEGER REFERENCES orders(id) ON DELETE SET NULL,
+  admin_note TEXT,
+  submitted_at TEXT NOT NULL,
+  reviewed_at TEXT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_invoice_import_queue_fingerprint
+  ON invoice_import_queue(file_fingerprint);
+CREATE INDEX IF NOT EXISTS idx_invoice_import_queue_status
+  ON invoice_import_queue(status);
+
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_stock_balances_product ON stock_balances(product_id);
 CREATE INDEX IF NOT EXISTS idx_stock_movements_product ON stock_movements(product_id);
 CREATE INDEX IF NOT EXISTS idx_vehicle_maintenance_vehicle

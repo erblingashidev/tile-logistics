@@ -468,6 +468,41 @@ export const warehouseReportEditRequests = sqliteTable(
   }
 );
 
+/** Excel/PDF dropped in a watch folder — admin approves before creating orders. */
+export const invoiceImportQueue = sqliteTable(
+  "invoice_import_queue",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    status: text("status").notNull().default("pending"),
+    sourceFileName: text("source_file_name").notNull(),
+    sourceFilePath: text("source_file_path"),
+    sourceFolderDate: text("source_folder_date"),
+    fileFingerprint: text("file_fingerprint").notNull(),
+    parsedJson: text("parsed_json").notNull(),
+    duplicateOrderId: integer("duplicate_order_id").references(() => orders.id, {
+      onDelete: "set null",
+    }),
+    errorMessage: text("error_message"),
+    orderId: integer("order_id").references(() => orders.id, {
+      onDelete: "set null",
+    }),
+    adminNote: text("admin_note"),
+    submittedAt: text("submitted_at").notNull(),
+    reviewedAt: text("reviewed_at"),
+  },
+  (table) => ({
+    fingerprintIdx: uniqueIndex("idx_invoice_import_queue_fingerprint").on(
+      table.fileFingerprint
+    ),
+  })
+);
+
+export const appSettings = sqliteTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
 export const employeeNotifications = sqliteTable("employee_notifications", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   employeeId: integer("employee_id")

@@ -333,3 +333,14 @@ export async function importInvoiceFromExcel(
     invoices: [entry],
   };
 }
+
+export async function buildImportEntryFromParsed(parsed: ParsedAgimiInvoice) {
+  return buildImportEntry(parsed);
+}
+
+export async function createOrMergeFromEntry(
+  entry: InvoiceImportEntry,
+  options?: InvoiceImportOptions
+) {
+  return createOrMergeEntry(entry, options);
+}
