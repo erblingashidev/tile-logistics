@@ -138,9 +138,21 @@ export function InvoiceImportQueuePanel({
 
   async function review(
     id: number,
-    action: "approve" | "reject" | "restore",
+    action: "approve" | "reject" | "restore" | "delete",
     merge = false
   ) {
+    if (action === "delete") {
+      const item = items.find((row) => row.id === id);
+      const label = item?.parsed.customerName || item?.sourceFileName || "this import";
+      if (
+        !window.confirm(
+          `Remove "${label}" from the queue permanently? This cannot be undone.`
+        )
+      ) {
+        return;
+      }
+    }
+
     setBusyId(id);
     onError("");
     try {
@@ -169,6 +181,8 @@ export function InvoiceImportQueuePanel({
       } else if (action === "restore") {
         onWarning("Restored to pending queue");
         setTab("pending");
+      } else if (action === "delete") {
+        onWarning("Removed from import queue");
       }
       await load();
     } finally {
@@ -198,12 +212,10 @@ export function InvoiceImportQueuePanel({
       {expanded && (
         <div className="space-y-4 p-5">
           <Alert tone="info">
-            Invoices are picked up automatically on the HP PC. Run{" "}
-            <span className="font-mono">npm run watch:invoices:turso</span> in
-            the project folder (with{" "}
-            <span className="font-mono">INVOICE_WATCH_DIR</span> in{" "}
-            <span className="font-mono">.env.local</span>). Approve or decline
-            here on the website.
+            The import queue is stored online — deleting Excel files from the HP
+            folder does not remove queue entries by itself. The HP watcher removes
+            them on the next scan when the file is gone, or use{" "}
+            <strong>Remove</strong> here anytime.
           </Alert>
 
           {configured ? (
@@ -383,6 +395,13 @@ export function InvoiceImportQueuePanel({
                           Restore to pending
                         </Button>
                       )}
+                      <Button
+                        variant="ghost"
+                        disabled={busyId === item.id}
+                        onClick={() => void review(item.id, "delete")}
+                      >
+                        Remove
+                      </Button>
                     </div>
                   </Card>
                 );

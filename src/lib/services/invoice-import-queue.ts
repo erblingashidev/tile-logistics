@@ -318,12 +318,98 @@ export async function restoreImportQueueItem(
   return { ok: true };
 }
 
+function pathIsUnderRoot(filePath: string, root: string): boolean {
+  const resolvedFile = path.resolve(filePath);
+  const resolvedRoot = path.resolve(root);
+  if (process.platform === "win32") {
+    const fileLower = resolvedFile.toLowerCase();
+    const rootLower = resolvedRoot.toLowerCase();
+    return fileLower === rootLower || fileLower.startsWith(`${rootLower}${path.sep}`);
+  }
+  return (
+    resolvedFile === resolvedRoot ||
+    resolvedFile.startsWith(`${resolvedRoot}${path.sep}`)
+  );
+}
+
+/** Remove pending/declined queue rows when the source Excel file was deleted from disk. */
+export async function purgeImportQueueMissingFiles(
+  watchRoot: string
+): Promise<number> {
+  const absoluteRoot = path.resolve(watchRoot);
+  if (!fs.existsSync(absoluteRoot)) return 0;
+
+  const db = await getDb();
+  const rows = await dbAll(
+    db
+      .select({
+        id: invoiceImportQueue.id,
+        sourceFilePath: invoiceImportQueue.sourceFilePath,
+      })
+      .from(invoiceImportQueue)
+      .where(inArray(invoiceImportQueue.status, ["pending", "rejected"]))
+  );
+
+  let purged = 0;
+  for (const row of rows) {
+    const sourcePath = row.sourceFilePath?.trim();
+    if (!sourcePath) continue;
+    if (!pathIsUnderRoot(sourcePath, absoluteRoot)) continue;
+    if (fs.existsSync(sourcePath)) continue;
+    await db
+      .delete(invoiceImportQueue)
+      .where(eq(invoiceImportQueue.id, row.id));
+    purged += 1;
+  }
+  return purged;
+}
+
+export async function deleteImportQueueItem(
+  id: number
+): Promise<{ ok: true } | { ok: false; error: string; status?: number }> {
+  const db = await getDb();
+  const row = await dbOne(
+    db
+      .select({ id: invoiceImportQueue.id, status: invoiceImportQueue.status })
+      .from(invoiceImportQueue)
+      .where(eq(invoiceImportQueue.id, id))
+  );
+  if (!row) return { ok: false, error: "Queue item not found", status: 404 };
+  if (row.status === "approved") {
+    return {
+      ok: false,
+      error: "Approved imports cannot be removed from the queue",
+      status: 409,
+    };
+  }
+
+  await db.delete(invoiceImportQueue).where(eq(invoiceImportQueue.id, id));
+  return { ok: true };
+}
+
+async function finalizeScanResult(
+  absoluteRoot: string,
+  result: {
+    scanned: number;
+    queued: number;
+    skipped: number;
+    errors: string[];
+    hint?: string;
+    watching?: string;
+    dateFolders?: string[];
+  }
+) {
+  const purged = await purgeImportQueueMissingFiles(absoluteRoot);
+  return { ...result, purged };
+}
+
 export async function scanInvoiceWatchRoot(
   rootDir: string
 ): Promise<{
   scanned: number;
   queued: number;
   skipped: number;
+  purged: number;
   errors: string[];
   hint?: string;
   watching?: string;
@@ -336,10 +422,11 @@ export async function scanInvoiceWatchRoot(
       scanned: 0,
       queued: 0,
       skipped: 0,
+      purged: 0,
       errors: [`Folder not found on this computer: ${absoluteRoot}`],
       hint: isWinPath
-        ? "Scan only works on the Windows PC where that folder exists. Open the app locally on that PC (npm run dev) or run npm run watch:invoices:turso there — not from the cloud website."
-        : "Check the path in Settings. Use the main Faturat-Logistics folder, or a date folder like 09.07.2026.",
+        ? "Scan only works on the Windows PC where that folder exists. Run npm run watch:invoices:turso there — not from the cloud website."
+        : "Check INVOICE_WATCH_DIR in .env.local. Use the main Faturat-Logistics folder, or a date folder like 09.07.2026.",
     };
   }
 
@@ -383,7 +470,7 @@ export async function scanInvoiceWatchRoot(
   // User pointed directly at a date folder (e.g. ...\09.07.2026)
   if (isDateFolderName(rootName)) {
     await scanDirectory(absoluteRoot, folderDateLabelToIso(rootName));
-    return {
+    return finalizeScanResult(absoluteRoot, {
       scanned,
       queued,
       skipped,
@@ -394,7 +481,7 @@ export async function scanInvoiceWatchRoot(
           : undefined,
       watching: absoluteRoot,
       dateFolders: [rootName],
-    };
+    });
   }
 
   // Main folder: scan each DD.MM.YYYY subfolder
@@ -402,14 +489,14 @@ export async function scanInvoiceWatchRoot(
   try {
     entries = fs.readdirSync(absoluteRoot, { withFileTypes: true });
   } catch (err) {
-    return {
+    return finalizeScanResult(absoluteRoot, {
       scanned: 0,
       queued: 0,
       skipped: 0,
       errors: [
         `Cannot read folder: ${err instanceof Error ? err.message : "access denied"}`,
       ],
-    };
+    });
   }
 
   const dateFolders = entries.filter(
@@ -434,7 +521,7 @@ export async function scanInvoiceWatchRoot(
     if (rootExcelFiles.length > 0) {
       hint += ` Found ${rootExcelFiles.length} Excel file(s) in the main folder — move them into a date subfolder.`;
     }
-    return {
+    return finalizeScanResult(absoluteRoot, {
       scanned,
       queued,
       skipped,
@@ -442,7 +529,7 @@ export async function scanInvoiceWatchRoot(
       hint,
       watching: absoluteRoot,
       dateFolders: [],
-    };
+    });
   }
 
   for (const entry of dateFolders) {
@@ -452,7 +539,7 @@ export async function scanInvoiceWatchRoot(
   }
 
   if (scanned === 0 && errors.length === 0) {
-    return {
+    return finalizeScanResult(absoluteRoot, {
       scanned,
       queued,
       skipped,
@@ -463,17 +550,17 @@ export async function scanInvoiceWatchRoot(
         .join(", ")}) but no Excel files. Save .xlsx exports inside one of them.`,
       watching: absoluteRoot,
       dateFolders: dateFolders.map((e) => e.name),
-    };
+    });
   }
 
-  return {
+  return finalizeScanResult(absoluteRoot, {
     scanned,
     queued,
     skipped,
     errors,
     watching: absoluteRoot,
     dateFolders: dateFolders.map((e) => e.name),
-  };
+  });
 }
 
 export async function pendingImportQueueCount(): Promise<number> {

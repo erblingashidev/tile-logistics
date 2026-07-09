@@ -48,6 +48,9 @@ async function runScan() {
   if (result.errors.length > 0) {
     parts.push(`errors ${result.errors.length}`);
   }
+  if (result.purged > 0) {
+    parts.push(`purged ${result.purged}`);
+  }
   console.log(
     `[${new Date().toLocaleTimeString()}] ${parts.join(", ")} — ${root}`
   );
@@ -59,6 +62,11 @@ async function runScan() {
   }
   if (result.scanned > 0 && result.skipped === result.scanned) {
     console.log("  → All files already in import queue (check Orders → Import queue)");
+  }
+  if (result.purged > 0) {
+    console.log(
+      `  → Removed ${result.purged} queue item(s) whose Excel file was deleted from disk`
+    );
   }
   for (const err of result.errors.slice(0, 5)) {
     console.log(`  · ${err}`);

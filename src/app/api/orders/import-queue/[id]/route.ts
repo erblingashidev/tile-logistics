@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireApiAdmin } from "@/lib/auth/api-guard";
 import {
   approveImportQueueItem,
+  deleteImportQueueItem,
   rejectImportQueueItem,
   restoreImportQueueItem,
 } from "@/lib/services/invoice-import-queue";
@@ -57,6 +58,17 @@ export async function PATCH(
 
   if (action === "restore") {
     const result = await restoreImportQueueItem(id);
+    if (!result.ok) {
+      return NextResponse.json(
+        { error: result.error },
+        { status: result.status ?? 422 }
+      );
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  if (action === "delete") {
+    const result = await deleteImportQueueItem(id);
     if (!result.ok) {
       return NextResponse.json(
         { error: result.error },
