@@ -25,13 +25,23 @@ export async function setAppSetting(key: string, value: string): Promise<void> {
   const db = await getDb();
   const trimmed = value.trim();
   const updatedAt = nowIso();
-  await db
-    .insert(appSettings)
-    .values({ key, value: trimmed, updatedAt })
-    .onConflictDoUpdate({
-      target: appSettings.key,
-      set: { value: trimmed, updatedAt },
-    });
+
+  const existing = await dbOne(
+    db
+      .select({ key: appSettings.key })
+      .from(appSettings)
+      .where(eq(appSettings.key, key))
+  );
+
+  if (existing) {
+    await db
+      .update(appSettings)
+      .set({ value: trimmed, updatedAt })
+      .where(eq(appSettings.key, key));
+    return;
+  }
+
+  await db.insert(appSettings).values({ key, value: trimmed, updatedAt });
 }
 
 /** Folder path saved in Settings (per deployment). Falls back to INVOICE_WATCH_DIR env. */

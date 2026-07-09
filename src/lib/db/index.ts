@@ -59,6 +59,41 @@ export function setDeliveryProofDbPhotosEnabled(enabled: boolean) {
   deliveryProofDbPhotosEnabled = enabled;
 }
 
+async function ensureInvoiceImportTables(client: Client) {
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS invoice_import_queue (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      source_file_name TEXT NOT NULL,
+      source_file_path TEXT,
+      source_folder_date TEXT,
+      file_fingerprint TEXT NOT NULL,
+      parsed_json TEXT NOT NULL,
+      duplicate_order_id INTEGER REFERENCES orders(id) ON DELETE SET NULL,
+      error_message TEXT,
+      order_id INTEGER REFERENCES orders(id) ON DELETE SET NULL,
+      admin_note TEXT,
+      submitted_at TEXT NOT NULL,
+      reviewed_at TEXT
+    )
+  `);
+  await client.execute(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_invoice_import_queue_fingerprint
+      ON invoice_import_queue(file_fingerprint)
+  `);
+  await client.execute(`
+    CREATE INDEX IF NOT EXISTS idx_invoice_import_queue_status
+      ON invoice_import_queue(status)
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+}
+
 async function ensureEmployeeNotificationsTable(client: Client) {
   await client.execute(`
     CREATE TABLE IF NOT EXISTS employee_notifications (
@@ -708,6 +743,7 @@ export async function getDb() {
         await ensureEmployeeNotificationsTable(clientInstance);
         await ensureAdminsTable(clientInstance);
         await ensureOrderDeliveryLinksTable(clientInstance);
+        await ensureInvoiceImportTables(clientInstance);
         if (shouldRunRuntimeMigrations()) {
           await runMigrations(clientInstance);
         }

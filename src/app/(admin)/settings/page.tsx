@@ -140,7 +140,12 @@ export default function SettingsPage() {
     setInvoiceFolderSaving(false);
 
     if (!res.ok) {
-      setInvoiceFolderError(data.error ?? "Could not save folder path");
+      setInvoiceFolderError(
+        (data.error as string) ??
+          (res.status === 403
+            ? "Admin access required"
+            : `Could not save folder path (${res.status})`)
+      );
       return;
     }
 
