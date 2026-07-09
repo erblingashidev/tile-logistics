@@ -20,6 +20,14 @@ import { getDb } from "../src/lib/db";
 
 const POLL_MS = Number(process.env.INVOICE_WATCH_POLL_MS ?? 8000);
 
+function applyCliDatabaseTarget() {
+  if (process.argv.includes("--turso")) {
+    process.env.DB_TARGET = "turso";
+  } else if (process.argv.includes("--local")) {
+    process.env.DB_TARGET = "local";
+  }
+}
+
 async function runScan() {
   const root = await getInvoiceWatchRoot();
   if (!root) {
@@ -51,6 +59,7 @@ async function runScan() {
 }
 
 async function main() {
+  applyCliDatabaseTarget();
   configureScriptDatabase();
   await getDb();
 
