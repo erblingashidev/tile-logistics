@@ -8,6 +8,10 @@ export interface MapStyleConfig {
   attribution: string;
   provider: MapTileProvider;
   hasKey: boolean;
+  keySuffix?: string | null;
+  maptilerStatus?: number;
+  fallbackReason?: "maptiler_rejected";
+  hint?: string;
 }
 
 export function useMapStyle() {

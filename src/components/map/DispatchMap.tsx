@@ -342,6 +342,12 @@ export function DispatchMap({
 
   return (
     <Card className="overflow-hidden">
+      {mapStyle.hint ? (
+        <div className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          {mapStyle.hint}
+          {mapStyle.keySuffix ? ` (key ${mapStyle.keySuffix})` : ""}
+        </div>
+      ) : null}
       {mapTileError ? (
         <div className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
           {mapTileError}

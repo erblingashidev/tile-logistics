@@ -95,6 +95,7 @@ export function LocationMapPicker({
 
   return (
     <div className="space-y-2">
+      {mapStyle?.hint ? <Alert tone="warning">{mapStyle.hint}</Alert> : null}
       {styleError ? <Alert tone="error">{styleError}</Alert> : null}
       {mapTileError ? <Alert tone="warning">{mapTileError}</Alert> : null}
       <div
