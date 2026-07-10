@@ -9,26 +9,56 @@ export const KOSOVO_MAP_BOUNDS: [[number, number], [number, number]] = [
   [22.15, 43.35],
 ];
 
+function mapboxToken(): string | undefined {
+  return (
+    process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN?.trim() ||
+    process.env.MAPBOX_ACCESS_TOKEN?.trim() ||
+    undefined
+  );
+}
+
+function maptilerKey(): string | undefined {
+  return (
+    process.env.NEXT_PUBLIC_MAPTILER_KEY?.trim() ||
+    process.env.MAPTILER_KEY?.trim() ||
+    undefined
+  );
+}
+
+export type MapTileProvider = "mapbox" | "maptiler" | "openfreemap";
+
+export function getMapTileProvider(): MapTileProvider {
+  if (mapboxToken()) return "mapbox";
+  if (maptilerKey()) return "maptiler";
+  return "openfreemap";
+}
+
+/** Resolve map style at runtime (server API or build). Supports server-only env keys. */
 export function getMapStyleUrl(): string {
-  const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN?.trim();
-  if (mapboxToken) {
-    return `https://api.mapbox.com/styles/v1/mapbox/streets-v12?access_token=${mapboxToken}`;
+  const mapbox = mapboxToken();
+  if (mapbox) {
+    return `https://api.mapbox.com/styles/v1/mapbox/streets-v12?access_token=${mapbox}`;
   }
 
-  const maptilerKey = process.env.NEXT_PUBLIC_MAPTILER_KEY?.trim();
-  if (maptilerKey) {
-    return `https://api.maptiler.com/maps/streets-v2/style.json?key=${maptilerKey}`;
+  const maptiler = maptilerKey();
+  if (maptiler) {
+    return `https://api.maptiler.com/maps/streets-v2/style.json?key=${maptiler}`;
   }
 
   return "https://tiles.openfreemap.org/styles/liberty";
 }
 
 export function getMapAttribution(): string {
-  if (process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN?.trim()) {
-    return "© Mapbox © OpenStreetMap";
-  }
-  if (process.env.NEXT_PUBLIC_MAPTILER_KEY?.trim()) {
-    return "© MapTiler © OpenStreetMap";
-  }
+  if (mapboxToken()) return "© Mapbox © OpenStreetMap";
+  if (maptilerKey()) return "© MapTiler © OpenStreetMap";
   return "© OpenStreetMap contributors";
+}
+
+export function getMapConfig() {
+  return {
+    styleUrl: getMapStyleUrl(),
+    attribution: getMapAttribution(),
+    provider: getMapTileProvider(),
+    hasKey: getMapTileProvider() !== "openfreemap",
+  };
 }

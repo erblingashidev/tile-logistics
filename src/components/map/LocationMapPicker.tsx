@@ -5,11 +5,10 @@ import Map, { Marker, NavigationControl, type MapLayerMouseEvent } from "react-m
 import { Alert, LoadingState } from "@/components/ui";
 import type { LocationValue } from "@/components/LocationPicker";
 import {
-  getMapAttribution,
-  getMapStyleUrl,
   KOSOVO_MAP_BOUNDS,
   KOSOVO_MAP_CENTER,
 } from "@/lib/locations/map-config";
+import { useMapStyle } from "@/hooks/useMapStyle";
 
 interface ReverseGeocodeLocation {
   id: string;
@@ -40,6 +39,8 @@ export function LocationMapPicker({
   );
   const [geocoding, setGeocoding] = useState(false);
   const [error, setError] = useState("");
+  const [mapTileError, setMapTileError] = useState("");
+  const { config: mapStyle, loading: styleLoading, error: styleError } = useMapStyle();
 
   const reverseGeocode = useCallback(
     async (lat: number, lng: number) => {
@@ -94,10 +95,17 @@ export function LocationMapPicker({
 
   return (
     <div className="space-y-2">
+      {styleError ? <Alert tone="error">{styleError}</Alert> : null}
+      {mapTileError ? <Alert tone="warning">{mapTileError}</Alert> : null}
       <div
         className="relative overflow-hidden rounded border border-zinc-200"
         style={{ height }}
       >
+        {styleLoading || !mapStyle ? (
+          <div className="flex h-full items-center justify-center bg-zinc-50">
+            <LoadingState title="Loading map…" />
+          </div>
+        ) : (
         <Map
           initialViewState={{
             longitude: pin?.lng ?? initialLng ?? KOSOVO_MAP_CENTER.lng,
@@ -106,9 +114,16 @@ export function LocationMapPicker({
           }}
           maxBounds={KOSOVO_MAP_BOUNDS}
           style={{ width: "100%", height: "100%" }}
-          mapStyle={getMapStyleUrl()}
+          mapStyle={mapStyle.styleUrl}
           onClick={onMapClick}
           cursor={geocoding ? "wait" : "crosshair"}
+          onError={(e) =>
+            setMapTileError(
+              e.error?.message?.includes("403")
+                ? "Map tiles blocked — check MapTiler key and allowed domains."
+                : "Map tiles failed to load."
+            )
+          }
         >
           <NavigationControl position="top-right" showCompass={false} />
           {pin ? (
@@ -125,14 +140,17 @@ export function LocationMapPicker({
             </Marker>
           ) : null}
         </Map>
+        )}
         {geocoding ? (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-white/40">
             <LoadingState title="Looking up address…" />
           </div>
         ) : null}
+        {mapStyle ? (
         <p className="pointer-events-none absolute bottom-1 right-2 rounded bg-white/80 px-1.5 py-0.5 text-[10px] text-zinc-500">
-          {getMapAttribution()}
+          {mapStyle.attribution}
         </p>
+        ) : null}
       </div>
       <p className="text-xs text-zinc-500">
         Click the map to drop a pin, or drag the pin to adjust.

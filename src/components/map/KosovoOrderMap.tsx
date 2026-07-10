@@ -12,11 +12,11 @@ import { Badge, Card, EmptyState, LoadingState } from "@/components/ui";
 import type { WorkDayFilter } from "@/lib/delivery-schedule";
 import {
   getMapAttribution,
-  getMapStyleUrl,
   KOSOVO_MAP_BOUNDS,
   KOSOVO_MAP_CENTER,
 } from "@/lib/locations/map-config";
 import type { MapPin } from "@/lib/locations/map-pins";
+import { useMapStyle } from "@/hooks/useMapStyle";
 
 interface WarehouseLocation {
   lat: number;
@@ -108,17 +108,15 @@ function WarehouseMarker({ warehouse }: { warehouse: WarehouseLocation }) {
 export function KosovoOrderMap({
   filters,
   height = 520,
-  mapStyleUrl = getMapStyleUrl(),
-  mapAttribution = getMapAttribution(),
   onLoaded,
 }: {
   filters?: KosovoOrderMapFilters;
   height?: number | string;
-  mapStyleUrl?: string;
-  mapAttribution?: string;
   onLoaded?: (stats: Pick<MapOrdersResponse, "orderCount" | "streetPins" | "cityPins">) => void;
 }) {
   const mapRef = useRef<MapRef>(null);
+  const { config: mapStyle, loading: styleLoading, error: styleError } = useMapStyle();
+  const [mapTileError, setMapTileError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [data, setData] = useState<MapOrdersResponse | null>(null);
@@ -206,10 +204,20 @@ export function KosovoOrderMap({
     };
   }, [queryString, fitToPins, onLoaded]);
 
-  if (loading) {
+  if (loading || styleLoading) {
     return (
       <Card className="overflow-hidden">
         <LoadingState title="Loading delivery map…" />
+      </Card>
+    );
+  }
+
+  if (styleError || !mapStyle) {
+    return (
+      <Card className="overflow-hidden p-4">
+        <p className="text-sm text-red-700">
+          {styleError || "Map configuration unavailable"}
+        </p>
       </Card>
     );
   }
@@ -232,6 +240,11 @@ export function KosovoOrderMap({
 
   return (
     <Card className="overflow-hidden">
+      {mapTileError ? (
+        <div className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          {mapTileError}
+        </div>
+      ) : null}
       <div className="relative" style={{ height }}>
         <Map
           ref={mapRef}
@@ -242,8 +255,15 @@ export function KosovoOrderMap({
           }}
           maxBounds={KOSOVO_MAP_BOUNDS}
           style={{ width: "100%", height: "100%" }}
-          mapStyle={mapStyleUrl}
+          mapStyle={mapStyle.styleUrl}
           onClick={() => setSelectedPin(null)}
+          onError={(e) =>
+            setMapTileError(
+              e.error?.message?.includes("403")
+                ? "Map tiles blocked — check MapTiler key and allowed domains on Netlify."
+                : "Map tiles failed to load. Check your MapTiler key or redeploy."
+            )
+          }
         >
           <NavigationControl position="top-right" showCompass={false} />
           <WarehouseMarker warehouse={data.warehouse} />
@@ -301,7 +321,7 @@ export function KosovoOrderMap({
           ) : null}
         </Map>
         <p className="pointer-events-none absolute bottom-1 right-2 rounded bg-white/80 px-1.5 py-0.5 text-[10px] text-zinc-500">
-          {mapAttribution}
+          {mapStyle.attribution}
         </p>
       </div>
     </Card>

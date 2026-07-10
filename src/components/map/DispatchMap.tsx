@@ -11,13 +11,12 @@ import Map, {
 } from "react-map-gl/maplibre";
 import { Badge, Card, EmptyState, LoadingState } from "@/components/ui";
 import {
-  getMapAttribution,
-  getMapStyleUrl,
   KOSOVO_MAP_BOUNDS,
   KOSOVO_MAP_CENTER,
 } from "@/lib/locations/map-config";
 import { orderStopsForRoundTrip } from "@/lib/dispatch/route-cluster";
 import { WAREHOUSE_LOCATION } from "@/lib/locations";
+import { useMapStyle } from "@/hooks/useMapStyle";
 
 interface MapStop {
   id: number;
@@ -172,8 +171,6 @@ export function DispatchMap({
   includePlan = false,
   refreshKey = 0,
   height = 480,
-  mapStyleUrl = getMapStyleUrl(),
-  mapAttribution = getMapAttribution(),
 }: {
   deliveryRound?: number;
   region?: string;
@@ -181,10 +178,10 @@ export function DispatchMap({
   includePlan?: boolean;
   refreshKey?: number;
   height?: number | string;
-  mapStyleUrl?: string;
-  mapAttribution?: string;
 }) {
   const mapRef = useRef<MapRef>(null);
+  const { config: mapStyle, loading: styleLoading, error: styleError } = useMapStyle();
+  const [mapTileError, setMapTileError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [data, setData] = useState<DispatchMapData | null>(null);
@@ -305,10 +302,20 @@ export function DispatchMap({
     });
   }
 
-  if (loading) {
+  if (loading || styleLoading) {
     return (
       <Card className="overflow-hidden">
         <LoadingState title="Loading dispatch map…" />
+      </Card>
+    );
+  }
+
+  if (styleError || !mapStyle) {
+    return (
+      <Card className="overflow-hidden p-4">
+        <p className="text-sm text-red-700">
+          {styleError || "Map configuration unavailable"}
+        </p>
       </Card>
     );
   }
@@ -335,6 +342,11 @@ export function DispatchMap({
 
   return (
     <Card className="overflow-hidden">
+      {mapTileError ? (
+        <div className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          {mapTileError}
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2 border-b border-zinc-100 px-3 py-2">
         <p className="text-xs font-medium text-zinc-700">Trucks</p>
         {data.trucks.map((truck) => {
@@ -384,8 +396,15 @@ export function DispatchMap({
           }}
           maxBounds={KOSOVO_MAP_BOUNDS}
           style={{ width: "100%", height: "100%" }}
-          mapStyle={mapStyleUrl}
+          mapStyle={mapStyle.styleUrl}
           onClick={() => setSelected(null)}
+          onError={(e) =>
+            setMapTileError(
+              e.error?.message?.includes("403")
+                ? "Map tiles blocked — check MapTiler key and allowed domains on Netlify."
+                : "Map tiles failed to load. Check your MapTiler key or redeploy."
+            )
+          }
         >
           <NavigationControl position="top-right" showCompass={false} />
           <WarehouseMarker warehouse={data.warehouse} />
@@ -529,7 +548,7 @@ export function DispatchMap({
           ) : null}
         </Map>
         <p className="pointer-events-none absolute bottom-1 right-2 rounded bg-white/80 px-1.5 py-0.5 text-[10px] text-zinc-500">
-          {mapAttribution}
+          {mapStyle.attribution}
         </p>
       </div>
     </Card>
