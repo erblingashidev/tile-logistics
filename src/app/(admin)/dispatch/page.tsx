@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
-import { Badge, Button, Card, Alert, PageSection } from "@/components/ui";
+import { Badge, Button, Card, Alert, PageSection, StatCard } from "@/components/ui";
 import { formatDeliveryRound } from "@/lib/delivery-rounds";
 
 interface DispatchBoardOrder {
@@ -193,22 +193,28 @@ export default function DispatchPage() {
         <Button variant="secondary" onClick={load} disabled={loading}>
           Refresh
         </Button>
-        <Link
-          href="/orders"
-          className="inline-flex items-center justify-center rounded px-3.5 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100"
-        >
-          Orders · assign
+        <Link href="/orders">
+          <Button variant="ghost">Orders · assign</Button>
         </Link>
-        <Link
-          href="/routes"
-          className="inline-flex items-center justify-center rounded px-3.5 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100"
-        >
-          Route planner
+        <Link href="/routes">
+          <Button variant="ghost">Route planner</Button>
         </Link>
       </div>
 
       {board && (
         <>
+          <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard label="Unassigned orders" value={board.unassignedCount} />
+            <StatCard
+              label="Urgent waiting"
+              value={board.unassignedUrgent.length}
+            />
+            <StatCard label="Trucks on board" value={board.trucks.length} />
+            <StatCard
+              label="Pickers active"
+              value={board.pickerWorkload.length}
+            />
+          </div>
           <PageSection title="Picker workload">
             {balanceHint && (
               <Alert tone="warning">

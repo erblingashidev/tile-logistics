@@ -6,25 +6,110 @@ import { useEffect, useState } from "react";
 import { BRAND } from "@/lib/brand";
 import { Button } from "@/components/ui";
 
-const nav = [
-  { href: "/", label: "Dashboard" },
-  { href: "/orders", label: "Orders" },
-  { href: "/dispatch", label: "Dispatch" },
-  { href: "/warehouse", label: "Warehouse" },
-  { href: "/routes", label: "Routes" },
-  { href: "/vehicles", label: "Vehicles" },
-  { href: "/vehicles/maintenance", label: "Maintenance" },
-  { href: "/employees", label: "Employees" },
-  { href: "/admins", label: "Admins" },
-  { href: "/logs", label: "Logs" },
-  { href: "/reports", label: "Reports" },
-  { href: "/settings", label: "Profile" },
+const navGroups = [
+  {
+    label: "Operations",
+    items: [
+      { href: "/", label: "Dashboard" },
+      { href: "/orders", label: "Orders" },
+      { href: "/dispatch", label: "Dispatch" },
+      { href: "/routes", label: "Routes" },
+      { href: "/map", label: "Map" },
+    ],
+  },
+  {
+    label: "Fleet",
+    items: [
+      { href: "/vehicles", label: "Vehicles" },
+      { href: "/vehicles/maintenance", label: "Maintenance" },
+    ],
+  },
+  {
+    label: "People",
+    items: [
+      { href: "/employees", label: "Employees" },
+      { href: "/admins", label: "Admins" },
+    ],
+  },
+  {
+    label: "System",
+    items: [
+      { href: "/warehouse", label: "Warehouse" },
+      { href: "/reports", label: "Reports" },
+      { href: "/logs", label: "Logs" },
+      { href: "/settings", label: "Profile" },
+    ],
+  },
 ];
 
 function isActive(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
   if (href === "/vehicles") return pathname === "/vehicles";
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function NavLinks({
+  pathname,
+  onNavigate,
+  mobile = false,
+}: {
+  pathname: string;
+  onNavigate?: () => void;
+  mobile?: boolean;
+}) {
+  return (
+    <>
+      {navGroups.map((group) => (
+        <div key={group.label} className={mobile ? "mb-4" : "mb-3 last:mb-0"}>
+          <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+            {group.label}
+          </p>
+          {group.items.map((item) => {
+            const active = isActive(pathname, item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={onNavigate}
+                className={`block rounded px-3 transition ${
+                  mobile ? "py-2.5 text-sm" : "py-2 text-sm"
+                } ${
+                  active
+                    ? "bg-white/10 font-medium text-white"
+                    : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
+                }`}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
+        </div>
+      ))}
+    </>
+  );
+}
+
+function MenuIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-5 w-5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      aria-hidden
+    >
+      {open ? (
+        <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
+      ) : (
+        <>
+          <path strokeLinecap="round" d="M4 7h16" />
+          <path strokeLinecap="round" d="M4 12h16" />
+          <path strokeLinecap="round" d="M4 17h16" />
+        </>
+      )}
+    </svg>
+  );
 }
 
 export function AppShell({
@@ -70,30 +155,15 @@ export function AppShell({
   return (
     <div className="min-h-screen bg-[var(--background)]">
       <div className="flex min-h-screen">
-        <aside className="sticky top-0 hidden h-screen w-52 shrink-0 self-start flex-col bg-[var(--sidebar)] lg:flex">
+        <aside className="sticky top-0 hidden h-screen w-56 shrink-0 self-start flex-col bg-[var(--sidebar)] lg:flex">
           <div className="border-b border-white/10 px-5 py-6">
             <p className="text-[15px] font-semibold tracking-tight text-white">
               {BRAND.name}
             </p>
             <p className="mt-1 text-xs text-zinc-400">{BRAND.tagline}</p>
           </div>
-          <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-3">
-            {nav.map((item) => {
-              const active = isActive(pathname, item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`rounded px-3 py-2 text-sm transition ${
-                    active
-                      ? "bg-white/10 font-medium text-white"
-                      : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
-                  }`}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
+          <nav className="flex flex-1 flex-col overflow-y-auto p-3">
+            <NavLinks pathname={pathname} />
           </nav>
           <div className="border-t border-white/10 p-3">
             {userName && (
@@ -115,16 +185,16 @@ export function AppShell({
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/95 backdrop-blur">
+          <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/90">
             <div className="flex items-center justify-between gap-3 px-4 py-3 lg:px-8 lg:py-4">
               <div className="flex min-w-0 items-center gap-3 lg:hidden">
                 <button
                   type="button"
-                  aria-label="Open menu"
+                  aria-label={mobileNavOpen ? "Close menu" : "Open menu"}
                   className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded border border-zinc-200 text-zinc-700"
-                  onClick={() => setMobileNavOpen(true)}
+                  onClick={() => setMobileNavOpen((open) => !open)}
                 >
-                  <span className="text-lg leading-none">☰</span>
+                  <MenuIcon open={mobileNavOpen} />
                 </button>
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-zinc-900">
@@ -137,7 +207,9 @@ export function AppShell({
               </div>
               {title && (
                 <div className="hidden min-w-0 lg:block">
-                  <h1 className="text-lg font-semibold text-zinc-900">{title}</h1>
+                  <h1 className="text-lg font-semibold tracking-tight text-zinc-900">
+                    {title}
+                  </h1>
                   {description ? (
                     <p className="mt-0.5 text-sm text-zinc-500">{description}</p>
                   ) : null}
@@ -167,7 +239,7 @@ export function AppShell({
             <div className="fixed inset-0 z-50 lg:hidden">
               <button
                 type="button"
-                aria-label="Close menu"
+                aria-label="Close menu backdrop"
                 className="absolute inset-0 bg-black/40"
                 onClick={() => setMobileNavOpen(false)}
               />
@@ -179,29 +251,19 @@ export function AppShell({
                   </div>
                   <button
                     type="button"
-                    className="rounded px-2 py-1 text-zinc-400"
+                    aria-label="Close menu"
+                    className="rounded p-2 text-zinc-400 hover:bg-white/5"
                     onClick={() => setMobileNavOpen(false)}
                   >
-                    ✕
+                    <MenuIcon open />
                   </button>
                 </div>
                 <nav className="flex-1 overflow-y-auto p-3">
-                  {nav.map((item) => {
-                    const active = isActive(pathname, item.href);
-                    return (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        className={`mb-1 block rounded px-3 py-3 text-sm ${
-                          active
-                            ? "bg-white/10 font-medium text-white"
-                            : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
-                        }`}
-                      >
-                        {item.label}
-                      </Link>
-                    );
-                  })}
+                  <NavLinks
+                    pathname={pathname}
+                    mobile
+                    onNavigate={() => setMobileNavOpen(false)}
+                  />
                 </nav>
                 {userName && (
                   <p className="border-t border-white/10 px-4 py-3 text-xs text-zinc-400">

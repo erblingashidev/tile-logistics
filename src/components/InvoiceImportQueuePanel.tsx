@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Button, Card } from "@/components/ui";
+import { Alert, Badge, Button, CollapsibleCard, Input, SegmentedControl } from "@/components/ui";
 import {
   agimiDocumentKindLabel,
   type AgimiDocumentKind,
@@ -56,7 +56,8 @@ export function InvoiceImportQueuePanel({
   onError,
   onWarning,
 }: InvoiceImportQueuePanelProps) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const [tab, setTab] = useState<"pending" | "rejected">("pending");
   const [items, setItems] = useState<QueueItem[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
@@ -82,7 +83,6 @@ export function InvoiceImportQueuePanel({
     setRejectedCount(data.rejectedCount ?? 0);
     setWatchRoot(data.watchRoot ?? "");
     setConfigured(Boolean(data.configured));
-    if ((data.pendingCount ?? 0) > 0) setExpanded(true);
   }, [tab]);
 
   useEffect(() => {
@@ -191,93 +191,83 @@ export function InvoiceImportQueuePanel({
   }
 
   return (
-    <Card className="mb-4 overflow-hidden p-0">
-      <button
-        type="button"
-        onClick={() => setExpanded((open) => !open)}
-        className="flex w-full items-center justify-between gap-3 border-b border-zinc-200 bg-amber-50/80 px-5 py-4 text-left"
-      >
-        <div>
-          <p className="text-base font-semibold text-zinc-900">
-            Import queue
-            {pendingCount > 0 ? ` (${pendingCount} pending)` : ""}
-          </p>
-          <p className="mt-1 text-sm text-zinc-600">
-            Approve, decline, or edit before orders are created
+    <CollapsibleCard
+      className="mb-4"
+      title="Import queue"
+      subtitle="Approve or decline Excel invoices from the HP watcher"
+      headerTone="amber"
+      expanded={expanded}
+      onExpandedChange={setExpanded}
+      badge={
+        pendingCount > 0 ? (
+          <Badge tone="amber">{pendingCount} pending</Badge>
+        ) : rejectedCount > 0 ? (
+          <Badge tone="slate">{rejectedCount} declined</Badge>
+        ) : null
+      }
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-zinc-600">
+          HP PC runs the folder watcher — review imports here on the website.
+        </p>
+        <Button variant="ghost" size="sm" onClick={() => setShowHelp((v) => !v)}>
+          {showHelp ? "Hide help" : "How it works"}
+        </Button>
+      </div>
+
+      {showHelp ? (
+        <Alert tone="info">
+          The queue is stored online. Deleting Excel from the HP folder does not
+          remove entries until the watcher purges missing files or you click{" "}
+          <strong>Remove</strong>.
+        </Alert>
+      ) : null}
+
+      {configured ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={scanning}
+            onClick={() => void scanFolder()}
+          >
+            {scanning ? "Scanning…" : "Scan folder now"}
+          </Button>
+          <p className="text-xs text-zinc-500">
+            Path: <span className="font-mono">{watchRoot}</span>
           </p>
         </div>
-        <span className="text-sm text-zinc-400">{expanded ? "▼" : "▶"}</span>
-      </button>
+      ) : null}
 
-      {expanded && (
-        <div className="space-y-4 p-5">
-          <Alert tone="info">
-            The import queue is stored online — deleting Excel files from the HP
-            folder does not remove queue entries by itself. The HP watcher removes
-            them on the next scan when the file is gone, or use{" "}
-            <strong>Remove</strong> here anytime.
-          </Alert>
+      {scanHint ? <Alert tone="warning">{scanHint}</Alert> : null}
 
-          {configured ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                variant="secondary"
-                disabled={scanning}
-                onClick={() => void scanFolder()}
+      <SegmentedControl
+        value={tab}
+        onChange={setTab}
+        options={[
+          { value: "pending", label: `Pending${pendingCount > 0 ? ` (${pendingCount})` : ""}` },
+          { value: "rejected", label: `Declined${rejectedCount > 0 ? ` (${rejectedCount})` : ""}` },
+        ]}
+      />
+
+      {items.length === 0 ? (
+        <p className="text-sm text-zinc-500">
+          {tab === "pending"
+            ? "No pending imports. Save Excel (.xlsx) files into a date folder on the HP PC while the watcher is running."
+            : "No declined imports. Declined items stay here so you can restore or approve them later."}
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {items.map((item) => {
+            const invoiceNumber =
+              invoiceOverrides[item.id] ??
+              item.parsed.invoiceNumber ??
+              "";
+            return (
+              <div
+                key={item.id}
+                className="space-y-3 rounded-lg border border-zinc-200 bg-zinc-50/40 p-4"
               >
-                {scanning ? "Scanning…" : "Scan folder now"}
-              </Button>
-              <p className="text-xs text-zinc-500">
-                Local path:{" "}
-                <span className="font-mono">{watchRoot}</span>
-              </p>
-            </div>
-          ) : null}
-
-          {scanHint && (
-            <Alert tone="warning">{scanHint}</Alert>
-          )}
-
-          <div className="flex flex-wrap gap-2 border-b border-zinc-100 pb-3">
-            <button
-              type="button"
-              onClick={() => setTab("pending")}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
-                tab === "pending"
-                  ? "bg-zinc-900 text-white"
-                  : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
-              }`}
-            >
-              Pending{pendingCount > 0 ? ` (${pendingCount})` : ""}
-            </button>
-            <button
-              type="button"
-              onClick={() => setTab("rejected")}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
-                tab === "rejected"
-                  ? "bg-zinc-900 text-white"
-                  : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
-              }`}
-            >
-              Declined{rejectedCount > 0 ? ` (${rejectedCount})` : ""}
-            </button>
-          </div>
-
-          {items.length === 0 ? (
-            <p className="text-sm text-zinc-500">
-              {tab === "pending"
-                ? "No pending imports. Save Excel (.xlsx) files into a date folder on the HP PC while the watcher is running."
-                : "No declined imports. Declined items stay here so you can restore or approve them later."}
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {items.map((item) => {
-                const invoiceNumber =
-                  invoiceOverrides[item.id] ??
-                  item.parsed.invoiceNumber ??
-                  "";
-                return (
-                  <Card key={item.id} className="space-y-3 p-4">
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div>
                         <p className="font-semibold text-zinc-900">
@@ -306,22 +296,18 @@ export function InvoiceImportQueuePanel({
                     </div>
 
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <label className="block text-xs">
-                        <span className="mb-1 block font-medium text-zinc-600">
-                          Invoice number
-                        </span>
-                        <input
-                          value={invoiceNumber}
-                          onChange={(e) =>
-                            setInvoiceOverrides((prev) => ({
-                              ...prev,
-                              [item.id]: e.target.value,
-                            }))
-                          }
-                          className="w-full rounded-lg border border-zinc-300 px-3 py-2 font-mono text-sm"
-                          placeholder="26-SHV01-001-7200"
-                        />
-                      </label>
+                      <Input
+                        label="Invoice number"
+                        value={invoiceNumber}
+                        onChange={(e) =>
+                          setInvoiceOverrides((prev) => ({
+                            ...prev,
+                            [item.id]: e.target.value,
+                          }))
+                        }
+                        className="font-mono"
+                        placeholder="26-SHV01-001-7200"
+                      />
                       <div className="text-sm">
                         <p className="text-xs font-medium text-zinc-500">Referenti</p>
                         <p>{item.parsed.salesAgent || "—"}</p>
@@ -403,13 +389,11 @@ export function InvoiceImportQueuePanel({
                         Remove
                       </Button>
                     </div>
-                  </Card>
+                  </div>
                 );
               })}
             </div>
           )}
-        </div>
-      )}
-    </Card>
+    </CollapsibleCard>
   );
 }

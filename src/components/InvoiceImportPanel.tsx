@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Alert, Button, Card } from "@/components/ui";
+import { Alert, Button, CollapsibleCard } from "@/components/ui";
 import { normalizeOrderUnit } from "@/lib/constants";
 import {
   createOrderFromInvoiceExcel,
@@ -163,7 +163,6 @@ export function InvoiceImportPanel({
   >([]);
   const [previewInvoiceNumber, setPreviewInvoiceNumber] = useState("");
   const [expanded, setExpanded] = useState(false);
-
   useEffect(() => {
     if (busy || preview) {
       setExpanded(true);
@@ -461,39 +460,18 @@ export function InvoiceImportPanel({
   }
 
   return (
-    <Card className="mb-4 overflow-hidden p-0">
-      <button
-        type="button"
-        onClick={() => setExpanded((open) => !open)}
-        aria-expanded={expanded}
-        className="flex w-full items-center justify-between gap-3 border-b border-zinc-200 bg-zinc-50 px-5 py-4 text-left transition hover:bg-zinc-100/80"
-      >
-        <div>
-          <p className="text-base font-semibold text-zinc-900">
-            Import AGIMI document
-          </p>
-          <p className="mt-1 text-sm text-zinc-500">
-            {expanded
-              ? "Excel or PDF — click to collapse"
-              : "Excel or PDF — click to expand and import"}
-          </p>
-        </div>
-        <span
-          className={`shrink-0 text-sm text-zinc-400 transition-transform ${
-            expanded ? "rotate-180" : ""
-          }`}
-          aria-hidden
-        >
-          ▼
-        </span>
-      </button>
-
-      {expanded && (
-      <div className="space-y-4 p-5">
-        <p className="text-xs text-zinc-500">
-          Pro-faturë, Faturë, or Fletë dërgese. Export from Pro-Data Print Preview
-          as Excel (.xlsx) for the most reliable import; PDF still works.
-        </p>
+    <CollapsibleCard
+      className="mb-4"
+      title="Import AGIMI document"
+      subtitle="Manual Excel or PDF upload — click to expand"
+      headerTone="muted"
+      expanded={expanded}
+      onExpandedChange={setExpanded}
+    >
+      <p className="text-xs text-zinc-500">
+        Pro-faturë, Faturë, or Fletë dërgese. Export from Pro-Data Print Preview
+        as Excel (.xlsx) for the most reliable import; PDF still works.
+      </p>
         {panelError && (
           <Alert tone="error">
             <p>{panelError}</p>
@@ -786,9 +764,7 @@ export function InvoiceImportPanel({
             </div>
           </div>
         )}
-      </div>
-      )}
-    </Card>
+    </CollapsibleCard>
   );
 }
 

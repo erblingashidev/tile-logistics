@@ -1,13 +1,23 @@
+"use client";
+
+import { useState } from "react";
+
 export function Card({
   children,
   className = "",
+  interactive = false,
 }: {
   children: React.ReactNode;
   className?: string;
+  interactive?: boolean;
 }) {
   return (
     <div
-      className={`rounded border border-zinc-200 bg-white ${className}`}
+      className={`rounded border border-zinc-200 bg-white ${
+        interactive
+          ? "transition hover:border-zinc-300 hover:shadow-sm"
+          : ""
+      } ${className}`}
     >
       {children}
     </div>
@@ -213,17 +223,164 @@ export function PageSection({
 export function StatCard({
   label,
   value,
+  hint,
 }: {
   label: string;
   value: string | number;
+  hint?: string;
 }) {
   return (
     <div className="rounded border border-zinc-200 bg-white px-4 py-3">
-      <p className="text-xs text-zinc-500">{label}</p>
-      <p className="mt-1 text-xl font-semibold tabular-nums text-zinc-900">
+      <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+        {label}
+      </p>
+      <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-zinc-900">
         {value}
       </p>
+      {hint ? <p className="mt-1 text-xs text-zinc-500">{hint}</p> : null}
     </div>
+  );
+}
+
+export function StatLink({
+  label,
+  value,
+  href,
+  hint,
+  accent,
+}: {
+  label: string;
+  value: string | number;
+  href: string;
+  hint?: string;
+  accent?: "default" | "amber" | "blue";
+}) {
+  const accents = {
+    default: "hover:border-zinc-400",
+    amber: "border-amber-200 bg-amber-50/40 hover:border-amber-300",
+    blue: "border-blue-200 bg-blue-50/40 hover:border-blue-300",
+  };
+  return (
+    <a
+      href={href}
+      className={`block rounded border border-zinc-200 bg-white px-4 py-3 transition hover:shadow-sm ${accents[accent ?? "default"]}`}
+    >
+      <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+        {label}
+      </p>
+      <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-zinc-900">
+        {value}
+      </p>
+      {hint ? <p className="mt-1 text-xs text-zinc-500">{hint}</p> : null}
+    </a>
+  );
+}
+
+export function SegmentedControl<T extends string>({
+  value,
+  onChange,
+  options,
+  size = "md",
+}: {
+  value: T;
+  onChange: (value: T) => void;
+  options: Array<{ value: T; label: string }>;
+  size?: "sm" | "md";
+}) {
+  const sizes = {
+    sm: "px-2.5 py-1 text-xs",
+    md: "px-3 py-1.5 text-sm",
+  };
+  return (
+    <div
+      className="inline-flex flex-wrap gap-1 rounded-lg bg-zinc-100/80 p-1 ring-1 ring-zinc-200/80"
+      role="tablist"
+    >
+      {options.map((option) => {
+        const selected = option.value === value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="tab"
+            aria-selected={selected}
+            onClick={() => onChange(option.value)}
+            className={`rounded-md font-medium transition ${sizes[size]} ${
+              selected
+                ? "bg-zinc-900 text-white shadow-sm"
+                : "text-zinc-600 hover:bg-white hover:text-zinc-900"
+            }`}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+export function CollapsibleCard({
+  title,
+  subtitle,
+  badge,
+  headerTone = "default",
+  defaultExpanded = false,
+  expanded: controlledExpanded,
+  onExpandedChange,
+  children,
+  className = "",
+}: {
+  title: string;
+  subtitle?: string;
+  badge?: React.ReactNode;
+  headerTone?: "default" | "amber" | "muted";
+  defaultExpanded?: boolean;
+  expanded?: boolean;
+  onExpandedChange?: (open: boolean) => void;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const [internalExpanded, setInternalExpanded] = useState(defaultExpanded);
+  const expanded = controlledExpanded ?? internalExpanded;
+  const setExpanded = (open: boolean) => {
+    setInternalExpanded(open);
+    onExpandedChange?.(open);
+  };
+
+  const headerTones = {
+    default: "border-zinc-200 bg-zinc-50/80 hover:bg-zinc-100/80",
+    amber: "border-amber-200/80 bg-amber-50/80 hover:bg-amber-100/60",
+    muted: "border-zinc-200 bg-white hover:bg-zinc-50",
+  };
+
+  return (
+    <Card className={`overflow-hidden p-0 ${className}`}>
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        aria-expanded={expanded}
+        className={`flex w-full items-center justify-between gap-3 border-b px-5 py-4 text-left transition ${headerTones[headerTone]}`}
+      >
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-base font-semibold text-zinc-900">{title}</p>
+            {badge}
+          </div>
+          {subtitle ? (
+            <p className="mt-1 text-sm text-zinc-600">{subtitle}</p>
+          ) : null}
+        </div>
+        <span
+          className={`shrink-0 text-sm text-zinc-400 transition-transform ${
+            expanded ? "rotate-180" : ""
+          }`}
+          aria-hidden
+        >
+          ▼
+        </span>
+      </button>
+      {expanded ? <div className="space-y-4 p-5">{children}</div> : null}
+    </Card>
   );
 }
 

@@ -284,3 +284,80 @@ function mapNominatimType(t: string): LocationEntry["type"] {
   if (t === "suburb" || t === "neighbourhood") return "district";
   return "city";
 }
+
+export interface ReverseGeocodeResult {
+  id: string;
+  name: string;
+  city: string;
+  region: string;
+  lat: number;
+  lng: number;
+  source: "nominatim";
+}
+
+/** Reverse geocode coordinates to a Kosovo address (Nominatim / OSM). */
+export async function reverseNominatimKosovo(
+  lat: number,
+  lng: number
+): Promise<ReverseGeocodeResult | null> {
+  if (!isValidGeoCoord(lat, lng)) return null;
+
+  const url = new URL("https://nominatim.openstreetmap.org/reverse");
+  url.searchParams.set("lat", String(lat));
+  url.searchParams.set("lon", String(lng));
+  url.searchParams.set("format", "json");
+  url.searchParams.set("addressdetails", "1");
+  url.searchParams.set("countrycodes", "xk");
+
+  const res = await fetch(url.toString(), {
+    headers: {
+      "User-Agent": "AGIMI-Warehouse-Logistics/1.0 (tile-logistics app)",
+    },
+    next: { revalidate: 86400 },
+  });
+
+  if (!res.ok) return null;
+
+  const item = (await res.json()) as {
+    place_id?: number;
+    lat?: string;
+    lon?: string;
+    display_name?: string;
+    address?: {
+      road?: string;
+      house_number?: string;
+      neighbourhood?: string;
+      suburb?: string;
+      village?: string;
+      city?: string;
+      town?: string;
+      municipality?: string;
+      county?: string;
+    };
+  };
+
+  if (!item.display_name) return null;
+
+  const addr = item.address ?? {};
+  const city =
+    addr.city ?? addr.town ?? addr.village ?? addr.municipality ?? "Kosovo";
+  const region = addr.municipality ?? addr.county ?? city;
+  const streetParts = [addr.road, addr.house_number].filter(Boolean);
+  const name =
+    streetParts.length > 0
+      ? streetParts.join(" ")
+      : addr.neighbourhood ??
+        addr.suburb ??
+        item.display_name.split(",")[0] ??
+        "Selected location";
+
+  return {
+    id: item.place_id ? `nominatim-${item.place_id}` : `pin-${lat}-${lng}`,
+    name,
+    city,
+    region,
+    lat: Number(item.lat ?? lat),
+    lng: Number(item.lon ?? lng),
+    source: "nominatim",
+  };
+}

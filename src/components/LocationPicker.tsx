@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Input, Select } from "@/components/ui";
+import { Input, Select, Button } from "@/components/ui";
+import { LocationMapPicker } from "@/components/map/LocationMapPicker";
 import { KOSOVO_MUNICIPALITIES } from "@/lib/locations";
 
 export interface LocationValue {
@@ -25,6 +26,10 @@ export function LocationPicker({
   onChange: (loc: LocationValue) => void;
 }) {
   const [detailQuery, setDetailQuery] = useState(locationDetail);
+  const [showMapPicker, setShowMapPicker] = useState(false);
+  const [mapCoords, setMapCoords] = useState<{ lat?: number; lng?: number }>(
+    {}
+  );
   const [options, setOptions] = useState<
     Array<{
       id: string;
@@ -49,6 +54,8 @@ export function LocationPicker({
       const params = new URLSearchParams();
       params.set("q", detailQuery);
       params.set("live", "true");
+      params.set("recent", "true");
+      if (region) params.set("region", region);
       const res = await fetch(`/api/locations?${params}`);
       const data = await res.json();
       setOptions(
@@ -72,7 +79,7 @@ export function LocationPicker({
       );
     }, 250);
     return () => clearTimeout(t);
-  }, [detailQuery]);
+  }, [detailQuery, region]);
 
   function pickOption(
     o: {
@@ -85,6 +92,7 @@ export function LocationPicker({
     }
   ) {
     setDetailQuery(o.name);
+    setMapCoords({ lat: o.lat, lng: o.lng });
     onChange({
       region: o.region || region,
       locationDetail: o.name,
@@ -93,6 +101,12 @@ export function LocationPicker({
       lat: o.lat,
       lng: o.lng,
     });
+  }
+
+  function handleMapPick(loc: LocationValue) {
+    setDetailQuery(loc.locationDetail);
+    setMapCoords({ lat: loc.lat, lng: loc.lng });
+    onChange(loc);
   }
 
   return (
@@ -106,6 +120,8 @@ export function LocationPicker({
             region: e.target.value,
             locationDetail: detailQuery,
             id: locationId,
+            lat: mapCoords.lat,
+            lng: mapCoords.lng,
           })
         }
       >
@@ -132,6 +148,7 @@ export function LocationPicker({
             lat: undefined,
             lng: undefined,
           });
+          setMapCoords({});
         }}
         onBlur={() => {
           const match = options.find(
@@ -147,6 +164,24 @@ export function LocationPicker({
           </option>
         ))}
       </datalist>
+
+      <Button
+        type="button"
+        variant={showMapPicker ? "primary" : "secondary"}
+        size="sm"
+        onClick={() => setShowMapPicker((open) => !open)}
+      >
+        {showMapPicker ? "Hide map" : "Pick on map"}
+      </Button>
+
+      {showMapPicker ? (
+        <LocationMapPicker
+          region={region}
+          lat={mapCoords.lat}
+          lng={mapCoords.lng}
+          onChange={handleMapPick}
+        />
+      ) : null}
     </div>
   );
 }
