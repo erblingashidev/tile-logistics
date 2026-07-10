@@ -335,6 +335,15 @@ export default function RoutesPage() {
         </div>
       )}
 
+      <div className="mb-4">
+        <Link
+          href="/dispatch"
+          className="text-sm text-blue-600 underline hover:text-blue-800"
+        >
+          View on dispatch map
+        </Link>
+      </div>
+
       <SmartDispatchPanel
         regionFilter={filters.region || undefined}
         onApplied={() => {

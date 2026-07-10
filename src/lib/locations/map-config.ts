@@ -1,7 +1,7 @@
-/** Kosovo map defaults — centered on the country with warehouse near Prishtinë. */
+/** Kosovo map defaults — centered on AGIMI warehouse (Shkabaj depot). */
 export const KOSOVO_MAP_CENTER = {
-  lat: 42.6026,
-  lng: 20.903,
+  lat: 42.6764,
+  lng: 21.1147,
 } as const;
 
 export const KOSOVO_MAP_BOUNDS: [[number, number], [number, number]] = [

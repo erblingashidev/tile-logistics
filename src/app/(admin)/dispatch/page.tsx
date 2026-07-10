@@ -1,10 +1,18 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
-import { Badge, Button, Card, Alert, PageSection, StatCard } from "@/components/ui";
-import { formatDeliveryRound } from "@/lib/delivery-rounds";
+import { Badge, Button, Card, Alert, PageSection, StatCard, Select } from "@/components/ui";
+import { SmartDispatchPanel } from "@/components/SmartDispatchPanel";
+import { deliveryRoundSelectOptions, formatDeliveryRound } from "@/lib/delivery-rounds";
+
+const DispatchMap = dynamic(
+  () =>
+    import("@/components/map/DispatchMap").then((m) => m.DispatchMap),
+  { ssr: false, loading: () => <Card className="p-8 text-sm text-zinc-500">Loading map…</Card> }
+);
 
 interface DispatchBoardOrder {
   id: number;
@@ -90,6 +98,9 @@ export default function DispatchPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [mapRefreshKey, setMapRefreshKey] = useState(0);
+  const [mapDeliveryRound, setMapDeliveryRound] = useState("1");
+  const [showPlanOnMap, setShowPlanOnMap] = useState(false);
   const [urgentOptions, setUrgentOptions] = useState<
     Record<number, UrgentOption[]>
   >({});
@@ -199,6 +210,9 @@ export default function DispatchPage() {
         <Link href="/routes">
           <Button variant="ghost">Route planner</Button>
         </Link>
+        <Link href="/map">
+          <Button variant="ghost">Full order map</Button>
+        </Link>
       </div>
 
       {board && (
@@ -215,6 +229,47 @@ export default function DispatchPage() {
               value={board.pickerWorkload.length}
             />
           </div>
+
+          <PageSection title="Dispatch map">
+            <div className="mb-3 flex flex-wrap items-end gap-3">
+              <Select
+                label="Delivery round"
+                value={mapDeliveryRound}
+                onChange={(e) => setMapDeliveryRound(e.target.value)}
+              >
+                {deliveryRoundSelectOptions().map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </Select>
+              <label className="flex items-center gap-2 pb-2 text-sm text-zinc-700">
+                <input
+                  type="checkbox"
+                  checked={showPlanOnMap}
+                  onChange={(e) => setShowPlanOnMap(e.target.checked)}
+                  className="rounded border-zinc-300"
+                />
+                Show suggested routes on map
+              </label>
+            </div>
+            <DispatchMap
+              deliveryRound={Number(mapDeliveryRound)}
+              showPlan={showPlanOnMap}
+              includePlan={showPlanOnMap}
+              refreshKey={mapRefreshKey}
+            />
+          </PageSection>
+
+          <SmartDispatchPanel
+            onApplied={() => {
+              load();
+              setMapRefreshKey((k) => k + 1);
+            }}
+            onError={setError}
+            onWarning={setMessage}
+          />
+
           <PageSection title="Picker workload">
             {balanceHint && (
               <Alert tone="warning">

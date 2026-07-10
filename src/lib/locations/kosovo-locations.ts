@@ -17,15 +17,15 @@ export interface LocationEntry {
   postalCode?: string;
 }
 
-/** AGIMI Warehouse — Shkabaj, 10000 Prishtinë (OSM: place=village Shkabaj) */
+/** AGIMI Warehouse — Shkabaj, 10000 Prishtinë (Google Maps pin: Agimi Company) */
 export const WAREHOUSE_LOCATION: LocationEntry = {
   id: "agimi-warehouse-shkabaj",
   name: "AGIMI Warehouse — Shkabaj",
   city: "Prishtinë",
   region: "Prishtinë",
   type: "warehouse",
-  lat: 42.67133,
-  lng: 21.12447,
+  lat: 42.6763725,
+  lng: 21.1146869,
   postalCode: "10000",
 };
 
