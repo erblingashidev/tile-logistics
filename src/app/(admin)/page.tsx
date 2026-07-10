@@ -6,16 +6,16 @@ import { pendingImportQueueCount } from "@/lib/services/invoice-import-queue";
 import { Badge, Card, StatLink } from "@/components/ui";
 
 const modules = [
-  { href: "/orders", label: "Orders", desc: "Orders and assignments" },
-  { href: "/dispatch", label: "Dispatch", desc: "Fleet load and assignments" },
-  { href: "/routes", label: "Routes", desc: "Route planning" },
-  { href: "/map", label: "Map", desc: "Delivery map" },
-  { href: "/warehouse", label: "Warehouse", desc: "Stock and inventory" },
-  { href: "/vehicles", label: "Vehicles", desc: "Fleet capacity" },
-  { href: "/employees", label: "Employees", desc: "Staff and roles" },
-  { href: "/admins", label: "Admins", desc: "Administrator accounts" },
-  { href: "/reports", label: "Reports", desc: "Exports" },
-  { href: "/logs", label: "Logs", desc: "Activity log" },
+  { href: "/orders", label: "Orders" },
+  { href: "/dispatch", label: "Dispatch" },
+  { href: "/routes", label: "Routes" },
+  { href: "/map", label: "Map" },
+  { href: "/warehouse", label: "Warehouse" },
+  { href: "/vehicles", label: "Vehicles" },
+  { href: "/employees", label: "Employees" },
+  { href: "/admins", label: "Admins" },
+  { href: "/reports", label: "Reports" },
+  { href: "/logs", label: "Logs" },
 ];
 
 export const dynamic = "force-dynamic";
@@ -28,42 +28,34 @@ export default async function DashboardPage() {
   const wh = BRAND.warehouse;
 
   return (
-    <AppShell
-      title="Dashboard"
-      description={`${wh.address}, ${wh.country}`}
-    >
+    <AppShell title="Dashboard">
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <StatLink
           label="Pending imports"
           value={pendingImports}
           href="/orders"
-          hint="Awaiting review"
           accent={pendingImports > 0 ? "amber" : "default"}
         />
         <StatLink
           label="Open orders"
           value={stats.totalOrders}
           href="/orders"
-          hint="All active orders"
         />
         <StatLink
           label="Unassigned"
           value={stats.unassignedOrders}
           href="/orders"
-          hint="Need truck assignment"
           accent={stats.unassignedOrders > 0 ? "blue" : "default"}
         />
         <StatLink
           label="Pallets pending"
           value={stats.totalPalletsPending}
           href="/dispatch"
-          hint="Unassigned pallet count"
         />
         <StatLink
           label="Vehicles available"
           value={stats.vehiclesAvailable}
           href="/vehicles"
-          hint="Ready for dispatch"
         />
       </div>
 
@@ -91,7 +83,6 @@ export default async function DashboardPage() {
                   <Badge tone="amber">{pendingImports} import</Badge>
                 ) : null}
               </div>
-              <p className="mt-1 text-sm text-zinc-500">{m.desc}</p>
             </Card>
           </Link>
         ))}

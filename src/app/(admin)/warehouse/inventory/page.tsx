@@ -638,10 +638,7 @@ export default function WarehouseInventoryPage() {
   const pastSessions = sessions.filter((s) => s.status !== "open");
 
   return (
-    <AppShell
-      title="Annual inventory"
-      description="Zone counts and variance."
-    >
+    <AppShell title="Annual inventory">
       <Link href="/warehouse" className="mb-4 inline-block text-sm text-zinc-500">
         ← Warehouse
       </Link>
@@ -699,9 +696,6 @@ export default function WarehouseInventoryPage() {
                   </div>
                 )}
                 <Badge tone="green">Open</Badge>
-                <p className="mt-2 text-xs text-zinc-500">
-                  Admin only: edit or delete count lines below, reopen closed sectors, or cancel the whole session.
-                </p>
                 <div className="mt-3">
                   <Input
                     label="Session notes"
@@ -849,14 +843,9 @@ export default function WarehouseInventoryPage() {
         </>
       )}
 
-      <h2 className="mb-1 font-semibold">
+      <h2 className="mb-3 font-semibold">
         Count lines {open ? `(session ${open.id})` : ""}
       </h2>
-      {open && (
-        <p className="mb-3 text-xs text-zinc-500">
-          Edit or delete any line while the session is open. Portal scans appear here automatically.
-        </p>
-      )}
       {lines.length === 0 ? (
         <EmptyState title="No counts yet." />
       ) : (
@@ -924,10 +913,7 @@ export default function WarehouseInventoryPage() {
         </>
       )}
 
-      <h2 className="mb-2 mt-8 font-semibold">Past sessions</h2>
-      <p className="mb-3 text-xs text-zinc-500">
-        View, rename, edit count lines, or permanently delete closed and cancelled sessions.
-      </p>
+      <h2 className="mb-3 mt-8 font-semibold">Past sessions</h2>
       {pastSessions.length === 0 ? (
         <EmptyState title="No past sessions." />
       ) : (

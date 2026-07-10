@@ -113,15 +113,8 @@ export default function AdminsPage() {
   }
 
   return (
-    <AppShell
-      title="Admin users"
-      description="Dashboard administrators."
-    >
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-zinc-600">
-          Each admin is also added to Employees under Management with the role
-          you pick here (CEO, General Manager, Warehouse Lead).
-        </p>
+    <AppShell title="Admin users">
+      <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
         <Button onClick={() => setShowForm((value) => !value)}>
           {showForm ? "Cancel" : "Add admin"}
         </Button>
@@ -143,7 +136,7 @@ export default function AdminsPage() {
               required
             />
             <Select
-              label="Role in Employees"
+              label="Role"
               value={form.employeeRole}
               onChange={(e) => {
                 const employeeRole = e.target.value as EmployeeRole;
@@ -164,8 +157,7 @@ export default function AdminsPage() {
               ))}
             </Select>
             <Input
-              label="Title shown on profile"
-              hint="Appears under their name on the Employees page"
+              label="Title"
               value={form.title}
               onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
             />
@@ -200,7 +192,7 @@ export default function AdminsPage() {
       {loading ? (
         <LoadingState title="Loading admins…" />
       ) : admins.length === 0 ? (
-        <EmptyState title="No admin accounts yet. Create the first one above." />
+        <EmptyState title="No admin accounts." />
       ) : (
         <div className="space-y-3">
           {admins.map((admin) => (

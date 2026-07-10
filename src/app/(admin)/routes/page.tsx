@@ -188,7 +188,7 @@ export default function RoutesPage() {
   }
 
   return (
-    <AppShell title="Route planning" description="Suggested delivery routes.">
+    <AppShell title="Route planning">
       <PageSection title="Filters">
         <Card className="p-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

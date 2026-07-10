@@ -207,10 +207,7 @@ export default function VehicleMaintenancePage() {
   }
 
   return (
-    <AppShell
-      title="Vehicle maintenance"
-      description="Service history and due dates."
-    >
+    <AppShell title="Vehicle maintenance">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         <Link href="/vehicles" className="text-sm text-zinc-500 underline">
           ← Fleet
@@ -278,7 +275,6 @@ export default function VehicleMaintenancePage() {
                 onChange={(e) =>
                   setForm({ ...form, nextDueAt: e.target.value })
                 }
-                hint="When this vehicle should be serviced again"
               />
             </div>
             <Textarea

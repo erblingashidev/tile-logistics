@@ -57,10 +57,7 @@ export default function MapPage() {
   );
 
   return (
-    <AppShell
-      title="Delivery map"
-      description="Active delivery locations"
-    >
+    <AppShell title="Delivery map">
       <PageSection title="Filters">
         <Card className="space-y-4 p-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

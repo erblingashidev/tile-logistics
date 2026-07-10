@@ -160,10 +160,7 @@ export default function WarehouseProductsPage() {
   }
 
   return (
-    <AppShell
-      title="Product catalog"
-      description="Pallet specs for weight and capacity."
-    >
+    <AppShell title="Product catalog">
       <Link href="/warehouse" className="mb-4 inline-block text-sm text-zinc-500">
         ← Warehouse
       </Link>

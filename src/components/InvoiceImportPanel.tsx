@@ -463,7 +463,6 @@ export function InvoiceImportPanel({
     <CollapsibleCard
       className="mb-4"
       title="Import AGIMI document"
-      subtitle="Excel or PDF upload"
       headerTone="muted"
       expanded={expanded}
       onExpandedChange={setExpanded}
@@ -497,7 +496,6 @@ export function InvoiceImportPanel({
             <ImportOptionCard
               title="Excel"
               icon="📊"
-              description="Excel export (.xlsx)"
               active={mode === "excel"}
               dragActive={dragOver === "excel"}
               onDragOver={(e) => {
@@ -527,7 +525,6 @@ export function InvoiceImportPanel({
             <ImportOptionCard
               title="PDF"
               icon="📄"
-              description="PDF export"
               active={mode === "pdf"}
               dragActive={dragOver === "pdf"}
               onDragOver={(e) => {

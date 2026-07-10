@@ -227,7 +227,7 @@ export default function EmployeesPage() {
   }
 
   return (
-    <AppShell title="Employees" description="Staff roles and portal access.">
+    <AppShell title="Employees">
       <div className="mb-4">
         <Button onClick={() => setShowForm(true)}>Add employee</Button>
       </div>
@@ -296,10 +296,6 @@ export default function EmployeesPage() {
               className="rounded-lg border border-zinc-200 bg-zinc-50/80 p-4"
             >
               <p className="text-sm font-semibold text-zinc-900">Portal login</p>
-              <p className="mt-1 text-xs text-zinc-500">
-                Employees sign in at /login with this username and password. They
-                can change their own password from the portal after signing in.
-              </p>
               {editingId && editingHasLogin && (
                 <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-red-700">
                   <input
@@ -375,11 +371,7 @@ export default function EmployeesPage() {
             {form.roles.includes("group_leader") && (
               <div>
                 <p className="mb-2 text-xs font-medium text-zinc-600">
-                  Warehouse zones (sections)
-                </p>
-                <p className="mb-3 text-xs text-zinc-500">
-                  Each zone can have one group leader. Assigning a zone here moves
-                  it from another leader if needed.
+                  Warehouse zones
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {warehouseZones.map((option) => {
@@ -529,11 +521,6 @@ export default function EmployeesPage() {
                             Zones: {e.warehouseZones!.join(", ")}
                           </p>
                         )}
-                      {!e.hasLogin && (
-                        <p className="mt-1 text-xs text-amber-600">
-                          No portal login set
-                        </p>
-                      )}
                       {e.assignments.length > 0 && (
                         <div className="mt-3 border-t border-zinc-100 pt-3">
                           <p className="text-xs font-medium text-zinc-500">

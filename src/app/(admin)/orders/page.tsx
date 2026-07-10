@@ -1031,10 +1031,7 @@ export default function OrdersPage() {
   }
 
   return (
-    <AppShell
-      title="Orders"
-      description="Orders, assignments, and delivery."
-    >
+    <AppShell title="Orders">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2">
           <Button onClick={openNewOrder}>New order</Button>

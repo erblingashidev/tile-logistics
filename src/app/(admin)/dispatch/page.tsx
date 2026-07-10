@@ -185,10 +185,7 @@ export default function DispatchPage() {
     : 0;
 
   return (
-    <AppShell
-      title="Dispatch board"
-      description="Fleet assignments and load status."
-    >
+    <AppShell title="Dispatch board">
       {message && (
         <div className="mb-4">
           <Alert tone="warning">{message}</Alert>

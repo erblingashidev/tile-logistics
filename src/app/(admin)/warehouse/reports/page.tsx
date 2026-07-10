@@ -200,10 +200,7 @@ export default function WarehouseReportsAdminPage() {
   }
 
   return (
-    <AppShell
-      title="Warehouse reports"
-      description="Weekly reports and incidents."
-    >
+    <AppShell title="Warehouse reports">
       <Link href="/warehouse" className="mb-4 inline-block text-sm text-zinc-500">
         ← Warehouse
       </Link>
@@ -334,10 +331,6 @@ export default function WarehouseReportsAdminPage() {
             </PageSection>
           )}
 
-          <p className="mb-6 text-sm text-zinc-600">
-            Reports for <strong>{data.wednesdayLabel}</strong> — incidents from
-            the 7 days after that Wednesday are bundled here.
-          </p>
 
           <PageSection title={`Weekly reports (${data.weekly.length})`}>
             {data.weekly.length === 0 ? (

@@ -135,7 +135,6 @@ export function LocationPicker({
 
       <Input
         label="Delivery details"
-        hint="Street or village"
         list="location-detail-options"
         value={detailQuery}
         onChange={(e) => {

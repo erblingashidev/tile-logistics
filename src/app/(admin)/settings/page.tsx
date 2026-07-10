@@ -108,10 +108,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <AppShell
-      title="Profile"
-      description="Account and password."
-    >
+    <AppShell title="Profile">
       {loading ? (
         <LoadingState title="Loading profile…" />
       ) : !profile ? (
@@ -129,9 +126,6 @@ export default function SettingsPage() {
                 <h2 className="text-lg font-semibold text-zinc-900">
                   Account details
                 </h2>
-                <p className="mt-1 text-sm text-zinc-500">
-                  Update your name and login username.
-                </p>
               </div>
               <Badge tone={profile.isActive ? "green" : "red"}>
                 {profile.isActive ? "Active" : "Inactive"}
@@ -149,8 +143,7 @@ export default function SettingsPage() {
                 required
               />
               <Input
-                label="Title / role"
-                hint="e.g. Warehouse Lead, General Manager"
+                label="Title"
                 value={form.title}
                 onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
               />
@@ -192,12 +185,9 @@ export default function SettingsPage() {
               </div>
             </dl>
 
-            <p className="mt-5 text-xs text-zinc-500">
-              Need to add another manager or CEO?{" "}
-              <Link href="/admins" className="font-medium text-zinc-800 underline">
-                Manage admin users
-              </Link>
-            </p>
+            <Link href="/admins" className="mt-5 inline-block text-sm font-medium text-zinc-800 underline">
+              Manage admin users
+            </Link>
           </Card>
 
           <ChangePasswordCard variant="admin" defaultOpen />

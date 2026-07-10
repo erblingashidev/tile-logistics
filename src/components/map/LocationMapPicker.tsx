@@ -153,9 +153,6 @@ export function LocationMapPicker({
         </p>
         ) : null}
       </div>
-      <p className="text-xs text-zinc-500">
-        Click the map to drop a pin, or drag the pin to adjust.
-      </p>
       {error ? <Alert tone="warning">{error}</Alert> : null}
     </div>
   );

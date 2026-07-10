@@ -215,10 +215,7 @@ export default function WarehouseLocationsPage() {
   );
 
   return (
-    <AppShell
-      title="Warehouse locations"
-      description="Storage locations and stock."
-    >
+    <AppShell title="Warehouse locations">
       <Link href="/warehouse" className="mb-4 inline-block text-sm text-zinc-500">
         ← Warehouse
       </Link>
@@ -268,11 +265,7 @@ export default function WarehouseLocationsPage() {
 
       {showAssignForm && (
         <Card className="mb-6 p-4">
-          <p className="mb-1 font-medium">Assign group leader to zones</p>
-          <p className="mb-3 text-sm text-zinc-500">
-            Choose an existing employee — they get the Group leader role and the
-            selected zones.
-          </p>
+          <p className="mb-3 font-medium">Assign group leader to zones</p>
           <form onSubmit={assignLeader} className="space-y-3">
             <Select
               label="Employee"

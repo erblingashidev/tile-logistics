@@ -189,7 +189,6 @@ export function InvoiceImportQueuePanel({
     <CollapsibleCard
       className="mb-4"
       title="Import queue"
-      subtitle="Review and approve imported invoices"
       headerTone="amber"
       expanded={expanded}
       onExpandedChange={setExpanded}
