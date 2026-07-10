@@ -51,7 +51,7 @@ export async function GET() {
     fallbackReason: "maptiler_rejected",
     hint:
       check.status === 403
-        ? "MapTiler returned 403 — the API key in Netlify is wrong or expired. In MapTiler Cloud click “New key”, copy it fresh into NEXT_PUBLIC_MAPTILER_KEY, save, and redeploy."
+        ? "MapTiler rejected the API key (403). Create a new key in MapTiler Cloud and set NEXT_PUBLIC_MAPTILER_KEY in environment variables."
         : `MapTiler unavailable (HTTP ${check.status || "error"}) — showing free map tiles.`,
   });
 }

@@ -42,7 +42,7 @@ export async function setAppSetting(key: string, value: string): Promise<void> {
   await db.insert(appSettings).values({ key, value: trimmed, updatedAt });
 }
 
-/** Invoice watch folder — set INVOICE_WATCH_DIR in .env.local on the HP PC only. */
+/** Invoice watch folder — set INVOICE_WATCH_DIR where the import service runs. */
 export async function getInvoiceWatchRoot(): Promise<string | null> {
   const fromEnv = process.env.INVOICE_WATCH_DIR?.trim();
   return fromEnv || null;

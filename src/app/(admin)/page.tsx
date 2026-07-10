@@ -6,16 +6,16 @@ import { pendingImportQueueCount } from "@/lib/services/invoice-import-queue";
 import { Badge, Card, StatLink } from "@/components/ui";
 
 const modules = [
-  { href: "/orders", label: "Orders", desc: "Invoices, assignments & import queue" },
-  { href: "/dispatch", label: "Dispatch", desc: "Live truck load & picker balance" },
-  { href: "/routes", label: "Routes", desc: "Geographic trip planning" },
-  { href: "/map", label: "Map", desc: "Active deliveries across Kosovo" },
-  { href: "/warehouse", label: "Warehouse", desc: "Stock, locations & inventory" },
-  { href: "/vehicles", label: "Vehicles", desc: "Fleet capacity & status" },
-  { href: "/employees", label: "Employees", desc: "Team roles & portal access" },
-  { href: "/admins", label: "Admins", desc: "Manager accounts" },
-  { href: "/reports", label: "Reports", desc: "Exports & summaries" },
-  { href: "/logs", label: "Logs", desc: "Activity history" },
+  { href: "/orders", label: "Orders", desc: "Orders and assignments" },
+  { href: "/dispatch", label: "Dispatch", desc: "Fleet load and assignments" },
+  { href: "/routes", label: "Routes", desc: "Route planning" },
+  { href: "/map", label: "Map", desc: "Delivery map" },
+  { href: "/warehouse", label: "Warehouse", desc: "Stock and inventory" },
+  { href: "/vehicles", label: "Vehicles", desc: "Fleet capacity" },
+  { href: "/employees", label: "Employees", desc: "Staff and roles" },
+  { href: "/admins", label: "Admins", desc: "Administrator accounts" },
+  { href: "/reports", label: "Reports", desc: "Exports" },
+  { href: "/logs", label: "Logs", desc: "Activity log" },
 ];
 
 export const dynamic = "force-dynamic";
@@ -37,7 +37,7 @@ export default async function DashboardPage() {
           label="Pending imports"
           value={pendingImports}
           href="/orders"
-          hint="Review Excel from HP watcher"
+          hint="Awaiting review"
           accent={pendingImports > 0 ? "amber" : "default"}
         />
         <StatLink

@@ -14,7 +14,7 @@ export const runtime = "nodejs";
 function cloudScanBlocked(watchRoot: string): string | null {
   if (!isNetlify()) return null;
   if (/^[A-Za-z]:[\\/]/.test(watchRoot)) {
-    return "Folder scan cannot run from the cloud site — run on the HP PC: npm run watch:invoices:turso";
+    return "Folder scan is not available from this environment. Run the invoice import service on the workstation that hosts the watch folder.";
   }
   return null;
 }
@@ -65,8 +65,7 @@ export async function POST(request: NextRequest) {
   if (!watchRoot) {
     return NextResponse.json(
       {
-        error:
-          "Invoice folder not configured. On the HP PC set INVOICE_WATCH_DIR in .env.local and run npm run watch:invoices:turso.",
+        error: "Invoice import folder is not configured.",
       },
       { status: 422 }
     );
@@ -81,7 +80,7 @@ export async function POST(request: NextRequest) {
         queued: 0,
         skipped: 0,
         errors: [],
-        hint: cloudBlock,
+      hint: cloudBlock,
       },
       { status: 422 }
     );

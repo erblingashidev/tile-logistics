@@ -90,7 +90,7 @@ function pickerBalanceHint(rows: PickerWorkloadRow[]): string | null {
   if (max - min <= 2) return null;
   const heavy = rows.filter((r) => r.orderCount === max).map((r) => r.name);
   const light = rows.filter((r) => r.orderCount === min).map((r) => r.name);
-  return `${heavy.join(", ")} has ${max} orders vs ${light.join(", ")} (${min}) — consider rebalancing`;
+  return `Workload imbalance: ${heavy.join(", ")} (${max}) vs ${light.join(", ")} (${min}).`;
 }
 
 export default function DispatchPage() {
@@ -187,7 +187,7 @@ export default function DispatchPage() {
   return (
     <AppShell
       title="Dispatch board"
-      description="Live fleet load and assignments."
+      description="Fleet assignments and load status."
     >
       {message && (
         <div className="mb-4">
@@ -211,7 +211,7 @@ export default function DispatchPage() {
           <Button variant="ghost">Route planner</Button>
         </Link>
         <Link href="/map">
-          <Button variant="ghost">Full order map</Button>
+          <Button variant="ghost">Delivery map</Button>
         </Link>
       </div>
 

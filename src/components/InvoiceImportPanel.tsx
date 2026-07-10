@@ -463,15 +463,11 @@ export function InvoiceImportPanel({
     <CollapsibleCard
       className="mb-4"
       title="Import AGIMI document"
-      subtitle="Manual Excel or PDF upload — click to expand"
+      subtitle="Excel or PDF upload"
       headerTone="muted"
       expanded={expanded}
       onExpandedChange={setExpanded}
     >
-      <p className="text-xs text-zinc-500">
-        Pro-faturë, Faturë, or Fletë dërgese. Export from Pro-Data Print Preview
-        as Excel (.xlsx) for the most reliable import; PDF still works.
-      </p>
         {panelError && (
           <Alert tone="error">
             <p>{panelError}</p>
@@ -501,7 +497,7 @@ export function InvoiceImportPanel({
             <ImportOptionCard
               title="Excel"
               icon="📊"
-              description="Pro-Data Print Preview (.xlsx) — recommended."
+              description="Excel export (.xlsx)"
               active={mode === "excel"}
               dragActive={dragOver === "excel"}
               onDragOver={(e) => {
@@ -531,7 +527,7 @@ export function InvoiceImportPanel({
             <ImportOptionCard
               title="PDF"
               icon="📄"
-              description="Pro-Data PDF export preferred."
+              description="PDF export"
               active={mode === "pdf"}
               dragActive={dragOver === "pdf"}
               onDragOver={(e) => {

@@ -57,12 +57,10 @@ export function InvoiceImportQueuePanel({
   onWarning,
 }: InvoiceImportQueuePanelProps) {
   const [expanded, setExpanded] = useState(false);
-  const [showHelp, setShowHelp] = useState(false);
   const [tab, setTab] = useState<"pending" | "rejected">("pending");
   const [items, setItems] = useState<QueueItem[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [rejectedCount, setRejectedCount] = useState(0);
-  const [watchRoot, setWatchRoot] = useState("");
   const [configured, setConfigured] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -81,7 +79,6 @@ export function InvoiceImportQueuePanel({
     setItems(data.items ?? []);
     setPendingCount(data.pendingCount ?? 0);
     setRejectedCount(data.rejectedCount ?? 0);
-    setWatchRoot(data.watchRoot ?? "");
     setConfigured(Boolean(data.configured));
   }, [tab]);
 
@@ -93,9 +90,7 @@ export function InvoiceImportQueuePanel({
 
   async function scanFolder() {
     if (!configured) {
-      onError(
-        "Folder scan runs on the HP PC only. Set INVOICE_WATCH_DIR in .env.local and run npm run watch:invoices:turso."
-      );
+      onError("Invoice folder scan is not available in this environment.");
       return;
     }
     setScanning(true);
@@ -146,7 +141,7 @@ export function InvoiceImportQueuePanel({
       const label = item?.parsed.customerName || item?.sourceFileName || "this import";
       if (
         !window.confirm(
-          `Remove "${label}" from the queue? The Excel file can stay on the HP PC — it will not come back to Pending after refresh.`
+          `Remove "${label}" from the queue? It will not be imported again unless the source file changes.`
         )
       ) {
         return;
@@ -179,10 +174,10 @@ export function InvoiceImportQueuePanel({
         );
         onChanged();
       } else if (action === "restore") {
-        onWarning("Restored to pending queue");
+        onWarning("Restored to pending");
         setTab("pending");
       } else if (action === "delete") {
-        onWarning("Removed from import queue");
+        onWarning("Removed from queue");
       }
       await load();
     } finally {
@@ -194,7 +189,7 @@ export function InvoiceImportQueuePanel({
     <CollapsibleCard
       className="mb-4"
       title="Import queue"
-      subtitle="Approve or decline Excel invoices from the HP watcher"
+      subtitle="Review and approve imported invoices"
       headerTone="amber"
       expanded={expanded}
       onExpandedChange={setExpanded}
@@ -206,24 +201,6 @@ export function InvoiceImportQueuePanel({
         ) : null
       }
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-zinc-600">
-          HP PC runs the folder watcher — review imports here on the website.
-        </p>
-        <Button variant="ghost" size="sm" onClick={() => setShowHelp((v) => !v)}>
-          {showHelp ? "Hide help" : "How it works"}
-        </Button>
-      </div>
-
-      {showHelp ? (
-        <Alert tone="info">
-          The queue is stored online. <strong>Remove</strong> hides an import and
-          blocks the HP watcher from adding it again (even if the Excel file is
-          still on disk). Deleting the Excel from the HP folder also clears it
-          on the next watcher scan.
-        </Alert>
-      ) : null}
-
       {configured ? (
         <div className="flex flex-wrap items-center gap-2">
           <Button
@@ -232,11 +209,8 @@ export function InvoiceImportQueuePanel({
             disabled={scanning}
             onClick={() => void scanFolder()}
           >
-            {scanning ? "Scanning…" : "Scan folder now"}
+            {scanning ? "Scanning…" : "Scan folder"}
           </Button>
-          <p className="text-xs text-zinc-500">
-            Path: <span className="font-mono">{watchRoot}</span>
-          </p>
         </div>
       ) : null}
 
@@ -254,8 +228,8 @@ export function InvoiceImportQueuePanel({
       {items.length === 0 ? (
         <p className="text-sm text-zinc-500">
           {tab === "pending"
-            ? "No pending imports. Save Excel (.xlsx) files into a date folder on the HP PC while the watcher is running."
-            : "No declined imports. Declined items stay here so you can restore or approve them later."}
+            ? "No pending imports."
+            : "No declined imports."}
         </p>
       ) : (
         <div className="space-y-3">

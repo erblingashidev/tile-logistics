@@ -421,7 +421,7 @@ export async function deleteImportQueueItem(
     };
   }
 
-  // Soft-dismiss so the HP watcher does not re-queue the same Excel file.
+  // Soft-dismiss so the folder scanner does not re-queue the same Excel file.
   await db
     .update(invoiceImportQueue)
     .set({
@@ -472,8 +472,8 @@ export async function scanInvoiceWatchRoot(
       purged: 0,
       errors: [`Folder not found on this computer: ${absoluteRoot}`],
       hint: isWinPath
-        ? "Scan only works on the Windows PC where that folder exists. Run npm run watch:invoices:turso there — not from the cloud website."
-        : "Check INVOICE_WATCH_DIR in .env.local. Use the main Faturat-Logistics folder, or a date folder like 09.07.2026.",
+        ? "Scan runs on the workstation where the invoice folder is located."
+        : "Configure the invoice watch folder for this environment.",
     };
   }
 

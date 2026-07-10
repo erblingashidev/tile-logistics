@@ -59,7 +59,7 @@ export default function MapPage() {
   return (
     <AppShell
       title="Delivery map"
-      description="Active orders across Kosovo — street-level and city clusters"
+      description="Active delivery locations"
     >
       <PageSection title="Filters">
         <Card className="space-y-4 p-4">

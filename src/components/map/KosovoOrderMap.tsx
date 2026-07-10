@@ -266,8 +266,8 @@ export function KosovoOrderMap({
           onError={(e) =>
             setMapTileError(
               e.error?.message?.includes("403")
-                ? "Map tiles blocked — check MapTiler key and allowed domains on Netlify."
-                : "Map tiles failed to load. Check your MapTiler key or redeploy."
+                ? "Map tiles blocked — check the MapTiler API key and allowed domains."
+                : "Map tiles failed to load."
             )
           }
         >
