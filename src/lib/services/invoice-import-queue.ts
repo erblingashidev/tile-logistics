@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { dbAll, dbOne } from "@/lib/db/query";
 import { invoiceImportQueue } from "@/lib/db/schema";
@@ -19,6 +19,12 @@ import {
   createOrMergeFromEntry,
 } from "@/lib/invoices/process-invoice-import";
 import { findOrderByInvoiceNumber } from "@/lib/services/orders";
+
+export type ImportQueueStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "dismissed";
 
 export type QueuedImportSnapshot = {
   parsed: ParsedAgimiInvoice;
@@ -88,6 +94,7 @@ export async function enqueueExcelFile(
 
   const fingerprint = fileFingerprint(absolutePath, stat);
   const db = await getDb();
+
   const existing = await dbOne(
     db
       .select({ id: invoiceImportQueue.id, status: invoiceImportQueue.status })
@@ -95,10 +102,36 @@ export async function enqueueExcelFile(
       .where(eq(invoiceImportQueue.fileFingerprint, fingerprint))
   );
   if (existing) {
+    if (existing.status === "dismissed") {
+      return {
+        ok: true,
+        skipped: true,
+        reason: "Removed from queue — will not re-import this file",
+      };
+    }
     return {
       ok: true,
       skipped: true,
       reason: `Already queued (${existing.status})`,
+    };
+  }
+
+  const dismissedSamePath = await dbOne(
+    db
+      .select({ id: invoiceImportQueue.id })
+      .from(invoiceImportQueue)
+      .where(
+        and(
+          eq(invoiceImportQueue.sourceFilePath, absolutePath),
+          eq(invoiceImportQueue.status, "dismissed")
+        )
+      )
+  );
+  if (dismissedSamePath) {
+    return {
+      ok: true,
+      skipped: true,
+      reason: "Removed from queue — will not re-import this file path",
     };
   }
 
@@ -347,7 +380,7 @@ export async function purgeImportQueueMissingFiles(
         sourceFilePath: invoiceImportQueue.sourceFilePath,
       })
       .from(invoiceImportQueue)
-      .where(inArray(invoiceImportQueue.status, ["pending", "rejected"]))
+      .where(inArray(invoiceImportQueue.status, ["pending", "rejected", "dismissed"]))
   );
 
   let purged = 0;
@@ -370,7 +403,12 @@ export async function deleteImportQueueItem(
   const db = await getDb();
   const row = await dbOne(
     db
-      .select({ id: invoiceImportQueue.id, status: invoiceImportQueue.status })
+      .select({
+        id: invoiceImportQueue.id,
+        status: invoiceImportQueue.status,
+        sourceFilePath: invoiceImportQueue.sourceFilePath,
+        fileFingerprint: invoiceImportQueue.fileFingerprint,
+      })
       .from(invoiceImportQueue)
       .where(eq(invoiceImportQueue.id, id))
   );
@@ -383,7 +421,16 @@ export async function deleteImportQueueItem(
     };
   }
 
-  await db.delete(invoiceImportQueue).where(eq(invoiceImportQueue.id, id));
+  // Soft-dismiss so the HP watcher does not re-queue the same Excel file.
+  await db
+    .update(invoiceImportQueue)
+    .set({
+      status: "dismissed",
+      reviewedAt: nowIso(),
+      adminNote: "Removed from queue by admin",
+    })
+    .where(eq(invoiceImportQueue.id, id));
+
   return { ok: true };
 }
 

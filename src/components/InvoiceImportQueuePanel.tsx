@@ -146,7 +146,7 @@ export function InvoiceImportQueuePanel({
       const label = item?.parsed.customerName || item?.sourceFileName || "this import";
       if (
         !window.confirm(
-          `Remove "${label}" from the queue permanently? This cannot be undone.`
+          `Remove "${label}" from the queue? The Excel file can stay on the HP PC — it will not come back to Pending after refresh.`
         )
       ) {
         return;
@@ -217,9 +217,10 @@ export function InvoiceImportQueuePanel({
 
       {showHelp ? (
         <Alert tone="info">
-          The queue is stored online. Deleting Excel from the HP folder does not
-          remove entries until the watcher purges missing files or you click{" "}
-          <strong>Remove</strong>.
+          The queue is stored online. <strong>Remove</strong> hides an import and
+          blocks the HP watcher from adding it again (even if the Excel file is
+          still on disk). Deleting the Excel from the HP folder also clears it
+          on the next watcher scan.
         </Alert>
       ) : null}
 
