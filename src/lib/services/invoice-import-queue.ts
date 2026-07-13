@@ -169,6 +169,36 @@ export async function enqueueExcelFile(
     ? await findOrderByInvoiceNumber(parsed.invoiceNumber)
     : null;
 
+  if (duplicateOrder) {
+    const inserted = await dbOne(
+      db
+        .insert(invoiceImportQueue)
+        .values({
+          status: "approved",
+          sourceFileName: path.basename(absolutePath),
+          sourceFilePath: absolutePath,
+          sourceFolderDate: folderIso,
+          fileFingerprint: fingerprint,
+          parsedJson: writeSnapshot(snapshot),
+          duplicateOrderId: duplicateOrder.id,
+          orderId: duplicateOrder.id,
+          errorMessage: null,
+          submittedAt: nowIso(),
+          reviewedAt: nowIso(),
+          adminNote: "Auto-linked — invoice already in orders",
+        })
+        .returning({ id: invoiceImportQueue.id })
+    );
+    if (!inserted) {
+      return { ok: false, error: "Failed to record skipped import" };
+    }
+    return {
+      ok: true,
+      skipped: true,
+      reason: `Already in orders (#${duplicateOrder.id})`,
+    };
+  }
+
   const inserted = await dbOne(
     db
       .insert(invoiceImportQueue)
@@ -179,7 +209,7 @@ export async function enqueueExcelFile(
         sourceFolderDate: folderIso,
         fileFingerprint: fingerprint,
         parsedJson: writeSnapshot(snapshot),
-        duplicateOrderId: duplicateOrder?.id ?? null,
+        duplicateOrderId: null,
         errorMessage: null,
         submittedAt: nowIso(),
       })
@@ -193,13 +223,68 @@ export async function enqueueExcelFile(
   return {
     ok: true,
     id: inserted.id,
-    duplicate: Boolean(duplicateOrder),
+    duplicate: false,
   };
+}
+
+/** Auto-approve pending queue rows whose invoice number already exists in orders. */
+export async function syncPendingImportQueueWithOrders(): Promise<number> {
+  const db = await getDb();
+  const pending = await dbAll(
+    db
+      .select()
+      .from(invoiceImportQueue)
+      .where(eq(invoiceImportQueue.status, "pending"))
+  );
+
+  const now = nowIso();
+  let resolved = 0;
+
+  for (const row of pending) {
+    let invoiceNumber = "";
+    try {
+      const snapshot = readSnapshot(row.parsedJson);
+      invoiceNumber = snapshot.parsed.invoiceNumber ?? "";
+    } catch {
+      if (!row.duplicateOrderId) continue;
+    }
+
+    const existing = invoiceNumber
+      ? await findOrderByInvoiceNumber(invoiceNumber)
+      : null;
+
+    const orderId = existing?.id ?? row.duplicateOrderId;
+    if (!orderId) continue;
+
+    await db
+      .update(invoiceImportQueue)
+      .set({
+        status: "approved",
+        orderId,
+        duplicateOrderId: orderId,
+        reviewedAt: now,
+        errorMessage: null,
+        adminNote: "Auto-linked — invoice already in orders",
+      })
+      .where(
+        and(
+          eq(invoiceImportQueue.id, row.id),
+          eq(invoiceImportQueue.status, "pending")
+        )
+      );
+    resolved += 1;
+  }
+
+  return resolved;
 }
 
 export async function listImportQueue(
   status: "pending" | "approved" | "rejected" | "all" = "pending"
 ): Promise<InvoiceImportQueueRow[]> {
+  if (status === "pending" || status === "all") {
+    await syncPendingImportQueueWithOrders();
+  }
+
   const db = await getDb();
   const query = db
     .select()
@@ -447,8 +532,11 @@ async function finalizeScanResult(
     dateFolders?: string[];
   }
 ) {
-  const purged = await purgeImportQueueMissingFiles(absoluteRoot);
-  return { ...result, purged };
+  const [purged, autoLinked] = await Promise.all([
+    purgeImportQueueMissingFiles(absoluteRoot),
+    syncPendingImportQueueWithOrders(),
+  ]);
+  return { ...result, purged, autoLinked };
 }
 
 export async function scanInvoiceWatchRoot(
@@ -677,6 +765,7 @@ export async function linkImportQueueToOrder(options: {
 }
 
 export async function pendingImportQueueCount(): Promise<number> {
+  await syncPendingImportQueueWithOrders();
   const db = await getDb();
   const rows = await dbAll(
     db
