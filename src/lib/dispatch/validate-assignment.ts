@@ -6,26 +6,46 @@ import { vehicles } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { getOrder } from "@/lib/services/orders";
 
+type OrderCargoInput = {
+  customerHasForklift?: boolean;
+  totalPieces?: number | null;
+  totalPallets?: number | null;
+  items?: Array<{
+    productType?: string | null;
+    tileWidthCm?: number | null;
+    tileHeightCm?: number | null;
+    quantity?: number | null;
+    calculatedPieces?: number | null;
+  }>;
+};
+
 export async function validateTruckForOrder(
   orderId: number,
   vehicleId: number,
-  options?: { ignoreCraneRule?: boolean }
+  options?: {
+    ignoreCraneRule?: boolean;
+    preloadedOrder?: OrderCargoInput;
+    preloadedVehicle?: typeof vehicles.$inferSelect;
+  }
 ): Promise<
   | { ok: true; warning?: string }
   | { ok: false; error: string; requiresCrane?: true }
 > {
-  const order = await getOrder(orderId);
+  const order =
+    options?.preloadedOrder ?? (await getOrder(orderId));
   if (!order) return { ok: false, error: "Order not found" };
 
   const db = await getDb();
-  const vehicle = await dbOne(
-    db.select().from(vehicles).where(eq(vehicles.id, vehicleId))
-  );
+  const vehicle =
+    options?.preloadedVehicle ??
+    (await dbOne(
+      db.select().from(vehicles).where(eq(vehicles.id, vehicleId))
+    ));
   if (!vehicle) return { ok: false, error: "Vehicle not found" };
 
   const cargo = analyzeDispatchCargo(order.items ?? [], {
     customerHasForklift: Boolean(order.customerHasForklift),
-    totalPieces: order.totalPieces,
+    totalPieces: order.totalPieces ?? undefined,
   });
   const isCrane = vehicleHasCrane(vehicle);
 

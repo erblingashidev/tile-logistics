@@ -54,7 +54,9 @@ export async function POST(request: NextRequest) {
   }
 
   if (!result.ok) {
-    return NextResponse.json(result, { status: 409 });
+    return NextResponse.json(result, {
+      status: result.partial ? 207 : 409,
+    });
   }
 
   return NextResponse.json(result);

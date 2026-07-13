@@ -1064,15 +1064,52 @@ export async function deleteOrder(id: number) {
   return true;
 }
 
+type AssignmentCapacityTotals = {
+  totalM2: number;
+  totalPieces: number;
+  totalPallets: number;
+  totalWeightKg: number;
+};
+
+type AssignOrderToVehicleOptions = {
+  explicitRound?: boolean;
+  ignoreLinkedWarning?: boolean;
+  preloadedOrder?: AssignmentCapacityTotals & {
+    id: number;
+    invoiceNumber: string;
+    status: string;
+    customerHasForklift?: boolean;
+    totalPieces?: number;
+    items?: Array<{
+      productType?: string | null;
+      tileWidthCm?: number | null;
+      tileHeightCm?: number | null;
+      quantity?: number | null;
+      calculatedPieces?: number | null;
+    }>;
+  };
+  preloadedVehicle?: typeof vehicles.$inferSelect;
+  preloadedDriverId?: number | null;
+  preloadedDriverName?: string | null;
+  runningVehicleTotals?: AssignmentCapacityTotals[];
+  skipSyncTruckDriver?: boolean;
+  skipClearVehicleReturning?: boolean;
+  skipReturnOrder?: boolean;
+  skipLinkedSplitReminder?: boolean;
+  skipCraneValidation?: boolean;
+  skipLinkedConflictCheck?: boolean;
+};
+
 export async function assignOrderToVehicle(
   orderId: number,
   vehicleId: number,
   deliveryRound: number,
   ignoreWeightWarning = false,
   ignoreCraneRule = false,
-  options?: { explicitRound?: boolean; ignoreLinkedWarning?: boolean }
+  options?: AssignOrderToVehicleOptions
 ) {
   const ignoreLinkedWarning = options?.ignoreLinkedWarning ?? false;
+  const vehiclesToSync = new Set<number>();
   let round = deliveryRound;
   let roundReason: string | undefined;
   if (options?.explicitRound === false) {
@@ -1089,12 +1126,22 @@ export async function assignOrderToVehicle(
   }
 
   const db = await getDb();
-  const order = await getOrder(orderId);
+  const order =
+    options?.preloadedOrder ?? (await getOrder(orderId));
   if (!order) return { ok: false, error: "Order not found" };
 
-  const craneCheck = await validateTruckForOrder(orderId, vehicleId, {
-    ignoreCraneRule,
-  });
+  let craneCheck:
+    | { ok: true; warning?: string }
+    | { ok: false; error: string; requiresCrane?: true };
+  if (options?.skipCraneValidation) {
+    craneCheck = { ok: true };
+  } else {
+    craneCheck = await validateTruckForOrder(orderId, vehicleId, {
+      ignoreCraneRule,
+      preloadedOrder: order,
+      preloadedVehicle: options?.preloadedVehicle,
+    });
+  }
   if (!craneCheck.ok) {
     return {
       ok: false as const,
@@ -1106,45 +1153,51 @@ export async function assignOrderToVehicle(
   const { getLinkedTruckConflictMessage, getLinkedSplitReminder } = await import(
     "@/lib/services/order-delivery-links"
   );
-  const linkedConflict = await getLinkedTruckConflictMessage(orderId, vehicleId);
-  if (linkedConflict && !ignoreLinkedWarning) {
-    return {
-      ok: false as const,
-      isLinkedWarning: true,
-      error: linkedConflict,
-    };
+  if (!options?.skipLinkedConflictCheck) {
+    const linkedConflict = await getLinkedTruckConflictMessage(orderId, vehicleId);
+    if (linkedConflict && !ignoreLinkedWarning) {
+      return {
+        ok: false as const,
+        isLinkedWarning: true,
+        error: linkedConflict,
+      };
+    }
   }
 
-  const vehicle = await dbOne(
-    db.select().from(vehicles).where(eq(vehicles.id, vehicleId))
-  );
+  const vehicle =
+    options?.preloadedVehicle ??
+    (await dbOne(
+      db.select().from(vehicles).where(eq(vehicles.id, vehicleId))
+    ));
   if (!vehicle) return { ok: false, error: "Vehicle not found" };
 
-  const linkedDriver = await getDriverForVehicle(vehicleId);
-  const driverEmployeeId = linkedDriver?.id ?? null;
+  const driverEmployeeId =
+    options?.preloadedDriverId !== undefined
+      ? options.preloadedDriverId
+      : ((await getDriverForVehicle(vehicleId))?.id ?? null);
 
-  const existingOnVehicle = (
-    await dbAll(
-      db
-        .select({ order: orders })
-        .from(assignments)
-        .innerJoin(orders, eq(assignments.orderId, orders.id))
-        .where(
-          and(
-            eq(assignments.vehicleId, vehicleId),
-            eq(assignments.deliveryRound, round),
-            sql`${assignments.orderId} != ${orderId}`
+  const existingTotals =
+    options?.runningVehicleTotals ??
+    (
+      await dbAll(
+        db
+          .select({ order: orders })
+          .from(assignments)
+          .innerJoin(orders, eq(assignments.orderId, orders.id))
+          .where(
+            and(
+              eq(assignments.vehicleId, vehicleId),
+              eq(assignments.deliveryRound, round),
+              sql`${assignments.orderId} != ${orderId}`
+            )
           )
-        )
-    )
-  ).map((r) => r.order);
-
-  const existingTotals = existingOnVehicle.map((o) => ({
-    totalM2: o.totalM2,
-    totalPieces: o.totalPieces,
-    totalPallets: o.totalPallets,
-    totalWeightKg: o.totalWeightKg,
-  }));
+      )
+    ).map((r) => ({
+      totalM2: r.order.totalM2,
+      totalPieces: r.order.totalPieces,
+      totalPallets: r.order.totalPallets,
+      totalWeightKg: r.order.totalWeightKg,
+    }));
 
   const newTotals = {
     totalM2: order.totalM2,
@@ -1206,7 +1259,11 @@ export async function assignOrderToVehicle(
 
   for (const prev of previousAssignments) {
     await db.delete(assignments).where(eq(assignments.id, prev.id));
-    await syncTruckDriverOnAssignments(prev.vehicleId);
+    if (options?.skipSyncTruckDriver) {
+      vehiclesToSync.add(prev.vehicleId);
+    } else {
+      await syncTruckDriverOnAssignments(prev.vehicleId);
+    }
   }
 
   await db.insert(assignments).values({
@@ -1221,9 +1278,19 @@ export async function assignOrderToVehicle(
     await assignEmployeeToOrder(orderId, driverEmployeeId, "driver");
   }
 
-  await syncTruckDriverOnAssignments(vehicleId);
+  if (options?.skipSyncTruckDriver) {
+    vehiclesToSync.add(vehicleId);
+  } else {
+    await syncTruckDriverOnAssignments(vehicleId);
+  }
 
-  await clearVehicleReturningIfPrepping(vehicleId);
+  if (!options?.skipClearVehicleReturning) {
+    await clearVehicleReturningIfPrepping(vehicleId);
+  }
+
+  if (options?.runningVehicleTotals) {
+    options.runningVehicleTotals.push(newTotals);
+  }
 
   const staff = await getOrderStaff(orderId);
 
@@ -1243,7 +1310,7 @@ export async function assignOrderToVehicle(
       round,
       !capacity.weightOk && ignoreWeightWarning,
       staff.picker?.employeeName,
-      staff.driver?.employeeName ?? linkedDriver?.name ?? null
+      staff.driver?.employeeName ?? options?.preloadedDriverName ?? null
     ),
     {
       category: "deliveries",
@@ -1267,10 +1334,14 @@ export async function assignOrderToVehicle(
     capacity,
     weightWarning: capacity.weightWarning,
     craneWarning: craneCheck.ok ? craneCheck.warning : undefined,
-    linkedWarning: await getLinkedSplitReminder(orderId),
+    linkedWarning: options?.skipLinkedSplitReminder
+      ? undefined
+      : await getLinkedSplitReminder(orderId),
     deliveryRound: round,
     deliveryRoundReason: roundReason,
-    order: await getOrder(orderId),
+    order: options?.skipReturnOrder ? undefined : await getOrder(orderId),
+    vehiclesToSync:
+      options?.skipSyncTruckDriver ? [...vehiclesToSync] : undefined,
   };
 }
 
@@ -1532,9 +1603,10 @@ export async function resetOrderDelivery(
   };
 }
 
-function scheduleAssignmentWarning(
-  order: NonNullable<Awaited<ReturnType<typeof getOrder>>>
-): string | undefined {
+function scheduleAssignmentWarning(order: {
+  requestedDeliveryDate?: string | null;
+  deliveryTimePreference?: string | null;
+}): string | undefined {
   if (order.requestedDeliveryDate && !isOrderReadyToShip(order)) {
     return `Requested delivery ${order.requestedDeliveryDate}. Do not ship before that date.`;
   }
@@ -1558,7 +1630,22 @@ export async function assignOrderBundle(input: {
   ignoreCraneRule?: boolean;
   ignoreLinkedWarning?: boolean;
   explicitDeliveryRound?: boolean;
+  bulk?: {
+    preloadedOrder?: AssignOrderToVehicleOptions["preloadedOrder"];
+    preloadedVehicle?: typeof vehicles.$inferSelect;
+    preloadedDriverId?: number | null;
+    preloadedDriverName?: string | null;
+    runningVehicleTotals?: AssignmentCapacityTotals[];
+    skipSyncTruckDriver?: boolean;
+    skipClearVehicleReturning?: boolean;
+    resolvedPickerId?: number | null;
+    skipPickerResolution?: boolean;
+    skipFinalGetOrder?: boolean;
+    skipCraneValidation?: boolean;
+    skipLinkedConflictCheck?: boolean;
+  };
 }) {
+  const bulk = input.bulk;
   const truck = await assignOrderToVehicle(
     input.orderId,
     input.vehicleId,
@@ -1568,6 +1655,17 @@ export async function assignOrderBundle(input: {
     {
       explicitRound: input.explicitDeliveryRound === false ? false : true,
       ignoreLinkedWarning: input.ignoreLinkedWarning ?? false,
+      preloadedOrder: bulk?.preloadedOrder,
+      preloadedVehicle: bulk?.preloadedVehicle,
+      preloadedDriverId: bulk?.preloadedDriverId,
+      preloadedDriverName: bulk?.preloadedDriverName,
+      runningVehicleTotals: bulk?.runningVehicleTotals,
+      skipSyncTruckDriver: bulk?.skipSyncTruckDriver,
+      skipClearVehicleReturning: bulk?.skipClearVehicleReturning,
+      skipReturnOrder: bulk?.skipFinalGetOrder,
+      skipLinkedSplitReminder: true,
+      skipCraneValidation: bulk?.skipCraneValidation,
+      skipLinkedConflictCheck: bulk?.skipLinkedConflictCheck,
     }
   );
   if (!truck.ok) return truck;
@@ -1576,19 +1674,23 @@ export async function assignOrderBundle(input: {
 
   let pickerId = input.pickerId ?? null;
 
-  const { enforceTruckPicker, resolvePickerForTruck } = await import(
-    "@/lib/dispatch/picker-resolution"
-  );
-  pickerId = await enforceTruckPicker(
-    input.vehicleId,
-    usedRound,
-    pickerId
-  );
-  if (pickerId == null && input.autoAssignTeam !== false) {
-    const resolved = await resolvePickerForTruck(input.vehicleId, usedRound, {
-      orderCount: 1,
-    });
-    pickerId = resolved.id;
+  if (!bulk?.skipPickerResolution) {
+    const { enforceTruckPicker, resolvePickerForTruck } = await import(
+      "@/lib/dispatch/picker-resolution"
+    );
+    pickerId = await enforceTruckPicker(
+      input.vehicleId,
+      usedRound,
+      pickerId
+    );
+    if (pickerId == null && input.autoAssignTeam !== false) {
+      const resolved = await resolvePickerForTruck(input.vehicleId, usedRound, {
+        orderCount: 1,
+      });
+      pickerId = resolved.id;
+    }
+  } else {
+    pickerId = bulk.resolvedPickerId ?? pickerId;
   }
 
   if (pickerId) {
@@ -1599,14 +1701,23 @@ export async function assignOrderBundle(input: {
     }
   }
 
-  const order = (await getOrder(input.orderId))!;
   const db = await getDb();
-  const vehicle = await dbOne(
-    db
-      .select({ name: vehicles.name })
-      .from(vehicles)
-      .where(eq(vehicles.id, input.vehicleId))
-  );
+  const order =
+    bulk?.preloadedOrder ??
+    (bulk?.skipFinalGetOrder
+      ? await dbOne(db.select().from(orders).where(eq(orders.id, input.orderId)))
+      : await getOrder(input.orderId));
+  if (!order) {
+    return { ok: false as const, error: "Order not found" };
+  }
+  const vehicle =
+    bulk?.preloadedVehicle ??
+    (await dbOne(
+      db
+        .select({ name: vehicles.name })
+        .from(vehicles)
+        .where(eq(vehicles.id, input.vehicleId))
+    ));
 
   await logActivity(
     "assign_bundle",
@@ -1615,7 +1726,7 @@ export async function assignOrderBundle(input: {
     orderAssignBundleMessage(
       order.invoiceNumber,
       vehicle?.name ?? "truck",
-      order.staff?.picker?.employeeName
+      undefined
     ),
     {
       category: "deliveries",
@@ -1627,7 +1738,7 @@ export async function assignOrderBundle(input: {
         summary: orderAssignBundleMessage(
           order.invoiceNumber,
           vehicle?.name ?? "truck",
-          order.staff?.picker?.employeeName
+          undefined
         ),
       },
     }
@@ -1635,12 +1746,24 @@ export async function assignOrderBundle(input: {
 
   return {
     ok: true as const,
-    order: await getOrder(input.orderId),
+    order: bulk?.skipFinalGetOrder ? undefined : await getOrder(input.orderId),
     craneWarning: truck.craneWarning,
-    scheduleWarning: scheduleAssignmentWarning(order),
+    scheduleWarning: bulk?.skipFinalGetOrder
+      ? undefined
+      : scheduleAssignmentWarning({
+          requestedDeliveryDate:
+            "requestedDeliveryDate" in order
+              ? order.requestedDeliveryDate
+              : undefined,
+          deliveryTimePreference:
+            "deliveryTimePreference" in order
+              ? order.deliveryTimePreference
+              : undefined,
+        }),
     linkedWarning: truck.linkedWarning,
     deliveryRound: usedRound,
     deliveryRoundReason: truck.deliveryRoundReason,
+    vehiclesToSync: truck.vehiclesToSync,
   };
 }
 
@@ -2098,6 +2221,7 @@ export async function transferOrdersToVehicle(input: {
   ignoreLinkedWarning?: boolean;
 }) {
   const db = await getDb();
+  const uniqueOrderIds = [...new Set(input.orderIds)];
   const vehicle = await dbOne(
     db.select().from(vehicles).where(eq(vehicles.id, input.vehicleId))
   );
@@ -2110,7 +2234,7 @@ export async function transferOrdersToVehicle(input: {
       "@/lib/services/order-delivery-links"
     );
     const linkedMessage = await getBulkLinkedConflictMessage(
-      input.orderIds,
+      uniqueOrderIds,
       input.vehicleId
     );
     if (linkedMessage) {
@@ -2123,6 +2247,108 @@ export async function transferOrdersToVehicle(input: {
     }
   }
 
+  const deliveryRound = input.deliveryRound;
+  if (deliveryRound < 1 || deliveryRound > MAX_DELIVERY_ROUNDS) {
+    return {
+      ok: false as const,
+      error: `Delivery round must be between 1 and ${MAX_DELIVERY_ROUNDS}`,
+      results: [],
+    };
+  }
+
+  const orderRows = uniqueOrderIds.length
+    ? await dbAll(
+        db.select().from(orders).where(inArray(orders.id, uniqueOrderIds))
+      )
+    : [];
+  const orderById = new Map(orderRows.map((order) => [order.id, order]));
+
+  const itemRows = uniqueOrderIds.length
+    ? await dbAll(
+        db
+          .select()
+          .from(orderItems)
+          .where(inArray(orderItems.orderId, uniqueOrderIds))
+      )
+    : [];
+  const itemsByOrderId = new Map<number, typeof itemRows>();
+  for (const item of itemRows) {
+    const list = itemsByOrderId.get(item.orderId) ?? [];
+    list.push(item);
+    itemsByOrderId.set(item.orderId, list);
+  }
+
+  const pickerRows = uniqueOrderIds.length
+    ? await dbAll(
+        db
+          .select({
+            orderId: orderEmployeeAssignments.orderId,
+            employeeId: orderEmployeeAssignments.employeeId,
+          })
+          .from(orderEmployeeAssignments)
+          .where(
+            and(
+              inArray(orderEmployeeAssignments.orderId, uniqueOrderIds),
+              eq(orderEmployeeAssignments.role, "picker")
+            )
+          )
+      )
+    : [];
+  const pickerByOrderId = new Map(
+    pickerRows.map((row) => [row.orderId, row.employeeId])
+  );
+
+  const assignmentRows = uniqueOrderIds.length
+    ? await dbAll(
+        db
+          .select({
+            orderId: assignments.orderId,
+            vehicleName: vehicles.name,
+          })
+          .from(assignments)
+          .innerJoin(vehicles, eq(assignments.vehicleId, vehicles.id))
+          .where(inArray(assignments.orderId, uniqueOrderIds))
+      )
+    : [];
+  const assignmentByOrderId = new Map(
+    assignmentRows.map((row) => [row.orderId, row.vehicleName])
+  );
+
+  const vehicleLoad = await getVehicleLoad(input.vehicleId, deliveryRound);
+  const runningVehicleTotals = vehicleLoad.assignedOrders
+    .filter((order) => !uniqueOrderIds.includes(order.id))
+    .map((order) => ({
+      totalM2: order.totalM2,
+      totalPieces: order.totalPieces,
+      totalPallets: order.totalPallets,
+      totalWeightKg: order.totalWeightKg,
+    }));
+
+  const linkedDriver = await getDriverForVehicle(input.vehicleId);
+  const driverEmployeeId = linkedDriver?.id ?? null;
+
+  const { enforceTruckPicker, resolvePickerForTruck } = await import(
+    "@/lib/dispatch/picker-resolution"
+  );
+  let resolvedPickerId = input.pickerId ?? null;
+  resolvedPickerId = await enforceTruckPicker(
+    input.vehicleId,
+    deliveryRound,
+    resolvedPickerId
+  );
+  if (resolvedPickerId == null) {
+    const resolved = await resolvePickerForTruck(
+      input.vehicleId,
+      deliveryRound,
+      { orderCount: uniqueOrderIds.length }
+    );
+    resolvedPickerId = resolved.id;
+  }
+
+  const { getLinkedTruckConflictMessage } = await import(
+    "@/lib/services/order-delivery-links"
+  );
+
   const results: Array<{
     orderId: number;
     ok: boolean;
@@ -2132,13 +2358,21 @@ export async function transferOrdersToVehicle(input: {
     isLinkedWarning?: boolean;
     invoiceNumber?: string;
   }> = [];
+  const vehiclesToSync = new Set<number>();
 
-  for (const orderId of input.orderIds) {
-    const order = await getOrder(orderId);
+  for (const orderId of uniqueOrderIds) {
+    const order = orderById.get(orderId);
     if (!order) {
       results.push({ orderId, ok: false, error: "Order not found" });
       continue;
     }
+
+    const preloadedOrder = {
+      ...order,
+      customerHasForklift: Boolean(order.customerHasForklift),
+      items: itemsByOrderId.get(orderId) ?? [],
+    };
+
     if (order.status === "delivered" || order.status === "cancelled") {
       results.push({
         orderId,
@@ -2149,24 +2383,74 @@ export async function transferOrdersToVehicle(input: {
       continue;
     }
 
-    const fromVehicle = order.assignment?.vehicleName ?? "previous truck";
+    const craneCheck = await validateTruckForOrder(orderId, input.vehicleId, {
+      ignoreCraneRule: input.ignoreCraneRule ?? false,
+      preloadedOrder,
+      preloadedVehicle: vehicle,
+    });
+    if (!craneCheck.ok) {
+      results.push({
+        orderId,
+        ok: false,
+        error: craneCheck.error,
+        requiresCrane: craneCheck.requiresCrane,
+        invoiceNumber: order.invoiceNumber,
+      });
+      if (!craneCheck.requiresCrane) {
+        break;
+      }
+      continue;
+    }
+
+    if (!input.ignoreLinkedWarning) {
+      const linkedConflict = await getLinkedTruckConflictMessage(
+        orderId,
+        input.vehicleId
+      );
+      if (linkedConflict) {
+        results.push({
+          orderId,
+          ok: false,
+          error: linkedConflict,
+          isLinkedWarning: true,
+          invoiceNumber: order.invoiceNumber,
+        });
+        break;
+      }
+    }
+
+    const fromVehicle = assignmentByOrderId.get(orderId) ?? "previous truck";
     const pickerId =
       input.pickerId != null
         ? input.pickerId
         : input.preservePicker !== false
-          ? (order.staff?.picker?.employeeId ?? null)
-          : null;
+          ? (pickerByOrderId.get(orderId) ?? resolvedPickerId)
+          : resolvedPickerId;
 
     const result = await assignOrderBundle({
       orderId,
       vehicleId: input.vehicleId,
-      deliveryRound: input.deliveryRound,
+      deliveryRound,
       pickerId,
       autoAssignTeam: pickerId == null,
       ignoreWeightWarning: input.ignoreWeightWarning ?? false,
       ignoreCraneRule: input.ignoreCraneRule ?? false,
       ignoreLinkedWarning: input.ignoreLinkedWarning ?? false,
       explicitDeliveryRound: true,
+      bulk: {
+        preloadedOrder,
+        preloadedVehicle: vehicle,
+        preloadedDriverId: driverEmployeeId,
+        preloadedDriverName: linkedDriver?.name ?? null,
+        runningVehicleTotals,
+        skipSyncTruckDriver: true,
+        skipClearVehicleReturning: true,
+        resolvedPickerId: pickerId,
+        skipPickerResolution: true,
+        skipFinalGetOrder: true,
+        skipCraneValidation: true,
+        skipLinkedConflictCheck: true,
+      },
     });
 
     if (!result.ok) {
@@ -2194,11 +2478,16 @@ export async function transferOrdersToVehicle(input: {
       continue;
     }
 
+    for (const vehicleId of result.vehiclesToSync ?? []) {
+      vehiclesToSync.add(vehicleId);
+    }
+    assignmentByOrderId.set(orderId, vehicle.name);
+
     await logActivity(
       "transfer",
       "order",
       orderId,
-      `${order.invoiceNumber} transferred from ${fromVehicle} to ${vehicle.name} (${vehicle.plateNumber}) — round ${result.deliveryRound ?? input.deliveryRound}.`,
+      `${order.invoiceNumber} transferred from ${fromVehicle} to ${vehicle.name} (${vehicle.plateNumber}) — round ${result.deliveryRound ?? deliveryRound}.`,
       {
         category: "deliveries",
         details: {
@@ -2206,7 +2495,7 @@ export async function transferOrdersToVehicle(input: {
           fromVehicle,
           vehicleId: input.vehicleId,
           vehicleName: vehicle.name,
-          deliveryRound: result.deliveryRound ?? input.deliveryRound,
+          deliveryRound: result.deliveryRound ?? deliveryRound,
         },
       }
     );
@@ -2218,12 +2507,28 @@ export async function transferOrdersToVehicle(input: {
     });
   }
 
-  const transferred = results.filter((r) => r.ok).length;
+  for (const vehicleId of vehiclesToSync) {
+    await syncTruckDriverOnAssignments(vehicleId);
+  }
+  if (results.some((result) => result.ok)) {
+    await clearVehicleReturningIfPrepping(input.vehicleId);
+  }
+
+  const transferred = results.filter((result) => result.ok).length;
+  const failed = results.filter((result) => !result.ok);
   return {
-    ok: transferred === input.orderIds.length,
+    ok: transferred === uniqueOrderIds.length,
     transferred,
+    partial: transferred > 0 && transferred < uniqueOrderIds.length,
     results,
     vehicleName: vehicle.name,
+    error:
+      transferred === uniqueOrderIds.length
+        ? undefined
+        : failed[0]?.error ??
+          (transferred > 0
+            ? `Assigned ${transferred} of ${uniqueOrderIds.length} orders`
+            : "Transfer failed"),
   };
 }
 

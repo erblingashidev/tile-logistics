@@ -309,6 +309,7 @@ export default function OrdersPage() {
   const [rescheduleDate, setRescheduleDate] = useState(() => todayDateString());
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
+  const [bulkAssigning, setBulkAssigning] = useState(false);
   const [truckWorkspace, setTruckWorkspace] =
     useState<TruckWorkspaceSnapshot | null>(null);
   const focusedVehicleRef = useRef("");
@@ -676,62 +677,78 @@ export default function OrdersPage() {
       return;
     }
     setError("");
-    const res = await fetch("/api/orders/transfer", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        orderIds: ids,
-        vehicleId: Number(transferVehicleId),
-        deliveryRound: Number(transferRound) || 1,
-        pickerId: transferPickerId ? Number(transferPickerId) : null,
-        preservePicker: !transferPickerId,
-        ignoreWeightWarning,
-        ignoreCraneRule,
-        ignoreLinkedWarning,
-      }),
-    });
-    const data = await res.json();
-    if (res.status === 422 && data.isLinkedWarning) {
-      if (confirm(`${data.error ?? "Linked delivery conflict"}\n\nProceed?`)) {
-        await bulkTransferToTruck(ignoreWeightWarning, ignoreCraneRule, true);
+    setBulkAssigning(true);
+    try {
+      const res = await fetch("/api/orders/transfer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderIds: ids,
+          vehicleId: Number(transferVehicleId),
+          deliveryRound: Number(transferRound) || 1,
+          pickerId: transferPickerId ? Number(transferPickerId) : null,
+          preservePicker: !transferPickerId,
+          ignoreWeightWarning,
+          ignoreCraneRule,
+          ignoreLinkedWarning,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 422 && data.isLinkedWarning) {
+        if (confirm(`${data.error ?? "Linked delivery conflict"}\n\nProceed?`)) {
+          await bulkTransferToTruck(ignoreWeightWarning, ignoreCraneRule, true);
+        }
+        return;
       }
-      return;
-    }
-    if (res.status === 422 && data.results) {
-      if (
-        confirm(
-          `${data.results.find((r: { error?: string }) => r.error)?.error ?? "Weight limit exceeded"}\n\nProceed?`
-        )
-      ) {
-        await bulkTransferToTruck(true, ignoreCraneRule, ignoreLinkedWarning);
+      if (res.status === 422 && data.results) {
+        if (
+          confirm(
+            `${data.results.find((r: { error?: string }) => r.error)?.error ?? "Weight limit exceeded"}\n\nProceed?`
+          )
+        ) {
+          await bulkTransferToTruck(true, ignoreCraneRule, ignoreLinkedWarning);
+        }
+        return;
       }
-      return;
-    }
-    if (res.status === 409 && data.results?.some((r: { requiresCrane?: boolean }) => r.requiresCrane)) {
-      if (
-        confirm(
-          "Crane truck required for one or more orders.\n\nProceed?"
-        )
-      ) {
-        await bulkTransferToTruck(ignoreWeightWarning, true, ignoreLinkedWarning);
+      if (res.status === 409 && data.results?.some((r: { requiresCrane?: boolean }) => r.requiresCrane)) {
+        if (
+          confirm(
+            "Crane truck required for one or more orders.\n\nProceed?"
+          )
+        ) {
+          await bulkTransferToTruck(ignoreWeightWarning, true, ignoreLinkedWarning);
+        }
+        return;
       }
-      return;
-    }
-    if (!res.ok) {
-      const failed = (data.results ?? []).filter((r: { ok: boolean }) => !r.ok);
-      setError(
-        failed[0]?.error ??
+      if (!res.ok) {
+        const failed = (data.results ?? []).filter((r: { ok: boolean }) => !r.ok);
+        const transferred = data.transferred ?? 0;
+        if (transferred > 0) {
+          setWarning(
+            `Transferred ${transferred} of ${ids.length} order(s) to ${data.vehicleName ?? "truck"}`
+          );
+          setTimeout(() => setWarning(""), 5000);
+          setSelectedOrderIds(new Set());
+          load();
+        }
+        setError(
           data.error ??
-          `Transfer failed (${failed.length} order(s))`
+            failed[0]?.error ??
+            `Transfer failed (${failed.length || ids.length} order(s))`
+        );
+        return;
+      }
+      setWarning(
+        `Transferred ${data.transferred ?? ids.length} order(s) to ${data.vehicleName ?? "truck"}`
       );
-      return;
+      setTimeout(() => setWarning(""), 4000);
+      setSelectedOrderIds(new Set());
+      load();
+    } catch {
+      setError("Transfer request failed — check your connection and try again.");
+    } finally {
+      setBulkAssigning(false);
     }
-    setWarning(
-      `Transferred ${data.transferred ?? ids.length} order(s) to ${data.vehicleName ?? "truck"}`
-    );
-    setTimeout(() => setWarning(""), 4000);
-    setSelectedOrderIds(new Set());
-    load();
   }
 
   function selectionHasDeliveryLink() {
@@ -866,29 +883,49 @@ export default function OrdersPage() {
       return;
     }
     setError("");
-    const res = await fetch("/api/orders/transfer", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        orderIds: ids,
-        vehicleId: Number(filters.vehicleId),
-        deliveryRound: Number(filters.deliveryRound) || 1,
-        pickerId: transferPickerId ? Number(transferPickerId) : null,
-        preservePicker: !transferPickerId,
-        ignoreWeightWarning: true,
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setError(data.error ?? data.results?.[0]?.error ?? "Assign failed");
-      return;
+    setBulkAssigning(true);
+    try {
+      const res = await fetch("/api/orders/transfer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderIds: ids,
+          vehicleId: Number(filters.vehicleId),
+          deliveryRound: Number(filters.deliveryRound) || 1,
+          pickerId: transferPickerId ? Number(transferPickerId) : null,
+          preservePicker: !transferPickerId,
+          ignoreWeightWarning: true,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const transferred = data.transferred ?? 0;
+        if (transferred > 0) {
+          setWarning(
+            `Assigned ${transferred} of ${ids.length} order(s) to ${truck?.name ?? "truck"}`
+          );
+          setTimeout(() => setWarning(""), 5000);
+          setSelectedOrderIds(new Set());
+          load();
+        }
+        setError(
+          data.error ??
+            data.results?.[0]?.error ??
+            `Assign failed (${ids.length} order(s))`
+        );
+        return;
+      }
+      setWarning(
+        `Assigned ${data.transferred ?? ids.length} order(s) to ${truck?.name ?? "truck"}`
+      );
+      setTimeout(() => setWarning(""), 4000);
+      setSelectedOrderIds(new Set());
+      load();
+    } catch {
+      setError("Assign request failed — check your connection and try again.");
+    } finally {
+      setBulkAssigning(false);
     }
-    setWarning(
-      `Assigned ${data.transferred ?? ids.length} order(s) to ${truck?.name ?? "truck"}`
-    );
-    setTimeout(() => setWarning(""), 4000);
-    setSelectedOrderIds(new Set());
-    load();
   }
 
   async function quickAssignOrderToFocus(order: Order) {
@@ -1900,9 +1937,12 @@ export default function OrdersPage() {
               <Button
                 variant="secondary"
                 className="text-xs"
+                disabled={bulkAssigning}
                 onClick={() => bulkAssignToFocusTruck()}
               >
-                Assign to {focusVehicle?.name ?? "truck"}
+                {bulkAssigning
+                  ? "Assigning…"
+                  : `Assign to ${focusVehicle?.name ?? "truck"}`}
               </Button>
             )}
             <Button
@@ -1989,10 +2029,10 @@ export default function OrdersPage() {
             <Button
               variant="secondary"
               className="text-xs"
-              disabled={!transferVehicleId}
+              disabled={!transferVehicleId || bulkAssigning}
               onClick={() => bulkTransferToTruck()}
             >
-              Transfer selected
+              {bulkAssigning ? "Transferring…" : "Transfer selected"}
             </Button>
             <Button
               variant="ghost"
