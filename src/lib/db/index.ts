@@ -131,6 +131,18 @@ async function ensureOrderDeliveryLinksTable(client: Client) {
   );
 }
 
+/** Lightweight order column patches — runs on Turso/Netlify where full runMigrations is skipped. */
+async function ensureOrderSchemaPatches(client: Client) {
+  const orderCols = await tableColumns(client, "orders");
+  await addColumnIfMissing(
+    client,
+    "orders",
+    "customer_has_forklift",
+    "customer_has_forklift INTEGER NOT NULL DEFAULT 0",
+    orderCols
+  );
+}
+
 async function ensureAdminsTable(client: Client) {
   await client.execute(`
     CREATE TABLE IF NOT EXISTS admins (
@@ -783,6 +795,7 @@ export async function getDb() {
         await ensureEmployeeNotificationsTable(clientInstance);
         await ensureAdminsTable(clientInstance);
         await ensureOrderDeliveryLinksTable(clientInstance);
+        await ensureOrderSchemaPatches(clientInstance);
         await ensureInvoiceImportTables(clientInstance);
         dbInstance = drizzle(clientInstance, { schema });
         const { backfillAdminEmployeeLinks } = await import(
