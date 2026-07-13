@@ -1,5 +1,36 @@
 import { distanceFromWarehouse, distanceKm } from "@/lib/locations";
 
+export type VehicleFamily =
+  | "volvo_crane"
+  | "daf"
+  | "atego"
+  | "iveco"
+  | "sprinter"
+  | "other";
+
+export function classifyVehicleFamily(vehicle: {
+  name: string;
+  plateNumber?: string;
+  notes?: string | null;
+}): VehicleFamily {
+  const label = `${vehicle.name} ${vehicle.plateNumber ?? ""}`.toLowerCase();
+  const notes = vehicle.notes?.toLowerCase() ?? "";
+  if (
+    label.includes("volvo") ||
+    label.includes("crane") ||
+    label.includes("krani") ||
+    notes.includes("crane") ||
+    notes.includes("krani")
+  ) {
+    return "volvo_crane";
+  }
+  if (label.includes("daf")) return "daf";
+  if (label.includes("atego")) return "atego";
+  if (label.includes("iveco")) return "iveco";
+  if (label.includes("sprinter")) return "sprinter";
+  return "other";
+}
+
 export interface DispatchVehicle {
   id: number;
   name: string;
@@ -45,6 +76,27 @@ export function isDafTruck(vehicle: { name: string }): boolean {
   return vehicle.name.toLowerCase().includes("daf");
 }
 
+export function isDafLinehaul(vehicle: { name: string }): boolean {
+  return isDafTruck(vehicle);
+}
+
+export function isVolvoCrane(vehicle: {
+  name: string;
+  plateNumber?: string;
+  notes?: string | null;
+}): boolean {
+  return classifyVehicleFamily(vehicle) === "volvo_crane" || vehicleHasCrane(vehicle);
+}
+
+export function isAtegoTruck(vehicle: { name: string }): boolean {
+  return classifyVehicleFamily(vehicle) === "atego";
+}
+
+export function isExcludedSmallVan(vehicle: { name: string }): boolean {
+  const f = classifyVehicleFamily(vehicle);
+  return f === "iveco" || f === "sprinter";
+}
+
 export function dafMinPalletsForLoad(vehicle: { name: string }): number | null {
   if (!isDafTruck(vehicle)) return null;
   return DAF_MIN_PALLETS;
@@ -58,11 +110,13 @@ export function remainingWeightCapacity(v: DispatchVehicle): number {
   return Math.max(0, v.maxWeightKg - v.usedWeightKg);
 }
 
-/** Crane trucks — name or notes (Krani = crane in Albanian). */
+/** Crane trucks — name or notes (Krani = crane in Albanian), or Volvo family. */
 export function vehicleHasCrane(vehicle: {
   name: string;
+  plateNumber?: string;
   notes?: string | null;
 }): boolean {
+  if (classifyVehicleFamily(vehicle) === "volvo_crane") return true;
   const n = vehicle.name.toLowerCase();
   const notes = vehicle.notes?.toLowerCase() ?? "";
   return (

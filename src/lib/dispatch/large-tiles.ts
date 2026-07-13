@@ -3,6 +3,16 @@ import { normalizeOrderUnit } from "@/lib/constants";
 /** Max pieces on a normal truck for jumbo / heavy-lift tile formats. */
 export const JUMBO_TILE_MAX_PIECES_STANDARD_TRUCK = 2;
 
+/** Large tiles (>120×120 cm) with this many pieces or fewer can be hand-unloaded on Atego. */
+export const LARGE_TILE_SMALL_QTY_MAX_PIECES = 3;
+
+/** Tiles with both sides at least 120 cm (e.g. 120×120, 120×280). */
+export function isLargeTileFormat(widthCm: number, heightCm: number): boolean {
+  const min = Math.min(widthCm, heightCm);
+  const max = Math.max(widthCm, heightCm);
+  return min >= 120 && max >= 120;
+}
+
 /**
  * Jumbo formats (160×160, 120×280, 160×200, etc.) need the crane truck
  * when piece count exceeds JUMBO_TILE_MAX_PIECES_STANDARD_TRUCK.

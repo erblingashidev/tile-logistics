@@ -1,5 +1,5 @@
-import { analyzeOrderCargo } from "@/lib/dispatch/large-tiles";
-import { vehicleHasCrane, isDafTruck, DAF_MIN_PALLETS } from "@/lib/dispatch/vehicles";
+import { analyzeDispatchCargo } from "@/lib/services/dispatch-planning";
+import { vehicleHasCrane, isDafTruck, isExcludedSmallVan, DAF_MIN_PALLETS } from "@/lib/dispatch/vehicles";
 import { getDb } from "@/lib/db";
 import { dbOne } from "@/lib/db/query";
 import { vehicles } from "@/lib/db/schema";
@@ -23,23 +23,34 @@ export async function validateTruckForOrder(
   );
   if (!vehicle) return { ok: false, error: "Vehicle not found" };
 
-  const cargo = analyzeOrderCargo(order.items ?? []);
+  const cargo = analyzeDispatchCargo(order.items ?? [], {
+    customerHasForklift: Boolean(order.customerHasForklift),
+    totalPieces: order.totalPieces,
+  });
   const isCrane = vehicleHasCrane(vehicle);
 
-  if (cargo.requiresCrane && !isCrane && !options?.ignoreCraneRule) {
+  if ((cargo.requiresCrane || cargo.preferCrane) && !isCrane && !options?.ignoreCraneRule) {
     return {
       ok: false,
       error:
-        "Jumbo tiles require the crane truck. Proceed without crane?",
+        "Large/jumbo tiles require the crane truck. Proceed without crane?",
       requiresCrane: true,
     };
   }
 
-  if (!cargo.requiresCrane && isCrane) {
+  if (!cargo.requiresCrane && !cargo.preferCrane && !cargo.hasLargeTiles && isCrane) {
     return {
       ok: true,
       warning:
         "Crane / Krani truck is for jumbo tiles only — use Sprinter or Iveco for standard sizes like 60×120.",
+    };
+  }
+
+  if (cargo.hasLargeTiles && isExcludedSmallVan(vehicle) && !cargo.preferAtego) {
+    return {
+      ok: false,
+      error:
+        "Large tiles cannot go on Iveco/Sprinter without crane — use Volvo, Atego, or DAF.",
     };
   }
 

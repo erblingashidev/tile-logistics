@@ -5,6 +5,8 @@ import {
   type WorkDayFilter,
 } from "@/lib/delivery-schedule";
 import { formatDeliveryRound } from "@/lib/delivery-rounds";
+import { generateFullDayDispatchPlan } from "@/lib/dispatch/recommendations";
+import { describeRouteCluster } from "@/lib/services/dispatch-planning";
 import { listOrders } from "@/lib/services/orders";
 import { listVehicles } from "@/lib/services/vehicles";
 
@@ -20,6 +22,11 @@ export interface DispatchPrintOrder {
   loadStatus: string;
   prepStatus: string;
   pickerName: string | null;
+  driverName: string | null;
+  stopSequence: number | null;
+  routeCluster: string | null;
+  hasLargeTiles: boolean;
+  requiresCrane: boolean;
 }
 
 export interface DispatchPrintRound {
@@ -29,6 +36,8 @@ export interface DispatchPrintRound {
   totalPallets: number;
   totalWeightKg: number;
   pickerNames: string[];
+  driverName: string | null;
+  routeClusters: string[];
 }
 
 export interface DispatchPrintTruck {
@@ -49,21 +58,61 @@ export interface DispatchPrintEmployeeGroup {
   totalWeightKg: number;
 }
 
+export interface DispatchPrintPlanRoute {
+  id: string;
+  deliveryRound: number;
+  roundLabel: string;
+  vehicleName: string;
+  plateNumber: string;
+  pickerName: string | null;
+  driverName: string | null;
+  routeCluster: string;
+  orderCount: number;
+  totalPallets: number;
+  totalWeightKg: number;
+  estimatedKm: number;
+  orders: Array<{
+    invoiceNumber: string;
+    customerName: string;
+    location: string;
+    region: string | null;
+  }>;
+}
+
 export interface DispatchPrintSheet {
   workDayLabel: string;
   generatedAt: string;
   unassigned: DispatchPrintOrder[];
   trucks: DispatchPrintTruck[];
   byEmployee: DispatchPrintEmployeeGroup[];
+  suggestedRoutes: DispatchPrintPlanRoute[];
+  daySummary: {
+    assignedOrders: number;
+    unassignedOrders: number;
+    trucksUsed: number;
+    totalPallets: number;
+    totalWeightKg: number;
+    roundsPlanned: number;
+  };
 }
 
 export type DispatchPrintFilters = {
   workDay?: WorkDayFilter;
   shipAsOfDate?: string;
   hideDelivered?: boolean;
+  includePlan?: boolean;
 };
 
-function toPrintOrder(order: Awaited<ReturnType<typeof listOrders>>[number]): DispatchPrintOrder {
+function toPrintOrder(
+  order: Awaited<ReturnType<typeof listOrders>>[number],
+  extras?: Partial<DispatchPrintOrder>
+): DispatchPrintOrder {
+  const hasLargeTiles = (order.items ?? []).some((item) => {
+    const w = item.tileWidthCm ?? 0;
+    const h = item.tileHeightCm ?? 0;
+    return w >= 120 && h >= 120;
+  });
+
   return {
     id: order.id,
     invoiceNumber: order.invoiceNumber,
@@ -76,6 +125,14 @@ function toPrintOrder(order: Awaited<ReturnType<typeof listOrders>>[number]): Di
     loadStatus: order.loadStatus ?? "pending",
     prepStatus: order.prepStatus ?? "pending",
     pickerName: order.staff?.picker?.employeeName ?? null,
+    driverName:
+      order.staff?.driver?.employeeName ??
+      order.assignment?.driverName ??
+      null,
+    stopSequence: extras?.stopSequence ?? null,
+    routeCluster: extras?.routeCluster ?? null,
+    hasLargeTiles: extras?.hasLargeTiles ?? hasLargeTiles,
+    requiresCrane: extras?.requiresCrane ?? false,
   };
 }
 
@@ -95,6 +152,7 @@ export function parseDispatchPrintFilters(
     workDay,
     shipAsOfDate,
     hideDelivered: searchParams.get("hideDelivered") !== "false",
+    includePlan: searchParams.get("includePlan") !== "false",
   };
 }
 
@@ -108,11 +166,9 @@ export async function getDispatchPrintSheet(
     hideDelivered: filters.hideDelivered !== false,
   });
 
-  const printOrders = orders.map(toPrintOrder);
   const assigned = orders.filter((order) => order.assignment);
-  const unassigned = printOrders.filter(
-    (_, index) => !orders[index]?.assignment
-  );
+  const unassignedOrders = orders.filter((order) => !order.assignment);
+  const unassigned = unassignedOrders.map((o) => toPrintOrder(o));
 
   const fleet = await listVehicles();
   const trucks: DispatchPrintTruck[] = [];
@@ -121,15 +177,25 @@ export async function getDispatchPrintSheet(
     const rounds: DispatchPrintRound[] = [];
 
     for (let round = 1; round <= MAX_DELIVERY_ROUNDS; round++) {
-      const roundOrders = assigned
-        .filter(
-          (order) =>
-            order.assignment?.vehicleId === vehicle.id &&
-            order.assignment?.deliveryRound === round
-        )
-        .map(toPrintOrder);
+      const roundAssigned = assigned.filter(
+        (order) =>
+          order.assignment?.vehicleId === vehicle.id &&
+          order.assignment?.deliveryRound === round
+      );
 
-      if (roundOrders.length === 0 && round > 2) continue;
+      if (roundAssigned.length === 0) continue;
+
+      const roundOrders = roundAssigned.map((order, index) =>
+        toPrintOrder(order, {
+          stopSequence: index + 1,
+          routeCluster: describeRouteCluster(
+            roundAssigned.map((o) => ({
+              city: o.city ?? undefined,
+              region: o.region ?? undefined,
+            }))
+          ),
+        })
+      );
 
       const totals = sumOrders(roundOrders);
       const pickerNames = [
@@ -137,6 +203,10 @@ export async function getDispatchPrintSheet(
           roundOrders.map((order) => order.pickerName).filter(Boolean) as string[]
         ),
       ];
+      const driverName =
+        vehicle.assignedDriver?.name ??
+        roundOrders.find((o) => o.driverName)?.driverName ??
+        null;
 
       rounds.push({
         round,
@@ -145,6 +215,15 @@ export async function getDispatchPrintSheet(
         totalPallets: totals.totalPallets,
         totalWeightKg: totals.totalWeightKg,
         pickerNames,
+        driverName,
+        routeClusters: [
+          describeRouteCluster(
+            roundAssigned.map((o) => ({
+              city: o.city ?? undefined,
+              region: o.region ?? undefined,
+            }))
+          ),
+        ],
       });
     }
 
@@ -157,7 +236,7 @@ export async function getDispatchPrintSheet(
       name: vehicle.name,
       plateNumber: vehicle.plateNumber,
       driverName: vehicle.assignedDriver?.name ?? null,
-      rounds: rounds.filter((round) => round.orders.length > 0),
+      rounds,
       totalPallets: totals.totalPallets,
       totalWeightKg: totals.totalWeightKg,
     });
@@ -198,11 +277,54 @@ export async function getDispatchPrintSheet(
     a.employeeName.localeCompare(b.employeeName)
   );
 
+  let suggestedRoutes: DispatchPrintPlanRoute[] = [];
+  if (filters.includePlan !== false && unassignedOrders.length > 0) {
+    try {
+      const plan = await generateFullDayDispatchPlan({ maxRounds: 3 });
+      suggestedRoutes = plan.rounds.flatMap((roundPlan) =>
+        roundPlan.recommendations.map((rec) => ({
+          id: rec.id,
+          deliveryRound: rec.deliveryRound,
+          roundLabel: formatDeliveryRound(rec.deliveryRound, "short"),
+          vehicleName: rec.vehicleName,
+          plateNumber: rec.plateNumber,
+          pickerName: rec.pickerName,
+          driverName: rec.driverName,
+          routeCluster: rec.routeCluster,
+          orderCount: rec.orders.length,
+          totalPallets: rec.totalPallets,
+          totalWeightKg: rec.totalWeightKg,
+          estimatedKm: rec.estimatedKm,
+          orders: rec.orders.map((o) => ({
+            invoiceNumber: o.invoiceNumber,
+            customerName: o.customerName,
+            location: o.location,
+            region: o.region ?? null,
+          })),
+        }))
+      );
+    } catch (err) {
+      console.error("[dispatch-print] plan overlay failed", err);
+    }
+  }
+
+  const allAssigned = trucks.flatMap((t) => t.rounds.flatMap((r) => r.orders));
+  const totals = sumOrders(allAssigned);
+
   return {
     workDayLabel: workDayFilterLabel(workDay, filters.shipAsOfDate),
     generatedAt: new Date().toISOString(),
     unassigned,
     trucks,
     byEmployee,
+    suggestedRoutes,
+    daySummary: {
+      assignedOrders: allAssigned.length,
+      unassignedOrders: unassigned.length,
+      trucksUsed: trucks.length,
+      totalPallets: totals.totalPallets + sumOrders(unassigned).totalPallets,
+      totalWeightKg: totals.totalWeightKg + sumOrders(unassigned).totalWeightKg,
+      roundsPlanned: trucks.reduce((n, t) => n + t.rounds.length, 0),
+    },
   };
 }

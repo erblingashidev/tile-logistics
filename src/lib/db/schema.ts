@@ -23,6 +23,7 @@ export const orders = sqliteTable("orders", {
   totalWeightKg: real("total_weight_kg").notNull().default(0),
   notes: text("notes"),
   priority: text("priority").notNull().default("normal"),
+  customerHasForklift: integer("customer_has_forklift").notNull().default(0),
   salesEmployeeId: integer("sales_employee_id").references(() => employees.id, {
     onDelete: "set null",
   }),

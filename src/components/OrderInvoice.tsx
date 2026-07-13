@@ -53,6 +53,7 @@ export interface OrderInvoiceData {
   price: number;
   notes?: string | null;
   salesAgentName?: string | null;
+  customerHasForklift?: boolean;
   salesAgentDisplayName?: string | null;
   totalM2: number;
   totalPieces: number;

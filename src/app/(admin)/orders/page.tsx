@@ -103,6 +103,7 @@ interface Order {
   deliveryStageLabel?: string;
   notes?: string | null;
   salesAgentName?: string | null;
+  customerHasForklift?: boolean;
   priority?: string | null;
   totalM2: number;
   totalPieces: number;
@@ -254,6 +255,7 @@ function createEmptyOrderForm() {
     requestedDeliveryDate: "",
     deliveryTimePreference: "flexible" as "flexible" | "morning" | "afternoon",
     priority: "normal" as "normal" | "urgent",
+    customerHasForklift: false,
     items: [emptyItem()] as OrderItem[],
   };
 }
@@ -523,6 +525,7 @@ export default function OrdersPage() {
         (order.deliveryTimePreference as "flexible" | "morning" | "afternoon") ??
         "flexible",
       priority: isOrderUrgent(order) ? "urgent" : "normal",
+      customerHasForklift: Boolean(order.customerHasForklift),
       items:
         order.items.length > 0
           ? order.items.map((i) => {
@@ -1002,6 +1005,7 @@ export default function OrdersPage() {
       requestedDeliveryDate: importForm.requestedDeliveryDate,
       deliveryTimePreference: importForm.deliveryTimePreference,
       priority: "normal" as "normal" | "urgent",
+      customerHasForklift: false,
       items: importForm.items.map((item) => ({
         unit: normalizeOrderUnit(item.unit),
         productEan: item.productEan,
@@ -1517,6 +1521,21 @@ export default function OrdersPage() {
                   }
                 />
                 <span className="font-medium text-red-800">Urgent delivery</span>
+              </label>
+              <label className="flex items-center gap-2 rounded border border-sky-100 bg-sky-50/50 px-3 py-2 text-sm sm:col-span-2">
+                <input
+                  type="checkbox"
+                  checked={form.customerHasForklift}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      customerHasForklift: e.target.checked,
+                    })
+                  }
+                />
+                <span className="font-medium text-sky-900">
+                  Customer has working forklift (large tiles can use non-crane trucks)
+                </span>
               </label>
             </div>
 

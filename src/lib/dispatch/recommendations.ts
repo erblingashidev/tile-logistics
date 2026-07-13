@@ -8,15 +8,12 @@ import {
   vehicles,
 } from "@/lib/db/schema";
 import {
-  clusterStopsByRegionThenProximity,
   orderStopsForRoundTrip,
   normalizeDispatchRegion,
-  type GeoStop,
 } from "@/lib/dispatch/route-cluster";
 import { checkVehicleCapacity } from "@/lib/calculations";
 import { listOrders, getVehicleLoad } from "@/lib/services/orders";
 import { getDriverForVehicle } from "@/lib/services/employees";
-import { analyzeOrderCargo } from "@/lib/dispatch/large-tiles";
 import { isOrderReadyToShip } from "@/lib/delivery-schedule";
 import { isOrderUrgent } from "@/lib/order-priority";
 import { resolveOrderGeo } from "@/lib/locations";
@@ -25,12 +22,22 @@ import { pickerOnTruckRound } from "@/lib/dispatch/picker-resolution";
 import {
   type DispatchVehicle,
   estimateRouteCostKm,
-  rankVehiclesForLoad,
-  vehicleCostPerKm,
   vehicleHasCrane,
+  vehicleCostPerKm,
   DAF_MIN_PALLETS,
   explainNoStandardTruckCapacity,
 } from "@/lib/dispatch/vehicles";
+import {
+  analyzeDispatchCargo,
+  clusterStopsForDispatch,
+  describeRouteCluster,
+  mergePrishtinaGroups,
+  rankVehiclesForDispatch,
+  sortGroupsForRoundPlanning,
+  isPrishtinaArea,
+  type DispatchCargoProfile,
+} from "@/lib/services/dispatch-planning";
+import { MAX_DELIVERY_ROUNDS } from "@/lib/constants";
 
 export interface DispatchOrderStop {
   id: number;
@@ -44,7 +51,10 @@ export interface DispatchOrderStop {
   totalPallets: number;
   totalWeightKg: number;
   totalM2: number;
+  totalPieces: number;
   requiresCrane: boolean;
+  hasLargeTiles: boolean;
+  customerHasForklift: boolean;
   cargoReasons: string[];
   priority: "normal" | "urgent";
 }
@@ -67,6 +77,7 @@ export interface DispatchRecommendation {
   estimatedKm: number;
   costScore: number;
   score: number;
+  routeCluster: string;
   reasons: string[];
   warnings: string[];
 }
@@ -75,6 +86,17 @@ export interface DispatchPlan {
   deliveryRound: number;
   recommendations: DispatchRecommendation[];
   skipped: Array<{ orderId: number; invoiceNumber: string; reason: string }>;
+  summary: {
+    totalOrders: number;
+    plannedOrders: number;
+    craneRoutes: number;
+    estimatedTotalKm: number;
+    estimatedCostScore: number;
+  };
+}
+
+export interface FullDayDispatchPlan {
+  rounds: DispatchPlan[];
   summary: {
     totalOrders: number;
     plannedOrders: number;
@@ -181,7 +203,10 @@ function toStop(
     lng: order.lng,
   });
   if (!geo) return null;
-  const cargo = analyzeOrderCargo(order.items ?? []);
+  const cargo = analyzeDispatchCargo(order.items ?? [], {
+    customerHasForklift: Boolean(order.customerHasForklift),
+    totalPieces: order.totalPieces,
+  });
   return {
     id: order.id,
     invoiceNumber: order.invoiceNumber,
@@ -194,26 +219,48 @@ function toStop(
     totalPallets: order.totalPallets,
     totalWeightKg: order.totalWeightKg,
     totalM2: order.totalM2,
+    totalPieces: order.totalPieces,
     requiresCrane: cargo.requiresCrane,
+    hasLargeTiles: cargo.hasLargeTiles,
+    customerHasForklift: cargo.customerHasForklift,
     cargoReasons: cargo.reasons,
     priority: isOrderUrgent(order) ? "urgent" : "normal",
   };
 }
 
-function clusterOrders(
-  stops: DispatchOrderStop[],
-  maxOrders: number,
-  maxDistanceKm: number
-): DispatchOrderStop[][] {
-  return clusterStopsByRegionThenProximity(
-    stops.map((s) => ({ ...s, totalPallets: s.totalPallets })),
-    {
-      maxOrders,
-      maxDistanceKm,
-      mergeDistanceKm: maxDistanceKm + 5,
-      regionMaxDistanceKm: Math.max(maxDistanceKm, 45),
-    }
-  ) as DispatchOrderStop[][];
+function groupCargoProfile(
+  group: DispatchOrderStop[],
+  orderItems?: Awaited<ReturnType<typeof listOrders>>[number]["items"]
+): DispatchCargoProfile {
+  if (group.length === 1 && orderItems) {
+    return analyzeDispatchCargo(orderItems, {
+      customerHasForklift: group[0].customerHasForklift,
+      totalPieces: group[0].totalPieces,
+    });
+  }
+
+  const requiresCrane = group.some((o) => o.requiresCrane);
+  const preferCrane = group.some((o) =>
+    o.cargoReasons.some((r) => r.includes("without forklift"))
+  );
+  const preferAtego = group.some((o) =>
+    o.cargoReasons.some((r) => r.includes("hand unload"))
+  );
+  const hasLargeTiles = group.some((o) => o.hasLargeTiles);
+  const customerHasForklift = group.some((o) => o.customerHasForklift);
+  const reasons = [...new Set(group.flatMap((o) => o.cargoReasons))];
+
+  return {
+    requiresCrane,
+    hasLargeTiles,
+    largeTilePieces: 0,
+    preferCrane: preferCrane || (hasLargeTiles && !customerHasForklift && !preferAtego),
+    preferAtego,
+    excludeIvecoSprinter:
+      hasLargeTiles && customerHasForklift && !requiresCrane,
+    customerHasForklift,
+    reasons,
+  };
 }
 
 function simulateVehicleAfterAssign(
@@ -236,13 +283,13 @@ async function buildRecommendation(
 ): Promise<DispatchRecommendation | null> {
   const totalPallets = group.reduce((s, o) => s + o.totalPallets, 0);
   const totalWeightKg = group.reduce((s, o) => s + o.totalWeightKg, 0);
-  const requiresCrane = group.some((o) => o.requiresCrane);
+  const cargo = groupCargoProfile(group);
 
-  const ranked = rankVehiclesForLoad(
+  const ranked = rankVehiclesForDispatch(
     fleet,
     totalPallets,
     totalWeightKg,
-    requiresCrane
+    cargo
   );
   const pick = ranked.find((v) => v.id === vehicle.id) ?? ranked[0];
   if (!pick) return null;
@@ -263,10 +310,13 @@ async function buildRecommendation(
 
   const picker = await resolvePicker(pick.id, deliveryRound);
   const driver = await getDriverForVehicle(pick.id);
+  const routeCluster = describeRouteCluster(group);
 
   const reasons: string[] = [];
-  if (requiresCrane) {
-    reasons.push("Crane truck — jumbo tiles with >2 pieces");
+  if (cargo.requiresCrane || cargo.preferCrane) {
+    reasons.push("Crane / Volvo truck — large or jumbo tiles");
+  } else if (cargo.preferAtego) {
+    reasons.push("Small large-tile qty — prefer Atego (hand unload)");
   } else {
     const dafNote =
       pick.name.toLowerCase().includes("daf") && totalPallets >= DAF_MIN_PALLETS
@@ -281,7 +331,7 @@ async function buildRecommendation(
       ...new Set(group.map((o) => normalizeDispatchRegion(o))),
     ].join(" · ");
     reasons.push(
-      `${group.length} stops in ${regionLabel} — same area, one truck (no mixed-region run)`
+      `${group.length} stops in ${regionLabel} — corridor cluster, one truck`
     );
   } else if (group[0]?.region) {
     reasons.push(`Delivery area: ${group[0].region}`);
@@ -305,7 +355,7 @@ async function buildRecommendation(
     costScore * 10 -
     totalKm * 2 +
     (group.length > 1 ? group.length * 30 : 0) +
-    (pick.hasCrane && !requiresCrane ? -50 : 0);
+    (pick.hasCrane && !cargo.requiresCrane ? -50 : 0);
 
   return {
     id: `rec-${pick.id}-r${deliveryRound}-${group.map((o) => o.id).join("-")}`,
@@ -325,6 +375,7 @@ async function buildRecommendation(
     estimatedKm: totalKm,
     costScore,
     score,
+    routeCluster,
     reasons,
     warnings,
   };
@@ -336,18 +387,15 @@ function remainingLabel(v: DispatchVehicle, load: number): number {
 
 function rankTrucksForGroup(
   fleet: DispatchVehicle[],
-  totalPallets: number,
-  totalWeightKg: number,
-  requiresCrane: boolean
+  group: DispatchOrderStop[],
+  items?: Awaited<ReturnType<typeof listOrders>>[number]["items"]
 ) {
-  let ranked = rankVehiclesForLoad(
-    fleet,
-    totalPallets,
-    totalWeightKg,
-    requiresCrane
-  );
-  if (ranked.length === 0 && !requiresCrane) {
-    ranked = rankVehiclesForLoad(fleet, totalPallets, totalWeightKg, false, {
+  const totalPallets = group.reduce((s, o) => s + o.totalPallets, 0);
+  const totalWeightKg = group.reduce((s, o) => s + o.totalWeightKg, 0);
+  const cargo = groupCargoProfile(group, items);
+  let ranked = rankVehiclesForDispatch(fleet, totalPallets, totalWeightKg, cargo);
+  if (ranked.length === 0 && !cargo.requiresCrane && !cargo.preferCrane) {
+    ranked = rankVehiclesForDispatch(fleet, totalPallets, totalWeightKg, cargo, {
       allowDafBelowMin: true,
     });
   }
@@ -362,15 +410,7 @@ async function planStandardGroup(
   skipped: DispatchPlan["skipped"]
 ): Promise<DispatchVehicle[]> {
   const totalPallets = group.reduce((s, o) => s + o.totalPallets, 0);
-  const totalWeightKg = group.reduce((s, o) => s + o.totalWeightKg, 0);
-  const requiresCrane = group.some((o) => o.requiresCrane);
-
-  const ranked = rankTrucksForGroup(
-    fleet,
-    totalPallets,
-    totalWeightKg,
-    requiresCrane
-  );
+  const ranked = rankTrucksForGroup(fleet, group);
 
   if (ranked.length === 0 && group.length > 1) {
     for (const stop of group) {
@@ -442,41 +482,77 @@ async function planStandardGroup(
   return fleet;
 }
 
+function filterStopsForRound(
+  stops: DispatchOrderStop[],
+  deliveryRound: number,
+  hasFartherPending: boolean
+): DispatchOrderStop[] {
+  if (deliveryRound === 1 && hasFartherPending) {
+    const prishtina = stops.filter((s) => isPrishtinaArea(s));
+    const farther = stops.filter((s) => !isPrishtinaArea(s));
+    if (farther.length > 0 && prishtina.length > 0) {
+      return farther;
+    }
+  }
+  return stops;
+}
+
 export async function generateDispatchPlan(options?: {
   deliveryRound?: number;
   maxOrdersPerRoute?: number;
   maxDistanceKm?: number;
   region?: string;
+  stops?: DispatchOrderStop[];
 }): Promise<DispatchPlan> {
   const deliveryRound = options?.deliveryRound ?? 1;
   const maxOrders = Math.min(8, options?.maxOrdersPerRoute ?? 6);
   const maxDistanceKm = options?.maxDistanceKm ?? 30;
 
   let fleet = await loadDispatchVehicles(deliveryRound);
-  const rawOrders = await listOrders({
-    unassigned: true,
-    readyToShip: true,
-    region: options?.region,
-  });
+  const rawOrders = options?.stops
+    ? null
+    : await listOrders({
+        unassigned: true,
+        readyToShip: true,
+        region: options?.region,
+      });
 
   const stops: DispatchOrderStop[] = [];
   const skipped: DispatchPlan["skipped"] = [];
 
-  for (const o of rawOrders) {
-    const stop = toStop(o);
-    if (!stop) {
-      skipped.push({
-        orderId: o.id,
-        invoiceNumber: o.invoiceNumber,
-        reason: "Missing map coordinates — set location on order",
-      });
-      continue;
+  if (options?.stops) {
+    stops.push(...options.stops);
+  } else if (rawOrders) {
+    for (const o of rawOrders) {
+      const stop = toStop(o);
+      if (!stop) {
+        skipped.push({
+          orderId: o.id,
+          invoiceNumber: o.invoiceNumber,
+          reason: "Missing map coordinates — set location on order",
+        });
+        continue;
+      }
+      stops.push(stop);
     }
-    stops.push(stop);
   }
 
-  const craneStops = stops.filter((s) => s.requiresCrane);
-  let standardStops = stops.filter((s) => !s.requiresCrane);
+  const hasFartherPending = stops.some((s) => !isPrishtinaArea(s));
+  const roundStops = filterStopsForRound(stops, deliveryRound, hasFartherPending);
+  const deferredPrishtina = stops.filter(
+    (s) => !roundStops.some((r) => r.id === s.id)
+  );
+
+  for (const s of deferredPrishtina) {
+    skipped.push({
+      orderId: s.id,
+      invoiceNumber: s.invoiceNumber,
+      reason: `Prishtinë area — defer to round ${deliveryRound + 1} while farther routes go first`,
+    });
+  }
+
+  const craneStops = roundStops.filter((s) => s.requiresCrane);
+  let standardStops = roundStops.filter((s) => !s.requiresCrane);
   const plannedUrgentIds = new Set<number>();
 
   const recommendations: DispatchRecommendation[] = [];
@@ -555,13 +631,13 @@ export async function generateDispatchPlan(options?: {
     }
   }
 
-  const standardGroups = clusterOrders(standardStops, maxOrders, maxDistanceKm)
-    .sort((a, b) => {
-      const palletsA = a.reduce((s, o) => s + o.totalPallets, 0);
-      const palletsB = b.reduce((s, o) => s + o.totalPallets, 0);
-      if (palletsB !== palletsA) return palletsB - palletsA;
-      return b.length - a.length;
-    });
+  let standardGroups = clusterStopsForDispatch(standardStops, {
+    maxOrders,
+    maxDistanceKm,
+    regionMaxDistanceKm: Math.max(maxDistanceKm, 45),
+  });
+  standardGroups = mergePrishtinaGroups(standardGroups, maxOrders);
+  standardGroups = sortGroupsForRoundPlanning(standardGroups, deliveryRound);
 
   for (const group of standardGroups) {
     fleet = await planStandardGroup(
@@ -591,6 +667,101 @@ export async function generateDispatchPlan(options?: {
   };
 }
 
+export async function generateFullDayDispatchPlan(options?: {
+  maxRounds?: number;
+  maxOrdersPerRoute?: number;
+  maxDistanceKm?: number;
+  region?: string;
+}): Promise<FullDayDispatchPlan> {
+  const maxRounds = Math.min(MAX_DELIVERY_ROUNDS, options?.maxRounds ?? 3);
+  const rawOrders = await listOrders({
+    unassigned: true,
+    readyToShip: true,
+    region: options?.region,
+  });
+
+  const allStops: DispatchOrderStop[] = [];
+  const globalSkipped: DispatchPlan["skipped"] = [];
+
+  for (const o of rawOrders) {
+    const stop = toStop(o);
+    if (!stop) {
+      globalSkipped.push({
+        orderId: o.id,
+        invoiceNumber: o.invoiceNumber,
+        reason: "Missing map coordinates — set location on order",
+      });
+      continue;
+    }
+    allStops.push(stop);
+  }
+
+  const rounds: DispatchPlan[] = [];
+  let remaining = [...allStops];
+
+  for (let round = 1; round <= maxRounds && remaining.length > 0; round++) {
+    const plan = await generateDispatchPlan({
+      deliveryRound: round,
+      maxOrdersPerRoute: options?.maxOrdersPerRoute,
+      maxDistanceKm: options?.maxDistanceKm,
+      region: options?.region,
+      stops: remaining,
+    });
+
+    const plannedIds = new Set(plan.recommendations.flatMap((r) => r.orderIds));
+    remaining = remaining.filter((s) => !plannedIds.has(s.id));
+
+    const roundSkipped = plan.skipped.filter(
+      (s) =>
+        s.reason.includes("defer to round") &&
+        round < maxRounds
+    );
+    const keptSkipped = plan.skipped.filter(
+      (s) => !s.reason.includes("defer to round") || round >= maxRounds
+    );
+
+    if (roundSkipped.length > 0 && round < maxRounds) {
+      const deferredIds = new Set(roundSkipped.map((s) => s.orderId));
+      remaining = [
+        ...remaining,
+        ...allStops.filter((s) => deferredIds.has(s.id)),
+      ];
+    }
+
+    rounds.push({
+      ...plan,
+      skipped: [...keptSkipped, ...globalSkipped.filter(() => round === 1)],
+    });
+  }
+
+  if (remaining.length > 0) {
+    const last = rounds[rounds.length - 1];
+    if (last) {
+      for (const s of remaining) {
+        last.skipped.push({
+          orderId: s.id,
+          invoiceNumber: s.invoiceNumber,
+          reason: "Could not plan in available rounds",
+        });
+      }
+    }
+  }
+
+  const allRecs = rounds.flatMap((r) => r.recommendations);
+  const plannedIds = new Set(allRecs.flatMap((r) => r.orderIds));
+
+  return {
+    rounds,
+    summary: {
+      totalOrders: allStops.length,
+      plannedOrders: plannedIds.size,
+      craneRoutes: allRecs.filter((r) => r.hasCrane).length,
+      estimatedTotalKm: allRecs.reduce((s, r) => s + r.estimatedKm, 0),
+      estimatedCostScore: allRecs.reduce((s, r) => s + r.costScore, 0),
+    },
+  };
+}
+
 export async function recommendOrderAssignment(orderId: number, deliveryRound = 1) {
   const order = (await listOrders()).find((o) => o.id === orderId);
   if (!order) return { ok: false as const, error: "Order not found" };
@@ -611,19 +782,15 @@ export async function recommendOrderAssignment(orderId: number, deliveryRound = 
   }
 
   const fleet = await loadDispatchVehicles(deliveryRound);
-  const requiresCrane = stop.requiresCrane;
-  const ranked = rankTrucksForGroup(
-    fleet,
-    stop.totalPallets,
-    stop.totalWeightKg,
-    requiresCrane
-  );
+  const ranked = rankTrucksForGroup(fleet, [stop], order.items ?? []);
   if (ranked.length === 0) {
+    const cargo = groupCargoProfile([stop]);
     return {
       ok: false as const,
-      error: requiresCrane
-        ? "Crane truck required but none available with capacity"
-        : "No truck with capacity",
+      error:
+        cargo.requiresCrane || cargo.preferCrane
+          ? "Crane truck required but none available with capacity"
+          : "No truck with capacity",
     };
   }
 

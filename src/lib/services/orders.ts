@@ -117,6 +117,7 @@ export interface OrderPayload {
   status?: string;
   notes?: string;
   priority?: "normal" | "urgent";
+  customerHasForklift?: boolean;
   salesEmployeeId?: number | null;
   salesAgentName?: string | null;
   items: OrderItemPayload[];
@@ -364,6 +365,7 @@ export async function listOrders(filters?: {
         );
         return {
           ...order,
+          customerHasForklift: Boolean(order.customerHasForklift),
           assignment: await getOrderAssignment(order.id),
           staff: await getOrderStaff(order.id),
           proofs,
@@ -437,6 +439,7 @@ export async function getOrder(id: number) {
   );
   return {
     ...order,
+    customerHasForklift: Boolean(order.customerHasForklift),
     status: reconciledStatus,
     items: await dbAll(
       db.select().from(orderItems).where(eq(orderItems.orderId, id))
@@ -777,6 +780,7 @@ export async function createOrder(
         totalWeightKg: totals.totalWeightKg,
         notes: payload.notes ?? null,
         priority: payload.priority ?? "normal",
+        customerHasForklift: payload.customerHasForklift ? 1 : 0,
         salesEmployeeId: payload.salesEmployeeId ?? null,
         salesAgentName: payload.salesAgentName ?? null,
         createdAt: now,
@@ -992,6 +996,7 @@ export async function updateOrder(id: number, payload: OrderPayload) {
       totalWeightKg: totals.totalWeightKg,
       notes: payload.notes ?? null,
       priority: payload.priority ?? undefined,
+      customerHasForklift: payload.customerHasForklift ? 1 : 0,
       salesEmployeeId: payload.salesEmployeeId ?? existing.salesEmployeeId,
       salesAgentName: payload.salesAgentName ?? existing.salesAgentName,
       updatedAt: now,

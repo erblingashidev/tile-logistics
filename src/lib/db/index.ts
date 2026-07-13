@@ -356,6 +356,13 @@ async function runMigrations(client: Client) {
     "sales_agent_name TEXT",
     orderCols2
   );
+  await addColumnIfMissing(
+    client,
+    "orders",
+    "customer_has_forklift",
+    "customer_has_forklift INTEGER NOT NULL DEFAULT 0",
+    orderCols2
+  );
   await client.execute(
     "CREATE INDEX IF NOT EXISTS idx_orders_sales_employee ON orders(sales_employee_id)"
   );

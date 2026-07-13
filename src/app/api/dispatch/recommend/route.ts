@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   generateDispatchPlan,
+  generateFullDayDispatchPlan,
   recommendOrderAssignment,
 } from "@/lib/dispatch/recommendations";
 
@@ -19,6 +20,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(result, { status: 404 });
     }
     return NextResponse.json(result);
+  }
+
+  if (sp.get("allRounds") === "true") {
+    const plan = await generateFullDayDispatchPlan({
+      region: sp.get("region") ?? undefined,
+      maxOrdersPerRoute: sp.get("maxOrders")
+        ? Number(sp.get("maxOrders"))
+        : undefined,
+      maxDistanceKm: sp.get("maxDistanceKm")
+        ? Number(sp.get("maxDistanceKm"))
+        : undefined,
+      maxRounds: sp.get("maxRounds") ? Number(sp.get("maxRounds")) : undefined,
+    });
+    return NextResponse.json(plan);
   }
 
   const plan = await generateDispatchPlan({

@@ -30,6 +30,7 @@ interface DispatchRecommendation {
   totalWeightKg: number;
   estimatedKm: number;
   costScore: number;
+  routeCluster?: string;
   reasons: string[];
   warnings: string[];
 }
@@ -302,6 +303,7 @@ export function SmartDispatchPanel({
                           )}
                         </div>
                         <p className="mt-1 text-xs text-zinc-600">
+                          {rec.routeCluster ? `${rec.routeCluster} · ` : ""}
                           {rec.pickerName ? `Picker ${rec.pickerName}` : "No picker"}
                           {rec.driverName ? ` · Driver ${rec.driverName}` : ""}
                           {" · "}

@@ -101,6 +101,9 @@ export function OrderBoardDetail({ order }: { order: OrderListCardOrder }) {
         {coords && <DetailField label="Coordinates" value={coords} />}
         <DetailField label="Order date" value={order.orderDate} />
         <DetailField label="Referenti" value={referenti} />
+        {order.customerHasForklift && (
+          <DetailField label="Forklift" value="Customer has forklift on site" />
+        )}
         <DetailField label="Price" value={`€${order.price.toFixed(2)}`} />
         <DetailField
           label="Load"
