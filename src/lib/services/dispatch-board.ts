@@ -1,4 +1,4 @@
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { dbAll } from "@/lib/db/query";
 import {
@@ -8,8 +8,8 @@ import {
   orders,
 } from "@/lib/db/schema";
 import { MAX_DELIVERY_ROUNDS } from "@/lib/constants";
-import { distanceKm } from "@/lib/locations";
 import { groupSpreadKm } from "@/lib/dispatch/route-cluster-utils";
+import { isOrderReadyToShip } from "@/lib/delivery-schedule";
 import { isOrderUrgent, normalizeOrderPriority } from "@/lib/order-priority";
 import { getVehicleLoad } from "@/lib/services/orders";
 import { getTruckLoadStatus } from "@/lib/services/load-coordination";
@@ -21,9 +21,11 @@ export interface DispatchBoardOrder {
   invoiceNumber: string;
   customerName: string;
   location: string;
+  city: string | null;
   region: string | null;
   totalPallets: number;
   totalM2: number;
+  totalWeightKg: number;
   priority: "normal" | "urgent";
   loadStatus?: string;
   pickerName: string | null;
@@ -60,26 +62,59 @@ export interface PickerWorkloadRow {
 
 export interface DispatchBoard {
   pickerWorkload: PickerWorkloadRow[];
+  unassignedOrders: DispatchBoardOrder[];
   unassignedUrgent: DispatchBoardOrder[];
   unassignedCount: number;
   trucks: DispatchBoardTruck[];
 }
 
-async function pickerNameForOrder(orderId: number): Promise<string | null> {
+async function pickerNamesForOrders(
+  orderIds: number[]
+): Promise<Map<number, string>> {
+  const unique = [...new Set(orderIds)];
+  if (unique.length === 0) return new Map();
+
   const db = await getDb();
-  const row = await dbAll(
+  const rows = await dbAll(
     db
-      .select({ name: employees.name })
+      .select({
+        orderId: orderEmployeeAssignments.orderId,
+        name: employees.name,
+      })
       .from(orderEmployeeAssignments)
       .innerJoin(employees, eq(orderEmployeeAssignments.employeeId, employees.id))
       .where(
         and(
-          eq(orderEmployeeAssignments.orderId, orderId),
+          inArray(orderEmployeeAssignments.orderId, unique),
           eq(orderEmployeeAssignments.role, "picker")
         )
       )
   );
-  return row[0]?.name ?? null;
+
+  const map = new Map<number, string>();
+  for (const row of rows) {
+    if (!map.has(row.orderId)) map.set(row.orderId, row.name);
+  }
+  return map;
+}
+
+function toBoardOrder(
+  o: (typeof orders.$inferSelect),
+  pickerNames: Map<number, string>
+): DispatchBoardOrder {
+  return {
+    id: o.id,
+    invoiceNumber: o.invoiceNumber,
+    customerName: o.customerName,
+    location: o.location,
+    city: o.city,
+    region: o.region,
+    totalPallets: o.totalPallets,
+    totalM2: o.totalM2,
+    totalWeightKg: o.totalWeightKg,
+    priority: normalizeOrderPriority(o.priority, o.notes),
+    pickerName: pickerNames.get(o.id) ?? null,
+  };
 }
 
 function roundStatus(
@@ -164,27 +199,35 @@ export async function getDispatchBoard(
       )
   );
 
-  const unassignedUrgent: DispatchBoardOrder[] = [];
-  for (const o of unassignedRows) {
-    if (!isOrderUrgent(o)) continue;
-    unassignedUrgent.push({
-      id: o.id,
-      invoiceNumber: o.invoiceNumber,
-      customerName: o.customerName,
-      location: o.location,
-      region: o.region,
-      totalPallets: o.totalPallets,
-      totalM2: o.totalM2,
-      priority: normalizeOrderPriority(o.priority, o.notes),
-      pickerName: await pickerNameForOrder(o.id),
-    });
-  }
+  const readyUnassigned = unassignedRows.filter((o) => isOrderReadyToShip(o));
+  const unassignedPickerNames = await pickerNamesForOrders(
+    readyUnassigned.map((o) => o.id)
+  );
+
+  const unassignedOrders: DispatchBoardOrder[] = readyUnassigned.map((o) =>
+    toBoardOrder(o, unassignedPickerNames)
+  );
+
+  const unassignedUrgent = unassignedOrders.filter((o) =>
+    unassignedRows.some((row) => row.id === o.id && isOrderUrgent(row))
+  );
 
   const trucks: DispatchBoardTruck[] = [];
+  const assignedOrderIds: number[] = [];
+  const pendingRounds: Array<{
+    vehicle: (typeof fleet)[number];
+    driverName: string | null;
+    round: number;
+    activeOrders: Awaited<ReturnType<typeof getVehicleLoad>>["assignedOrders"];
+    totalPallets: number;
+    spreadKm: number;
+    regions: string[];
+    status: DispatchBoardRound["status"];
+    statusLabel: string;
+  }> = [];
 
   for (const v of fleet) {
     const driver = await getDriverForVehicle(v.id);
-    const rounds: DispatchBoardRound[] = [];
 
     for (let round = 1; round <= maxRounds; round++) {
       const load = await getVehicleLoad(v.id, round);
@@ -194,19 +237,7 @@ export async function getDispatchBoard(
 
       if (activeOrders.length === 0 && round > 2) continue;
 
-      const boardOrders: DispatchBoardOrder[] = await Promise.all(
-        activeOrders.map(async (o) => ({
-          id: o.id,
-          invoiceNumber: o.invoiceNumber,
-          customerName: o.customerName,
-          location: o.location,
-          region: o.region,
-          totalPallets: o.totalPallets,
-          totalM2: o.totalM2,
-          priority: normalizeOrderPriority(o.priority, o.notes),
-          pickerName: await pickerNameForOrder(o.id),
-        }))
-      );
+      assignedOrderIds.push(...activeOrders.map((o) => o.id));
 
       const geo = activeOrders.filter((o) => o.lat != null && o.lng != null);
       const spreadKm =
@@ -224,40 +255,74 @@ export async function getDispatchBoard(
         ),
       ];
 
-      const pickerNames = [
-        ...new Set(
-          boardOrders.map((o) => o.pickerName).filter(Boolean) as string[]
-        ),
-      ];
-
       const truckStatus =
         activeOrders.length > 0
           ? await getTruckLoadStatus(v.id, round)
           : null;
       const { status, label } = roundStatus(truckStatus, activeOrders.length);
 
-      rounds.push({
+      pendingRounds.push({
+        vehicle: v,
+        driverName: driver?.name ?? null,
         round,
-        orders: boardOrders,
+        activeOrders,
         totalPallets: load.totals.pallets,
-        maxPallets: v.maxPallets,
-        regions,
         spreadKm,
-        pickerNames,
+        regions,
         status,
         statusLabel: label,
       });
     }
+  }
 
-    if (rounds.some((r) => r.orders.length > 0) || v.status === "available") {
-      trucks.push({
-        vehicleId: v.id,
-        name: v.name,
-        plateNumber: v.plateNumber,
-        maxPallets: v.maxPallets,
-        driverName: driver?.name ?? null,
-        rounds,
+  const assignedPickerNames = await pickerNamesForOrders(assignedOrderIds);
+
+  const truckMap = new Map<number, DispatchBoardTruck>();
+  for (const row of pendingRounds) {
+    const boardOrders = row.activeOrders.map((o) =>
+      toBoardOrder(o, assignedPickerNames)
+    );
+    const pickerNames = [
+      ...new Set(
+        boardOrders.map((o) => o.pickerName).filter(Boolean) as string[]
+      ),
+    ];
+
+    const roundEntry: DispatchBoardRound = {
+      round: row.round,
+      orders: boardOrders,
+      totalPallets: row.totalPallets,
+      maxPallets: row.vehicle.maxPallets,
+      regions: row.regions,
+      spreadKm: row.spreadKm,
+      pickerNames,
+      status: row.status,
+      statusLabel: row.statusLabel,
+    };
+
+    const existing = truckMap.get(row.vehicle.id);
+    if (existing) {
+      existing.rounds.push(roundEntry);
+    } else {
+      truckMap.set(row.vehicle.id, {
+        vehicleId: row.vehicle.id,
+        name: row.vehicle.name,
+        plateNumber: row.vehicle.plateNumber,
+        maxPallets: row.vehicle.maxPallets,
+        driverName: row.driverName,
+        rounds: [roundEntry],
       });
+    }
+  }
+
+  for (const v of fleet) {
+    const truck = truckMap.get(v.id);
+    if (!truck) continue;
+    if (
+      truck.rounds.some((r) => r.orders.length > 0 || r.totalPallets > 0) ||
+      v.status === "available"
+    ) {
+      trucks.push(truck);
     }
   }
 
@@ -269,6 +334,7 @@ export async function getDispatchBoard(
 
   return {
     pickerWorkload,
+    unassignedOrders,
     unassignedUrgent,
     unassignedCount: unassignedRows.length,
     trucks,

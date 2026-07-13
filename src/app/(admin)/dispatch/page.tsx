@@ -6,53 +6,19 @@ import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { Badge, Button, Card, Alert, PageSection, StatCard, Select } from "@/components/ui";
 import { SmartDispatchPanel } from "@/components/SmartDispatchPanel";
+import { DispatchAssignBoard } from "@/components/dispatch/DispatchAssignBoard";
 import { deliveryRoundSelectOptions, formatDeliveryRound } from "@/lib/delivery-rounds";
+import type {
+  DispatchBoardOrder,
+  DispatchBoardTruck,
+  PickerWorkloadRow,
+} from "@/lib/services/dispatch-board";
 
 const DispatchMap = dynamic(
   () =>
     import("@/components/map/DispatchMap").then((m) => m.DispatchMap),
   { ssr: false, loading: () => <Card className="p-8 text-sm text-zinc-500">Loading map…</Card> }
 );
-
-interface DispatchBoardOrder {
-  id: number;
-  invoiceNumber: string;
-  customerName: string;
-  location: string;
-  region: string | null;
-  totalPallets: number;
-  priority: "normal" | "urgent";
-  pickerName: string | null;
-}
-
-interface DispatchBoardRound {
-  round: number;
-  orders: DispatchBoardOrder[];
-  totalPallets: number;
-  maxPallets: number;
-  regions: string[];
-  spreadKm: number;
-  pickerNames: string[];
-  status: string;
-  statusLabel: string;
-}
-
-interface DispatchBoardTruck {
-  vehicleId: number;
-  name: string;
-  plateNumber: string;
-  maxPallets: number;
-  driverName: string | null;
-  rounds: DispatchBoardRound[];
-}
-
-interface PickerWorkloadRow {
-  id: number;
-  name: string;
-  orderCount: number;
-  palletCount: number;
-  status: string;
-}
 
 interface UrgentOption {
   id: string;
@@ -70,16 +36,10 @@ interface UrgentOption {
 
 interface BoardData {
   pickerWorkload: PickerWorkloadRow[];
+  unassignedOrders: DispatchBoardOrder[];
   unassignedUrgent: DispatchBoardOrder[];
   unassignedCount: number;
   trucks: DispatchBoardTruck[];
-}
-
-function roundTone(status: string) {
-  if (status === "ready") return "green" as const;
-  if (status === "departed") return "blue" as const;
-  if (status === "loading") return "amber" as const;
-  return "slate" as const;
 }
 
 function pickerBalanceHint(rows: PickerWorkloadRow[]): string | null {
@@ -374,102 +334,18 @@ export default function DispatchPage() {
           )}
 
           <PageSection
-            title={`Trucks & rounds · ${board.unassignedCount} unassigned orders total`}
+            title={`Assign orders · ${board.unassignedOrders.length} ready · ${board.unassignedCount} total unassigned`}
           >
-            {loading && !board.trucks.length ? (
-              <p className="text-sm text-zinc-500">Loading…</p>
-            ) : (
-              <div className="space-y-4">
-                {board.trucks.map((truck) => (
-                  <Card key={truck.vehicleId} className="overflow-hidden">
-                    <div className="border-b border-zinc-100 bg-zinc-50 px-4 py-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div>
-                          <p className="font-semibold text-zinc-900">
-                            {truck.name}{" "}
-                            <span className="font-normal text-zinc-500">
-                              ({truck.plateNumber})
-                            </span>
-                          </p>
-                          <p className="text-xs text-zinc-500">
-                            {truck.driverName
-                              ? `Driver: ${truck.driverName}`
-                              : "No driver linked"}{" "}
-                            · max {truck.maxPallets} plt
-                          </p>
-                        </div>
-                        <Link
-                          href={`/orders?vehicleId=${truck.vehicleId}`}
-                          className="text-xs text-blue-600 underline"
-                        >
-                          Focus on Orders
-                        </Link>
-                      </div>
-                    </div>
-                    <div className="grid gap-0 lg:grid-cols-2 xl:grid-cols-3">
-                      {truck.rounds.map((round) => (
-                        <div
-                          key={round.round}
-                          className="border-b border-r border-zinc-100 p-4 last:border-b-0"
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-sm font-semibold">
-                              {formatDeliveryRound(round.round, "short")}
-                            </p>
-                            <Badge tone={roundTone(round.status)}>
-                              {round.statusLabel}
-                            </Badge>
-                          </div>
-                          <p className="mt-1 text-xs text-zinc-600">
-                            {round.totalPallets} / {round.maxPallets} plt
-                            {round.spreadKm > 0 &&
-                              ` · route spread ${round.spreadKm} km`}
-                          </p>
-                          {round.regions.length > 0 && (
-                            <p className="mt-1 text-xs text-zinc-500">
-                              Areas: {round.regions.join(" · ")}
-                            </p>
-                          )}
-                          {round.pickerNames.length > 0 && (
-                            <p className="mt-1 text-xs text-zinc-500">
-                              Pickers: {round.pickerNames.join(", ")}
-                            </p>
-                          )}
-                          {round.orders.length === 0 ? null : (
-                            <ul className="mt-3 space-y-1.5">
-                              {round.orders.map((o) => (
-                                <li
-                                  key={o.id}
-                                  className="rounded border border-zinc-100 bg-zinc-50/50 px-2 py-1.5 text-xs"
-                                >
-                                  <span className="font-medium">
-                                    {o.invoiceNumber}
-                                  </span>
-                                  {o.priority === "urgent" && (
-                                    <Badge tone="red">
-                                      URGENT
-                                    </Badge>
-                                  )}
-                                  <span className="text-zinc-600">
-                                    {" "}
-                                    · {o.totalPallets} plt · {o.location}
-                                  </span>
-                                  {o.pickerName && (
-                                    <span className="block text-zinc-500">
-                                      Picker: {o.pickerName}
-                                    </span>
-                                  )}
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            )}
+            <DispatchAssignBoard
+              unassignedOrders={board.unassignedOrders}
+              trucks={board.trucks}
+              onAssigned={() => {
+                load();
+                setMapRefreshKey((k) => k + 1);
+              }}
+              onError={setError}
+              onMessage={setMessage}
+            />
           </PageSection>
         </>
       )}
