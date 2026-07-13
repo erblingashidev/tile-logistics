@@ -56,6 +56,10 @@ export async function POST(request: NextRequest) {
   const deliveryRound = Number(body.deliveryRound) || 1;
   const ignoreWeightWarning = Boolean(body.ignoreWeightWarning);
   const ignoreCraneRule = Boolean(body.ignoreCraneRule);
+  const pickerId =
+    body.pickerId != null && body.pickerId !== ""
+      ? Number(body.pickerId)
+      : undefined;
 
   if (!vehicleId || orderIds.length === 0) {
     return NextResponse.json(
@@ -69,7 +73,8 @@ export async function POST(request: NextRequest) {
     vehicleId,
     deliveryRound,
     ignoreWeightWarning,
-    ignoreCraneRule
+    ignoreCraneRule,
+    pickerId && Number.isFinite(pickerId) ? pickerId : null
   );
 
   const failed = results.find((r) => !r.ok);

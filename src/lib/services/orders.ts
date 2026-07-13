@@ -1984,7 +1984,8 @@ export async function assignRouteToVehicle(
   vehicleId: number,
   deliveryRound: number,
   ignoreWeightWarning = false,
-  ignoreCraneRule = false
+  ignoreCraneRule = false,
+  pickerId?: number | null
 ) {
   const results: Array<{
     orderId: number;
@@ -1997,7 +1998,8 @@ export async function assignRouteToVehicle(
       orderId,
       vehicleId,
       deliveryRound,
-      autoAssignTeam: true,
+      pickerId: pickerId ?? null,
+      autoAssignTeam: pickerId == null,
       ignoreWeightWarning,
       ignoreCraneRule,
     });

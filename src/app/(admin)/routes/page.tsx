@@ -69,6 +69,13 @@ export default function RoutesPage() {
   const [warning, setWarning] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [assigningPlanId, setAssigningPlanId] = useState<string | null>(null);
+  const [assigningAll, setAssigningAll] = useState(false);
+  const [planChoices, setPlanChoices] = useState<
+    Record<string, { vehicleId: string; pickerId: string }>
+  >({});
+
+  const pickers = employees.filter((e) => e.roles.includes("picker"));
 
   useEffect(() => {
     void (async () => {
@@ -123,6 +130,63 @@ export default function RoutesPage() {
     loadPlans();
   }, [loadPlans]);
 
+  useEffect(() => {
+    setPlanChoices((prev) => {
+      const next = { ...prev };
+      for (const plan of plans) {
+        if (!next[plan.id]) {
+          next[plan.id] = {
+            vehicleId: filters.vehicleId,
+            pickerId: filters.pickerId,
+          };
+        }
+      }
+      return next;
+    });
+  }, [plans, filters.pickerId, filters.vehicleId]);
+
+  function planChoice(planId: string) {
+    return (
+      planChoices[planId] ?? {
+        vehicleId: filters.vehicleId,
+        pickerId: filters.pickerId,
+      }
+    );
+  }
+
+  function setPlanChoice(
+    planId: string,
+    patch: Partial<{ vehicleId: string; pickerId: string }>
+  ) {
+    setPlanChoices((prev) => ({
+      ...prev,
+      [planId]: { ...planChoice(planId), ...patch },
+    }));
+  }
+
+  function routeFitsVehicle(plan: RoutePlan, vehicle: Vehicle | undefined) {
+    if (!vehicle) {
+      return { fits: false, message: "Select a truck for this route" };
+    }
+    const round = Number(filters.deliveryRound);
+    const load = vehicle.loads.find((l) => l.round === round);
+    const usedPallets = load?.totals.pallets ?? 0;
+    const usedKg = load?.totals.weightKg ?? 0;
+    if (usedPallets + plan.totalPallets > vehicle.maxPallets) {
+      return {
+        fits: false,
+        message: `Needs ${plan.totalPallets} plt · ${Math.max(0, vehicle.maxPallets - usedPallets)} free on ${vehicle.name}`,
+      };
+    }
+    if (usedKg + plan.totalWeightKg > vehicle.maxWeightKg) {
+      return {
+        fits: false,
+        message: `Weight limit on ${vehicle.name}`,
+      };
+    }
+    return { fits: true };
+  }
+
   const selectedVehicle = vehicles.find(
     (v) => String(v.id) === filters.vehicleId
   );
@@ -133,25 +197,35 @@ export default function RoutesPage() {
   async function assignRoute(
     plan: RoutePlan,
     ignoreWeight = false,
-    ignoreCrane = false
-  ) {
-    if (!filters.vehicleId) {
-      setError("Select a vehicle first.");
-      return;
+    ignoreCrane = false,
+    options?: { silent?: boolean }
+  ): Promise<boolean> {
+    const choice = planChoice(plan.id);
+    const vehicleId = Number(choice.vehicleId);
+    if (!vehicleId) {
+      setError("Select a truck for this route.");
+      return false;
     }
     setError("");
+    if (!options?.silent) {
+      setAssigningPlanId(plan.id);
+    }
     const res = await fetch("/api/routes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        vehicleId: Number(filters.vehicleId),
+        vehicleId,
         deliveryRound: Number(filters.deliveryRound),
         orderIds: plan.orders.map((o) => o.id),
+        pickerId: choice.pickerId ? Number(choice.pickerId) : undefined,
         ignoreWeightWarning: ignoreWeight,
         ignoreCraneRule: ignoreCrane,
       }),
     });
     const data = await res.json();
+    if (!options?.silent) {
+      setAssigningPlanId(null);
+    }
     if (res.status === 409 && !ignoreCrane) {
       const craneErr = data.results?.find(
         (r: { requiresCrane?: boolean; error?: string }) => r.requiresCrane
@@ -162,9 +236,9 @@ export default function RoutesPage() {
             `${craneErr.error ?? "Crane truck required"}\n\nProceed?`
           )
         ) {
-          await assignRoute(plan, ignoreWeight, true);
+          return assignRoute(plan, ignoreWeight, true, options);
         }
-        return;
+        return false;
       }
     }
     if (res.status === 409 && !ignoreWeight) {
@@ -173,14 +247,61 @@ export default function RoutesPage() {
           `${data.results?.[0]?.error ?? "Capacity limit"}\n\nProceed?`
         )
       ) {
-        await assignRoute(plan, true, ignoreCrane);
+        return assignRoute(plan, true, ignoreCrane, options);
       }
-      return;
+      return false;
     }
     if (!res.ok) {
-      setError(data.results?.find((r: { error?: string }) => r.error)?.error ?? "Assign failed");
+      setError(
+        data.results?.find((r: { error?: string }) => r.error)?.error ??
+          data.error ??
+          "Assign failed"
+      );
+      return false;
+    }
+    if (!options?.silent) {
+      setWarning(`Assigned ${plan.city} · ${plan.orders.length} stop(s)`);
+      setTimeout(() => setWarning(""), 3000);
+      loadPlans();
+      void fetch("/api/vehicles")
+        .then((r) => readJsonList<Vehicle>(r))
+        .then(setVehicles);
+    }
+    return true;
+  }
+
+  async function assignAllRoutes() {
+    if (plans.length === 0) return;
+    const missing = plans.filter((p) => !planChoice(p.id).vehicleId);
+    if (missing.length > 0) {
+      setError("Select a truck for each route before assigning all.");
       return;
     }
+    setAssigningAll(true);
+    setError("");
+    for (const plan of plans) {
+      const fit = routeFitsVehicle(
+        plan,
+        vehicles.find((v) => String(v.id) === planChoice(plan.id).vehicleId)
+      );
+      if (!fit.fits) {
+        setError(`${plan.city}: ${fit.message ?? "Does not fit selected truck"}`);
+        setAssigningAll(false);
+        return;
+      }
+    }
+    let applied = 0;
+    for (const plan of plans) {
+      const ok = await assignRoute(plan, false, false, { silent: true });
+      if (!ok) {
+        setAssigningAll(false);
+        return;
+      }
+      applied += 1;
+    }
+    setAssigningAll(false);
+    setWarning(`Assigned ${applied} route(s).`);
+    setTimeout(() => setWarning(""), 3000);
     loadPlans();
     void fetch("/api/vehicles")
       .then((r) => readJsonList<Vehicle>(r))
@@ -267,13 +388,13 @@ export default function RoutesPage() {
                 ))}
             </Select>
             <Select
-              label="Vehicle"
+              label="Vehicle (default for new routes)"
               value={filters.vehicleId}
               onChange={(e) =>
                 setFilters({ ...filters, vehicleId: e.target.value })
               }
             >
-              <option value="">Select vehicle…</option>
+              <option value="">No default truck</option>
               {vehicles.map((v) => (
                 <option key={v.id} value={v.id}>
                   {v.name} — {v.maxPallets} plt max
@@ -357,6 +478,17 @@ export default function RoutesPage() {
       />
 
       <PageSection title="Suggested routes">
+        {plans.length > 0 && (
+          <div className="mb-3 flex justify-end">
+            <Button
+              variant="secondary"
+              disabled={assigningAll || assigningPlanId != null}
+              onClick={() => void assignAllRoutes()}
+            >
+              {assigningAll ? "Assigning…" : "Assign all routes"}
+            </Button>
+          </div>
+        )}
         {loading ? (
           <p className="text-sm text-zinc-500">Loading…</p>
         ) : plans.length === 0 ? (
@@ -365,10 +497,17 @@ export default function RoutesPage() {
           </Card>
         ) : (
           <div className="space-y-3">
-            {plans.map((plan) => (
+            {plans.map((plan) => {
+              const choice = planChoice(plan.id);
+              const selectedVehicle = vehicles.find(
+                (v) => String(v.id) === choice.vehicleId
+              );
+              const fit = routeFitsVehicle(plan, selectedVehicle);
+              const busy = assigningPlanId === plan.id || assigningAll;
+              return (
               <Card key={plan.id} className="p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="font-medium text-zinc-900">
                       {plan.city} · {plan.orders.length} stops ·{" "}
                       {plan.totalPallets} pallets · {plan.maxDistanceKm} km
@@ -383,26 +522,57 @@ export default function RoutesPage() {
                         </li>
                       ))}
                     </ul>
-                    {!plan.fitsVehicle && (
+                    {!fit.fits && (
                       <p className="mt-2 text-xs text-red-600">
-                        {plan.vehicleMessage ?? "Exceeds vehicle pallet capacity"}
+                        {fit.message ?? plan.vehicleMessage ?? "Exceeds truck capacity"}
                       </p>
                     )}
-                    {plan.fitsVehicle && plan.vehicleMessage && (
+                    {fit.fits && plan.vehicleMessage && (
                       <p className="mt-2 text-xs text-amber-700">
                         {plan.vehicleMessage}
                       </p>
                     )}
                   </div>
-                  <Button
-                    disabled={!filters.vehicleId || !plan.fitsVehicle}
-                    onClick={() => assignRoute(plan)}
-                  >
-                    Assign route
-                  </Button>
+                  <div className="flex w-full flex-col gap-2 sm:w-56">
+                    <Select
+                      label="Truck"
+                      value={choice.vehicleId}
+                      onChange={(e) =>
+                        setPlanChoice(plan.id, { vehicleId: e.target.value })
+                      }
+                    >
+                      <option value="">Select truck…</option>
+                      {vehicles.map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.name} ({v.plateNumber})
+                        </option>
+                      ))}
+                    </Select>
+                    <Select
+                      label="Picker"
+                      value={choice.pickerId}
+                      onChange={(e) =>
+                        setPlanChoice(plan.id, { pickerId: e.target.value })
+                      }
+                    >
+                      <option value="">Auto / driver team</option>
+                      {pickers.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </Select>
+                    <Button
+                      disabled={!choice.vehicleId || !fit.fits || busy}
+                      onClick={() => void assignRoute(plan)}
+                    >
+                      {assigningPlanId === plan.id ? "Assigning…" : "Assign route"}
+                    </Button>
+                  </div>
                 </div>
               </Card>
-            ))}
+            );
+            })}
           </div>
         )}
       </PageSection>
