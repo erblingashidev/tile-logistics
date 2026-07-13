@@ -13,7 +13,6 @@ const navGroups = [
       { href: "/", label: "Dashboard" },
       { href: "/orders", label: "Orders" },
       { href: "/dispatch", label: "Dispatch" },
-      { href: "/routes", label: "Routes" },
       { href: "/map", label: "Map" },
     ],
   },

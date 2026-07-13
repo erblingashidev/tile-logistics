@@ -8,7 +8,6 @@ import { Badge, Card, StatLink } from "@/components/ui";
 const modules = [
   { href: "/orders", label: "Orders" },
   { href: "/dispatch", label: "Dispatch" },
-  { href: "/routes", label: "Routes" },
   { href: "/map", label: "Map" },
   { href: "/warehouse", label: "Warehouse" },
   { href: "/vehicles", label: "Vehicles" },

@@ -185,7 +185,7 @@ export default function DispatchPage() {
     : 0;
 
   return (
-    <AppShell title="Dispatch board">
+    <AppShell title="Dispatch">
       {message && (
         <div className="mb-4">
           <Alert tone="warning">{message}</Alert>
@@ -203,9 +203,6 @@ export default function DispatchPage() {
         </Button>
         <Link href="/orders">
           <Button variant="ghost">Orders · assign</Button>
-        </Link>
-        <Link href="/routes">
-          <Button variant="ghost">Route planner</Button>
         </Link>
         <Link href="/map">
           <Button variant="ghost">Delivery map</Button>
@@ -229,6 +226,16 @@ export default function DispatchPage() {
               value={board.pickerWorkload.length}
             />
           </div>
+
+          <SmartDispatchPanel
+            defaultExpanded
+            onApplied={() => {
+              load();
+              setMapRefreshKey((k) => k + 1);
+            }}
+            onError={setError}
+            onWarning={setMessage}
+          />
 
           <PageSection title="Dispatch map">
             <div className="mb-3 flex flex-wrap items-end gap-3">
@@ -260,15 +267,6 @@ export default function DispatchPage() {
               refreshKey={mapRefreshKey}
             />
           </PageSection>
-
-          <SmartDispatchPanel
-            onApplied={() => {
-              load();
-              setMapRefreshKey((k) => k + 1);
-            }}
-            onError={setError}
-            onWarning={setMessage}
-          />
 
           <PageSection title="Picker workload">
             {balanceHint && (

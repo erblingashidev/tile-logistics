@@ -502,6 +502,7 @@ export async function generateDispatchPlan(options?: {
   maxOrdersPerRoute?: number;
   maxDistanceKm?: number;
   region?: string;
+  city?: string;
   stops?: DispatchOrderStop[];
 }): Promise<DispatchPlan> {
   const deliveryRound = options?.deliveryRound ?? 1;
@@ -515,6 +516,7 @@ export async function generateDispatchPlan(options?: {
         unassigned: true,
         readyToShip: true,
         region: options?.region,
+        city: options?.city,
       });
 
   const stops: DispatchOrderStop[] = [];

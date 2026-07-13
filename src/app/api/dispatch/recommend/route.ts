@@ -39,6 +39,7 @@ export async function GET(request: NextRequest) {
   const plan = await generateDispatchPlan({
     deliveryRound,
     region: sp.get("region") ?? undefined,
+    city: sp.get("city") ?? undefined,
     maxOrdersPerRoute: sp.get("maxOrders")
       ? Number(sp.get("maxOrders"))
       : undefined,
