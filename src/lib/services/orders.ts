@@ -1574,7 +1574,22 @@ export async function assignOrderBundle(input: {
 
   const usedRound = truck.deliveryRound ?? input.deliveryRound;
 
-  const pickerId = input.pickerId ?? null;
+  let pickerId = input.pickerId ?? null;
+
+  const { enforceTruckPicker, resolvePickerForTruck } = await import(
+    "@/lib/dispatch/picker-resolution"
+  );
+  pickerId = await enforceTruckPicker(
+    input.vehicleId,
+    usedRound,
+    pickerId
+  );
+  if (pickerId == null && input.autoAssignTeam !== false) {
+    const resolved = await resolvePickerForTruck(input.vehicleId, usedRound, {
+      orderCount: 1,
+    });
+    pickerId = resolved.id;
+  }
 
   if (pickerId) {
     if (input.autoAssignTeam !== false) {

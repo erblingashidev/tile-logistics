@@ -18,7 +18,11 @@ import { isOrderReadyToShip } from "@/lib/delivery-schedule";
 import { isOrderUrgent } from "@/lib/order-priority";
 import { resolveOrderGeo } from "@/lib/locations";
 import { recommendUrgentPlacement } from "@/lib/dispatch/urgent-routing";
-import { pickerOnTruckRound } from "@/lib/dispatch/picker-resolution";
+import {
+  pickerOnTruckRound,
+  resolvePickerForTruck,
+  type PickerAssignmentContext,
+} from "@/lib/dispatch/picker-resolution";
 import {
   type DispatchVehicle,
   estimateRouteCostKm,
@@ -129,66 +133,13 @@ async function loadDispatchVehicles(deliveryRound: number): Promise<DispatchVehi
   );
 }
 
-async function pickerWorkload(pickerId: number): Promise<number> {
-  const db = await getDb();
-  const row = await dbOne(
-    db
-      .select({ count: sql<number>`count(*)` })
-      .from(orderEmployeeAssignments)
-      .innerJoin(orders, eq(orderEmployeeAssignments.orderId, orders.id))
-      .where(
-        and(
-          eq(orderEmployeeAssignments.employeeId, pickerId),
-          eq(orderEmployeeAssignments.role, "picker"),
-          sql`${orders.status} NOT IN ('delivered', 'cancelled')`
-        )
-      )
-  );
-  return row?.count ?? 0;
-}
-
 async function resolvePicker(
   vehicleId: number,
-  deliveryRound: number
+  deliveryRound: number,
+  ctx?: PickerAssignmentContext,
+  orderCount = 1
 ): Promise<{ id: number | null; name: string | null }> {
-  const onRoute = await pickerOnTruckRound(vehicleId, deliveryRound);
-  if (onRoute) return onRoute;
-
-  const db = await getDb();
-
-  const rows = await dbAll(
-    db
-      .select({
-        id: employees.id,
-        name: employees.name,
-        status: employees.status,
-        roles: employees.roles,
-      })
-      .from(employees)
-  );
-
-  const pickers = rows
-    .filter((e) => {
-      try {
-        return (JSON.parse(e.roles) as string[]).includes("picker");
-      } catch {
-        return false;
-      }
-    })
-    .filter((e) => e.status !== "off_duty");
-
-  const withWorkload = await Promise.all(
-    pickers.map(async (e) => ({
-      ...e,
-      workload: await pickerWorkload(e.id),
-    }))
-  );
-  withWorkload.sort((a, b) => a.workload - b.workload);
-
-  if (withWorkload.length === 0) return { id: null, name: null };
-
-  const preferred = withWorkload[0];
-  return { id: preferred.id, name: preferred.name };
+  return resolvePickerForTruck(vehicleId, deliveryRound, { ctx, orderCount });
 }
 
 function toStop(
@@ -279,7 +230,8 @@ async function buildRecommendation(
   group: DispatchOrderStop[],
   vehicle: DispatchVehicle,
   deliveryRound: number,
-  fleet: DispatchVehicle[]
+  fleet: DispatchVehicle[],
+  pickerCtx?: PickerAssignmentContext
 ): Promise<DispatchRecommendation | null> {
   const totalPallets = group.reduce((s, o) => s + o.totalPallets, 0);
   const totalWeightKg = group.reduce((s, o) => s + o.totalWeightKg, 0);
@@ -308,7 +260,12 @@ async function buildRecommendation(
     orderedStops.map((g) => ({ lat: g.lat, lng: g.lng }))
   );
 
-  const picker = await resolvePicker(pick.id, deliveryRound);
+  const picker = await resolvePicker(
+    pick.id,
+    deliveryRound,
+    pickerCtx,
+    group.length
+  );
   const driver = await getDriverForVehicle(pick.id);
   const routeCluster = describeRouteCluster(group);
 
@@ -338,7 +295,7 @@ async function buildRecommendation(
   }
   reasons.push(`~${totalKm} km round trip · cost score ${costScore}`);
   if (picker.name) {
-    reasons.push(`Picker ${picker.name} (truck default / workload)`);
+    reasons.push(`Picker ${picker.name} — one picker per truck, balanced load`);
   }
   if (driver?.name) {
     reasons.push(`Driver ${driver.name} from truck link`);
@@ -407,7 +364,8 @@ async function planStandardGroup(
   fleet: DispatchVehicle[],
   deliveryRound: number,
   recommendations: DispatchRecommendation[],
-  skipped: DispatchPlan["skipped"]
+  skipped: DispatchPlan["skipped"],
+  pickerCtx?: PickerAssignmentContext
 ): Promise<DispatchVehicle[]> {
   const totalPallets = group.reduce((s, o) => s + o.totalPallets, 0);
   const ranked = rankTrucksForGroup(fleet, group);
@@ -419,7 +377,8 @@ async function planStandardGroup(
         fleet,
         deliveryRound,
         recommendations,
-        skipped
+        skipped,
+        pickerCtx
       );
     }
     return fleet;
@@ -437,7 +396,13 @@ async function planStandardGroup(
     return fleet;
   }
 
-  const rec = await buildRecommendation(group, ranked[0], deliveryRound, fleet);
+  const rec = await buildRecommendation(
+    group,
+    ranked[0],
+    deliveryRound,
+    fleet,
+    pickerCtx
+  );
   if (!rec) {
     if (group.length > 1) {
       for (const stop of group) {
@@ -558,6 +523,10 @@ export async function generateDispatchPlan(options?: {
   const plannedUrgentIds = new Set<number>();
 
   const recommendations: DispatchRecommendation[] = [];
+  const pickerCtx: PickerAssignmentContext = {
+    truckPicker: new Map(),
+    plannedOrders: new Map(),
+  };
 
   for (const stop of standardStops.filter((s) => s.priority === "urgent")) {
     const placement = await recommendUrgentPlacement(stop.id);
@@ -580,7 +549,7 @@ export async function generateDispatchPlan(options?: {
     }
     const vehicle = fleet.find((v) => v.id === best.vehicleId);
     if (!vehicle) continue;
-    const rec = await buildRecommendation([stop], vehicle, deliveryRound, fleet);
+    const rec = await buildRecommendation([stop], vehicle, deliveryRound, fleet, pickerCtx);
     if (!rec) {
       skipped.push({
         orderId: stop.id,
@@ -612,7 +581,8 @@ export async function generateDispatchPlan(options?: {
       [stop],
       fleet.find((v) => v.hasCrane) ?? fleet[0],
       deliveryRound,
-      fleet
+      fleet,
+      pickerCtx
     );
     if (!rec) {
       skipped.push({
@@ -647,7 +617,8 @@ export async function generateDispatchPlan(options?: {
       fleet,
       deliveryRound,
       recommendations,
-      skipped
+      skipped,
+      pickerCtx
     );
   }
 
@@ -796,7 +767,13 @@ export async function recommendOrderAssignment(orderId: number, deliveryRound = 
     };
   }
 
-  const rec = await buildRecommendation([stop], ranked[0], deliveryRound, fleet);
+  const rec = await buildRecommendation(
+    [stop],
+    ranked[0],
+    deliveryRound,
+    fleet,
+    { truckPicker: new Map(), plannedOrders: new Map() }
+  );
   if (!rec) return { ok: false as const, error: "Could not build recommendation" };
   return { ok: true as const, recommendation: rec };
 }
