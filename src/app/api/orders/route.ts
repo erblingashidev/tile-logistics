@@ -6,7 +6,7 @@ import {
   type OrderPayload,
 } from "@/lib/services/orders";
 import { resolveSalesOwnership } from "@/lib/services/sales-portal";
-import { todayDateString } from "@/lib/delivery-schedule";
+import { todayDateString, parseWorkDayFilter } from "@/lib/delivery-schedule";
 
 export const runtime = "nodejs";
 
@@ -50,13 +50,7 @@ export async function GET(request: NextRequest) {
       status: sp.get("status") ?? undefined,
       search: sp.get("search") ?? undefined,
       hideDelivered: sp.get("hideDelivered") === "true",
-      workDay:
-        sp.get("workDay") === "today" ||
-        sp.get("workDay") === "yesterday" ||
-        sp.get("workDay") === "overdue" ||
-        sp.get("workDay") === "all"
-          ? (sp.get("workDay") as "today" | "yesterday" | "overdue" | "all")
-          : undefined,
+      workDay: parseWorkDayFilter(sp.get("workDay")),
       shipAsOfDate: sp.get("shipAsOfDate") ?? undefined,
     });
     return NextResponse.json(orders, {
@@ -76,7 +70,9 @@ export async function POST(request: NextRequest) {
   const auth = await requireApiSessionNoSalesWrite(request.method);
   if (!auth.ok) return auth.response;
 
-  const body = (await request.json()) as OrderPayload;
+  const body = (await request.json()) as OrderPayload & {
+    importQueueId?: number;
+  };
   if (!body.invoiceNumber || !body.customerName) {
     return NextResponse.json(
       { error: "invoiceNumber and customerName are required" },
@@ -94,14 +90,23 @@ export async function POST(request: NextRequest) {
       salesAgentName: body.salesAgentName,
       salesEmployeeId: body.salesEmployeeId,
     });
-    const order = await createOrder({
-      ...body,
-      location: body.location?.trim() || body.region || "—",
-      orderDate: body.orderDate?.trim() || todayDateString(),
-      items: body.items ?? [],
-      salesEmployeeId: ownership.salesEmployeeId,
-      salesAgentName: ownership.salesAgentName,
-    });
+    const { importQueueId, ...orderBody } = body;
+    const order = await createOrder(
+      {
+        ...orderBody,
+        location: orderBody.location?.trim() || orderBody.region || "—",
+        orderDate: orderBody.orderDate?.trim() || todayDateString(),
+        items: orderBody.items ?? [],
+        salesEmployeeId: ownership.salesEmployeeId,
+        salesAgentName: ownership.salesAgentName,
+      },
+      {
+        importQueueId:
+          typeof importQueueId === "number" && Number.isFinite(importQueueId)
+            ? importQueueId
+            : undefined,
+      }
+    );
     return NextResponse.json(order, { status: 201 });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to create order";

@@ -44,7 +44,54 @@ export function orderWorkDate(order: {
   return order.requestedDeliveryDate?.trim() || order.orderDate;
 }
 
-export type WorkDayFilter = "today" | "yesterday" | "overdue" | "all";
+export type WorkDayFilter =
+  | "today"
+  | "tomorrow"
+  | "yesterday"
+  | "overdue"
+  | "all"
+  | "date";
+
+const WORK_DAY_VALUES: WorkDayFilter[] = [
+  "today",
+  "tomorrow",
+  "yesterday",
+  "overdue",
+  "all",
+  "date",
+];
+
+export function parseWorkDayFilter(
+  value: string | null | undefined
+): WorkDayFilter | undefined {
+  if (value && WORK_DAY_VALUES.includes(value as WorkDayFilter)) {
+    return value as WorkDayFilter;
+  }
+  return undefined;
+}
+
+export function workDayFilterLabel(
+  workDay: WorkDayFilter,
+  asOfDate?: string
+): string {
+  const asOf = todayDateString();
+  switch (workDay) {
+    case "today":
+      return `Today (${asOf})`;
+    case "tomorrow":
+      return `Tomorrow (${addDaysToDateString(asOf, 1)})`;
+    case "yesterday":
+      return `Yesterday open (${addDaysToDateString(asOf, -1)})`;
+    case "overdue":
+      return "Overdue";
+    case "all":
+      return "All days";
+    case "date":
+      return asOfDate?.trim() ? asOfDate : "Selected date";
+    default:
+      return workDay;
+  }
+}
 
 export function matchesWorkDay(
   order: {
@@ -57,12 +104,19 @@ export function matchesWorkDay(
   asOfDate?: string
 ): boolean {
   if (workDay === "all") return true;
-  const asOf = asOfDate ?? todayDateString();
+  const asOf = todayDateString();
   const workDate = orderWorkDate(order);
   const stage = order.deliveryStage ?? order.status ?? "pending";
   const finished = stage === "delivered" || stage === "cancelled";
 
   if (workDay === "today") return workDate === asOf;
+  if (workDay === "tomorrow") {
+    return workDate === addDaysToDateString(asOf, 1);
+  }
+  if (workDay === "date") {
+    const target = asOfDate?.trim();
+    return Boolean(target && workDate === target);
+  }
   if (workDay === "yesterday") {
     return workDate === addDaysToDateString(asOf, -1) && !finished;
   }

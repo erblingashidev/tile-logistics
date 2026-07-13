@@ -1,22 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSessionNoSalesWrite } from "@/lib/auth/api-guard";
-import type { WorkDayFilter } from "@/lib/delivery-schedule";
+import { parseWorkDayFilter } from "@/lib/delivery-schedule";
 import { listOrders } from "@/lib/services/orders";
 import { buildOrderMapPins } from "@/lib/locations/map-pins";
 import { WAREHOUSE_LOCATION } from "@/lib/locations";
 
 export const runtime = "nodejs";
 
-function parseWorkDay(value: string | null): WorkDayFilter | undefined {
-  if (
-    value === "today" ||
-    value === "yesterday" ||
-    value === "overdue" ||
-    value === "all"
-  ) {
-    return value;
-  }
-  return undefined;
+function parseWorkDay(value: string | null) {
+  return parseWorkDayFilter(value);
 }
 
 export async function GET(request: NextRequest) {
@@ -32,6 +24,7 @@ export async function GET(request: NextRequest) {
     region,
     unassigned: unassignedOnly || undefined,
     workDay,
+    shipAsOfDate: sp.get("shipAsOfDate") ?? undefined,
   });
 
   const activeOrders = orders.filter(

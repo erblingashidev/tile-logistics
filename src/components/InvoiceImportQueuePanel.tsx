@@ -333,6 +333,7 @@ export function InvoiceImportQueuePanel({
                           onOpenForm({
                             ...item.form,
                             invoiceNumber,
+                            importQueueId: item.id,
                           });
                         }}
                       >

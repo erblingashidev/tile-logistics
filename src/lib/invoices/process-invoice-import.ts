@@ -118,6 +118,20 @@ async function createOrMergeEntry(
         notesAppend: payload.notes,
       });
 
+      try {
+        const { linkImportQueueToOrder } = await import(
+          "@/lib/services/invoice-import-queue"
+        );
+        if (order) {
+          await linkImportQueueToOrder({
+            orderId: order.id,
+            invoiceNumber: order.invoiceNumber,
+          });
+        }
+      } catch (err) {
+        console.error("[import merge] import queue link failed", err);
+      }
+
       return {
         ok: true,
         parsed,

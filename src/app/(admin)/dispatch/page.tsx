@@ -210,6 +210,9 @@ export default function DispatchPage() {
         <Link href="/map">
           <Button variant="ghost">Delivery map</Button>
         </Link>
+        <Link href="/dispatch/print?workDay=today" target="_blank">
+          <Button variant="secondary">Print sheet</Button>
+        </Link>
       </div>
 
       {board && (

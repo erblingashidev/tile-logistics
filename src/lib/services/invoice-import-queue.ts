@@ -18,6 +18,7 @@ import {
   buildImportEntryFromParsed,
   createOrMergeFromEntry,
 } from "@/lib/invoices/process-invoice-import";
+import { normalizeScannedInvoiceNumber } from "@/lib/invoices/scan-utils";
 import { findOrderByInvoiceNumber } from "@/lib/services/orders";
 
 export type ImportQueueStatus =
@@ -608,6 +609,71 @@ export async function scanInvoiceWatchRoot(
     watching: absoluteRoot,
     dateFolders: dateFolders.map((e) => e.name),
   });
+}
+
+/** Mark pending queue rows as approved when an order is created outside the Approve button. */
+export async function linkImportQueueToOrder(options: {
+  orderId: number;
+  invoiceNumber: string;
+  queueId?: number;
+}): Promise<number> {
+  const db = await getDb();
+  const now = nowIso();
+  const normalized = normalizeScannedInvoiceNumber(options.invoiceNumber);
+  const approvedIds = new Set<number>();
+  let linked = 0;
+
+  async function approveRow(id: number) {
+    if (approvedIds.has(id)) return;
+    approvedIds.add(id);
+    await db
+      .update(invoiceImportQueue)
+      .set({
+        status: "approved",
+        orderId: options.orderId,
+        reviewedAt: now,
+        errorMessage: null,
+      })
+      .where(
+        and(
+          eq(invoiceImportQueue.id, id),
+          eq(invoiceImportQueue.status, "pending")
+        )
+      );
+    linked += 1;
+  }
+
+  if (options.queueId != null) {
+    await approveRow(options.queueId);
+  }
+
+  const pending = await dbAll(
+    db
+      .select()
+      .from(invoiceImportQueue)
+      .where(eq(invoiceImportQueue.status, "pending"))
+  );
+
+  for (const row of pending) {
+    if (row.duplicateOrderId === options.orderId) {
+      await approveRow(row.id);
+      continue;
+    }
+    if (!normalized) continue;
+    try {
+      const snapshot = readSnapshot(row.parsedJson);
+      const rowInvoice = normalizeScannedInvoiceNumber(
+        snapshot.parsed.invoiceNumber ?? ""
+      );
+      if (rowInvoice && rowInvoice === normalized) {
+        await approveRow(row.id);
+      }
+    } catch {
+      // Skip rows with invalid snapshot JSON.
+    }
+  }
+
+  return linked;
 }
 
 export async function pendingImportQueueCount(): Promise<number> {

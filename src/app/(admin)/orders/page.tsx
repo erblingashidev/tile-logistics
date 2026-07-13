@@ -24,7 +24,7 @@ import { InvoiceImportPanel,
 import { InvoiceImportQueuePanel } from "@/components/InvoiceImportQueuePanel";
 import { InvoiceNumberField } from "@/components/InvoiceNumberField";
 import { ProductSearchField } from "@/components/ProductSearchField";
-import { Badge, Button, Card, Input, Select, Alert, PageSection, LoadingState } from "@/components/ui";
+import { Badge, Button, Card, Input, Select, Alert, PageSection, LoadingState, CollapsibleCard } from "@/components/ui";
 import {
   ORDER_STAGE_LEGEND,
   type OrderDisplayStage,
@@ -56,6 +56,7 @@ import {
   DELIVERY_TIME_PREFERENCES,
   addDaysToDateString,
   todayDateString,
+  type WorkDayFilter,
 } from "@/lib/delivery-schedule";
 import { deliveryRoundSelectOptions, formatDeliveryRound } from "@/lib/delivery-rounds";
 import { isOrderUrgent } from "@/lib/order-priority";
@@ -207,7 +208,8 @@ type OrderListFilters = {
   driverId: string;
   search: string;
   hideDelivered: string;
-  workDay: "today" | "yesterday" | "overdue" | "all";
+  workDay: WorkDayFilter;
+  workDayDate: string;
   vehicleId: string;
   deliveryRound: string;
   fleetRoundFilter: boolean;
@@ -220,9 +222,19 @@ function appendOrderFilterParams(params: URLSearchParams, filters: OrderListFilt
       if (v && !filters.vehicleId) params.set(k, "true");
       return;
     }
+    if (k === "workDayDate") return;
     if (typeof v === "boolean") return;
     if (v) params.set(k, v);
   });
+  if (filters.workDay === "date" && filters.workDayDate) {
+    params.set("shipAsOfDate", filters.workDayDate);
+  }
+}
+
+function buildDispatchPrintHref(filters: OrderListFilters) {
+  const params = new URLSearchParams();
+  appendOrderFilterParams(params, filters);
+  return `/dispatch/print?${params}`;
 }
 
 function createEmptyOrderForm() {
@@ -263,7 +275,8 @@ export default function OrdersPage() {
     driverId: "",
     search: "",
     hideDelivered: "true",
-    workDay: "today" as "today" | "yesterday" | "overdue" | "all",
+    workDay: "today" as WorkDayFilter,
+    workDayDate: todayDateString(),
     vehicleId: "",
     deliveryRound: "1",
     fleetRoundFilter: false,
@@ -281,6 +294,7 @@ export default function OrdersPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(createEmptyOrderForm);
+  const [importQueueId, setImportQueueId] = useState<number | null>(null);
   const [assignState, setAssignState] = useState<
     Record<number, AssignmentDraft>
   >({});
@@ -455,7 +469,10 @@ export default function OrdersPage() {
     const res = await fetch(url, {
       method,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        ...payload,
+        importQueueId: !editingId && importQueueId ? importQueueId : undefined,
+      }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -464,12 +481,14 @@ export default function OrdersPage() {
     }
     setShowForm(false);
     setEditingId(null);
+    setImportQueueId(null);
     setForm(createEmptyOrderForm());
     load();
   }
 
   function openNewOrder() {
     setEditingId(null);
+    setImportQueueId(null);
     setError("");
     setForm(createEmptyOrderForm());
     setShowForm(true);
@@ -478,6 +497,7 @@ export default function OrdersPage() {
   function closeOrderForm() {
     setShowForm(false);
     setEditingId(null);
+    setImportQueueId(null);
     setForm(createEmptyOrderForm());
   }
 
@@ -937,6 +957,15 @@ export default function OrdersPage() {
     return true;
   });
 
+  const selectedOrders = orders.filter((order) => selectedOrderIds.has(order.id));
+  const selectedTotals = selectedOrders.reduce(
+    (acc, order) => ({
+      pallets: acc.pallets + order.totalPallets,
+      weightKg: acc.weightKg + order.totalWeightKg,
+    }),
+    { pallets: 0, weightKg: 0 }
+  );
+
   function openAssignPanel(orderId: number) {
     setExpandedAssignId((current) => {
       const next = current === orderId ? null : orderId;
@@ -955,6 +984,7 @@ export default function OrdersPage() {
 
   function openFormFromInvoice(importForm: InvoiceImportFormState) {
     setEditingId(null);
+    setImportQueueId(importForm.importQueueId ?? null);
     setError("");
     setForm({
       invoiceNumber: importForm.invoiceNumber,
@@ -1059,6 +1089,13 @@ export default function OrdersPage() {
           >
             Dispatch board
           </Link>
+          <Link
+            href={buildDispatchPrintHref(filters)}
+            target="_blank"
+            className="inline-flex items-center justify-center rounded border border-zinc-300 bg-white px-3.5 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
+          >
+            Print dispatch
+          </Link>
         </div>
       </div>
 
@@ -1074,8 +1111,13 @@ export default function OrdersPage() {
         </div>
       )}
 
-      <PageSection title="Truck focus">
-        <Card className="border-blue-200 bg-gradient-to-br from-blue-50/80 to-white p-4">
+      <CollapsibleCard
+        className="mb-4"
+        title="Truck focus"
+        headerTone="muted"
+        defaultExpanded={false}
+      >
+        <div className="space-y-4 bg-gradient-to-br from-blue-50/80 to-white p-4">
           <TruckFocusBar
             vehicles={vehicles}
             selectedVehicleId={filters.vehicleId}
@@ -1164,35 +1206,55 @@ export default function OrdersPage() {
               )}
             </div>
           )}
-        </Card>
-      </PageSection>
+        </div>
+      </CollapsibleCard>
 
       <PageSection title="Work day">
         <Card className="p-4">
-          <div className="flex flex-wrap items-center gap-2">
-            {(
-              [
-                { id: "today", label: "Today" },
-                { id: "yesterday", label: "Yesterday open" },
-                { id: "overdue", label: "Overdue" },
-                { id: "all", label: "All days" },
-              ] as const
-            ).map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() =>
-                  setFilters((current) => ({ ...current, workDay: tab.id }))
-                }
-                className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
-                  filters.workDay === tab.id
-                    ? "bg-zinc-900 text-white"
-                    : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              {(
+                [
+                  { id: "today", label: "Today" },
+                  { id: "tomorrow", label: "Tomorrow" },
+                  { id: "yesterday", label: "Yesterday open" },
+                  { id: "overdue", label: "Overdue" },
+                  { id: "all", label: "All days" },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() =>
+                    setFilters((current) => ({
+                      ...current,
+                      workDay: tab.id,
+                      workDayDate: todayDateString(),
+                    }))
+                  }
+                  className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
+                    filters.workDay === tab.id
+                      ? "bg-zinc-900 text-white"
+                      : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <Input
+              label="Pick date"
+              type="date"
+              value={filters.workDayDate}
+              onChange={(e) =>
+                setFilters((current) => ({
+                  ...current,
+                  workDay: "date",
+                  workDayDate: e.target.value,
+                }))
+              }
+              className="max-w-[180px]"
+            />
           </div>
         </Card>
       </PageSection>
@@ -1792,6 +1854,10 @@ export default function OrdersPage() {
           <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 bg-violet-50 px-4 py-2">
             <span className="text-sm font-medium text-violet-900">
               {selectedOrderIds.size} selected
+            </span>
+            <span className="text-sm text-violet-800">
+              · {selectedTotals.pallets.toFixed(1)} plt ·{" "}
+              {Math.round(selectedTotals.weightKg)} kg
             </span>
             {selectedOrderIds.size >= 2 && (
               <Button

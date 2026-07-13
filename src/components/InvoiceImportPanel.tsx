@@ -18,7 +18,7 @@ import { ocrScannedPdf } from "@/lib/invoices/ocr-pdf-client";
 import type { OcrProgress } from "@/lib/invoices/ocr-image-client";
 import { isScannedPdfErrorMessage } from "@/lib/invoices/scanned-pdf-error";
 
-type FormState = {
+export type InvoiceImportFormState = {
   invoiceNumber: string;
   customerName: string;
   customerPhone: string;
@@ -33,6 +33,7 @@ type FormState = {
   orderDate: string;
   requestedDeliveryDate: string;
   deliveryTimePreference: "flexible" | "morning" | "afternoon";
+  importQueueId?: number;
   items: Array<{
     unit: import("@/lib/constants").OrderUnit | string;
     productEan?: string;
@@ -47,7 +48,7 @@ type FormState = {
 };
 
 interface InvoiceImportPanelProps {
-  onOpenForm: (form: FormState) => void;
+  onOpenForm: (form: InvoiceImportFormState) => void;
   onCreated: () => void;
   onError: (message: string) => void;
   onWarning: (message: string) => void;
@@ -154,7 +155,7 @@ export function InvoiceImportPanel({
   } | null>(null);
   const [preview, setPreview] = useState<{
     parsed: InvoiceImportPreviewResponse["parsed"];
-    form: FormState;
+    form: InvoiceImportFormState;
     duplicate?: boolean;
     existingOrderId?: number;
   } | null>(null);
@@ -191,7 +192,7 @@ export function InvoiceImportPanel({
   function patchPreviewInvoiceNumber(
     data: {
       parsed: InvoiceImportPreviewResponse["parsed"];
-      form: FormState;
+      form: InvoiceImportFormState;
       duplicate?: boolean;
     },
     invoiceNumber: string
@@ -230,7 +231,7 @@ export function InvoiceImportPanel({
     const active =
       invoices.find((entry) => entry.parsed.invoiceNumber === data.parsed.invoiceNumber) ??
       invoices[0];
-    const form = active.form as FormState;
+    const form = active.form as InvoiceImportFormState;
 
     setPreview({
       parsed: active.parsed,
@@ -258,7 +259,7 @@ export function InvoiceImportPanel({
     if (!entry) return;
     setPreview({
       parsed: entry.parsed,
-      form: entry.form as FormState,
+      form: entry.form as InvoiceImportFormState,
       duplicate: entry.duplicate,
       existingOrderId: entry.existingOrderId,
     });
@@ -412,7 +413,7 @@ export function InvoiceImportPanel({
           patchPreviewInvoiceNumber(
             {
               parsed: result.parsed,
-              form: result.form as FormState,
+              form: result.form as InvoiceImportFormState,
               duplicate: true,
             },
             invoiceNumber
@@ -442,7 +443,7 @@ export function InvoiceImportPanel({
     else void handlePdfFile(file);
   }
 
-  function importItemQuantityLabel(item: FormState["items"][number]) {
+  function importItemQuantityLabel(item: InvoiceImportFormState["items"][number]) {
     const unit = normalizeOrderUnit(item.unit);
     if (unit === "m2" && item.quantityM2 != null) {
       return `${item.quantityM2} m²`;
@@ -780,5 +781,3 @@ function PreviewField({
     </div>
   );
 }
-
-export type { FormState as InvoiceImportFormState };

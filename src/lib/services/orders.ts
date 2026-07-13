@@ -717,7 +717,10 @@ export async function backfillUniqueInvoiceNumbers(client?: Client) {
   return backfillUniqueInvoiceNumbersPromise;
 }
 
-export async function createOrder(payload: OrderPayload) {
+export async function createOrder(
+  payload: OrderPayload,
+  options?: { importQueueId?: number }
+) {
   const db = await getDb();
   const now = new Date().toISOString();
   const orderDate = payload.orderDate?.trim() || todayDateString();
@@ -810,6 +813,19 @@ export async function createOrder(payload: OrderPayload) {
       },
     }
   );
+
+  try {
+    const { linkImportQueueToOrder } = await import(
+      "@/lib/services/invoice-import-queue"
+    );
+    await linkImportQueueToOrder({
+      orderId,
+      invoiceNumber,
+      queueId: options?.importQueueId,
+    });
+  } catch (err) {
+    console.error("[createOrder] import queue link failed", err);
+  }
 
   return getOrder(orderId);
 }
