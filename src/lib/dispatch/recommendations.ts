@@ -35,7 +35,7 @@ import {
   analyzeDispatchCargo,
   clusterStopsForDispatch,
   describeRouteCluster,
-  mergePrishtinaGroups,
+  mergeSameCityGroups,
   rankVehiclesForDispatch,
   sortGroupsForRoundPlanning,
   isPrishtinaArea,
@@ -157,6 +157,7 @@ function toStop(
   const cargo = analyzeDispatchCargo(order.items ?? [], {
     customerHasForklift: Boolean(order.customerHasForklift),
     totalPieces: order.totalPieces,
+    totalPallets: order.totalPallets,
   });
   return {
     id: order.id,
@@ -187,19 +188,42 @@ function groupCargoProfile(
     return analyzeDispatchCargo(orderItems, {
       customerHasForklift: group[0].customerHasForklift,
       totalPieces: group[0].totalPieces,
+      totalPallets: group[0].totalPallets,
     });
   }
 
   const requiresCrane = group.some((o) => o.requiresCrane);
+  const hasLargeTiles = group.some((o) => o.hasLargeTiles);
+  const customerHasForklift = group.some((o) => o.customerHasForklift);
+  const perOrderReasons = [...new Set(group.flatMap((o) => o.cargoReasons))];
+
+  if (group.length > 1) {
+    const reasons = requiresCrane
+      ? perOrderReasons.filter((r) => r.includes("crane required"))
+      : [
+          "Same-city combined route — standard truck OK",
+          ...perOrderReasons.filter((r) => r.includes("OK on standard")),
+        ];
+    return {
+      requiresCrane,
+      hasLargeTiles,
+      largeTilePieces: 0,
+      preferCrane: false,
+      preferAtego: false,
+      excludeIvecoSprinter:
+        hasLargeTiles && customerHasForklift && !requiresCrane,
+      customerHasForklift,
+      reasons,
+    };
+  }
+
   const preferCrane = group.some((o) =>
     o.cargoReasons.some((r) => r.includes("without forklift"))
   );
   const preferAtego = group.some((o) =>
     o.cargoReasons.some((r) => r.includes("hand unload"))
   );
-  const hasLargeTiles = group.some((o) => o.hasLargeTiles);
-  const customerHasForklift = group.some((o) => o.customerHasForklift);
-  const reasons = [...new Set(group.flatMap((o) => o.cargoReasons))];
+  const reasons = perOrderReasons;
 
   return {
     requiresCrane,
@@ -270,8 +294,12 @@ async function buildRecommendation(
   const routeCluster = describeRouteCluster(group);
 
   const reasons: string[] = [];
-  if (cargo.requiresCrane || cargo.preferCrane) {
-    reasons.push("Crane / Volvo truck — large or jumbo tiles");
+  if (cargo.requiresCrane) {
+    reasons.push("Crane truck required — jumbo tile qty on route");
+  } else if (group.length > 1) {
+    reasons.push("Same-city combined route — standard truck OK");
+  } else if (cargo.preferCrane) {
+    reasons.push("Crane / Volvo truck — large tiles without forklift");
   } else if (cargo.preferAtego) {
     reasons.push("Small large-tile qty — prefer Atego (hand unload)");
   } else {
@@ -518,8 +546,7 @@ export async function generateDispatchPlan(options?: {
     });
   }
 
-  const craneStops = roundStops.filter((s) => s.requiresCrane);
-  let standardStops = roundStops.filter((s) => !s.requiresCrane);
+  let remainingStops = [...roundStops];
   const plannedUrgentIds = new Set<number>();
 
   const recommendations: DispatchRecommendation[] = [];
@@ -528,7 +555,7 @@ export async function generateDispatchPlan(options?: {
     plannedOrders: new Map(),
   };
 
-  for (const stop of standardStops.filter((s) => s.priority === "urgent")) {
+  for (const stop of remainingStops.filter((s) => s.priority === "urgent")) {
     const placement = await recommendUrgentPlacement(stop.id);
     if (!placement.ok) {
       skipped.push({
@@ -574,44 +601,17 @@ export async function generateDispatchPlan(options?: {
     }
   }
 
-  standardStops = standardStops.filter((s) => !plannedUrgentIds.has(s.id));
+  remainingStops = remainingStops.filter((s) => !plannedUrgentIds.has(s.id));
 
-  for (const stop of craneStops) {
-    const rec = await buildRecommendation(
-      [stop],
-      fleet.find((v) => v.hasCrane) ?? fleet[0],
-      deliveryRound,
-      fleet,
-      pickerCtx
-    );
-    if (!rec) {
-      skipped.push({
-        orderId: stop.id,
-        invoiceNumber: stop.invoiceNumber,
-        reason: "No crane truck capacity for this load",
-      });
-      continue;
-    }
-    recommendations.push(rec);
-    const idx = fleet.findIndex((v) => v.id === rec.vehicleId);
-    if (idx >= 0) {
-      fleet[idx] = simulateVehicleAfterAssign(
-        fleet[idx],
-        rec.totalPallets,
-        rec.totalWeightKg
-      );
-    }
-  }
-
-  let standardGroups = clusterStopsForDispatch(standardStops, {
+  let groups = clusterStopsForDispatch(remainingStops, {
     maxOrders,
     maxDistanceKm,
     regionMaxDistanceKm: Math.max(maxDistanceKm, 45),
   });
-  standardGroups = mergePrishtinaGroups(standardGroups, maxOrders);
-  standardGroups = sortGroupsForRoundPlanning(standardGroups, deliveryRound);
+  groups = mergeSameCityGroups(groups, maxOrders);
+  groups = sortGroupsForRoundPlanning(groups, deliveryRound);
 
-  for (const group of standardGroups) {
+  for (const group of groups) {
     fleet = await planStandardGroup(
       group,
       fleet,

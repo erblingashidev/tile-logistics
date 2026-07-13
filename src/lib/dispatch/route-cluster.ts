@@ -32,17 +32,11 @@ function groupSpreadKm(group: GeoStop[]): number {
   return max;
 }
 
-function craneMix(group: GeoStop[], candidate: GeoStop): boolean {
-  const groupCrane = group.some((g) => g.requiresCrane);
-  return groupCrane !== !!candidate.requiresCrane;
-}
-
 function canAddToGroup(
   group: GeoStop[],
   candidate: GeoStop,
   maxDistanceKm: number
 ): boolean {
-  if (craneMix(group, candidate)) return false;
   const spread = Math.max(...group.map((g) => distanceKm(g, candidate)));
   return spread <= maxDistanceKm;
 }
@@ -83,9 +77,6 @@ function mergeNearbySmallGroups<T extends GeoStop>(
         const combined = [...merged[i], ...merged[j]];
         if (combined.length > options.maxOrders) continue;
         if (groupSpreadKm(combined) > options.maxDistanceKm) continue;
-
-        const craneFlags = new Set(combined.map((s) => !!s.requiresCrane));
-        if (craneFlags.size > 1) continue;
 
         merged = merged.filter((_, idx) => idx !== i && idx !== j);
         merged.push(combined);

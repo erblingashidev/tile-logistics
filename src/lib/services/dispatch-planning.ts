@@ -97,7 +97,11 @@ export function isPrishtinaArea(stop: { region?: string; city?: string }): boole
 
 export function analyzeDispatchCargo(
   items: TileLineCargo[],
-  options?: { customerHasForklift?: boolean; totalPieces?: number }
+  options?: {
+    customerHasForklift?: boolean;
+    totalPieces?: number;
+    totalPallets?: number;
+  }
 ): DispatchCargoProfile {
   const base = analyzeOrderCargo(items);
   const customerHasForklift = options?.customerHasForklift ?? false;
@@ -126,10 +130,17 @@ export function analyzeDispatchCargo(
 
   if (hasLargeTiles && !base.requiresCrane) {
     if (smallLargeTileQty) {
-      preferAtego = true;
-      reasons.push(
-        `Large tiles (${largeTilePieces} pcs ≤ ${LARGE_TILE_SMALL_QTY_MAX_PIECES}) — hand unload, prefer Atego`
-      );
+      const palletized = (options?.totalPallets ?? 0) <= 1;
+      if (palletized) {
+        reasons.push(
+          `Large tiles (${largeTilePieces} pcs) on ${options?.totalPallets ?? 1} pallet — standard truck OK`
+        );
+      } else {
+        preferAtego = true;
+        reasons.push(
+          `Large tiles (${largeTilePieces} pcs ≤ ${LARGE_TILE_SMALL_QTY_MAX_PIECES}) — hand unload, prefer Atego`
+        );
+      }
     } else if (customerHasForklift) {
       excludeIvecoSprinter = true;
       reasons.push(
@@ -296,9 +307,6 @@ export function mergeCorridorClusters<T extends GeoStop & { totalPallets?: numbe
         if (combined.length > options.maxOrders) continue;
         if (groupSpreadKm(combined) > maxSpread) continue;
 
-        const craneFlags = new Set(combined.map((s) => !!s.requiresCrane));
-        if (craneFlags.size > 1) continue;
-
         const separateKm = estimateSeparateTripsKm([a, b]);
         const combinedKm = estimateCombinedTripKm(combined);
         if (combinedKm >= separateKm * 0.92) continue;
@@ -365,25 +373,60 @@ export function sortGroupsForRoundPlanning<T extends GeoStop>(
   });
 }
 
+/** Same municipality max spread when merging split clusters into one truck. */
+export const SAME_CITY_MERGE_MAX_SPREAD_KM = 45;
+
+/**
+ * Merge multiple route groups that share the same municipality when they fit
+ * on one truck (same-city geographic grouping — don't send two trucks to one city).
+ */
+export function mergeSameCityGroups<T extends GeoStop & { totalPallets?: number }>(
+  groups: T[][],
+  maxOrders: number,
+  maxSpreadKm = SAME_CITY_MERGE_MAX_SPREAD_KM
+): T[][] {
+  const byRegion = new Map<string, T[][]>();
+
+  for (const group of groups) {
+    const regions = [...new Set(group.map((s) => normalizeDispatchRegion(s)))];
+    if (regions.length !== 1) {
+      byRegion.set(`__mixed__:${group.map((s) => s.id).join("-")}`, [group]);
+      continue;
+    }
+    const key = regions[0];
+    const list = byRegion.get(key) ?? [];
+    list.push(group);
+    byRegion.set(key, list);
+  }
+
+  const merged: T[][] = [];
+  for (const [, regionGroups] of byRegion) {
+    if (regionGroups.length <= 1) {
+      merged.push(...regionGroups);
+      continue;
+    }
+
+    const combined = regionGroups.flat();
+    if (combined.length <= maxOrders && groupSpreadKm(combined) <= maxSpreadKm) {
+      merged.push(combined);
+    } else {
+      merged.push(...regionGroups);
+    }
+  }
+
+  return merged;
+}
+
 /** Keep all Prishtinë orders on one truck per round when they fit together. */
 export function mergePrishtinaGroups<T extends GeoStop & { totalPallets?: number }>(
   groups: T[][],
   maxOrders: number
 ): T[][] {
-  const prishtinaStops = groups
-    .flat()
-    .filter((s) => isPrishtinaArea(s));
-  if (prishtinaStops.length < 2) return groups;
-
-  const nonPr = groups.filter((g) => !g.every((s) => isPrishtinaArea(s)));
   const prOnly = groups.filter((g) => g.every((s) => isPrishtinaArea(s)));
   if (prOnly.length <= 1) return groups;
 
-  const combined = prOnly.flat();
-  if (combined.length > maxOrders) return groups;
-  if (groupSpreadKm(combined) > 45) return groups;
-
-  return [...nonPr, combined];
+  const nonPr = groups.filter((g) => !g.every((s) => isPrishtinaArea(s)));
+  return [...nonPr, ...mergeSameCityGroups(prOnly, maxOrders)];
 }
 
 export function suggestTruckForCluster(
