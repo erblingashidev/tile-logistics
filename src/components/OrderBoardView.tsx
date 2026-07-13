@@ -23,6 +23,10 @@ import {
   deliveryLinkCardClass,
   hasDeliveryLinks,
 } from "@/components/DeliveryLinkNotice";
+import {
+  groupOrdersByRegion,
+  orderRegionKey,
+} from "@/lib/orders/group-by-region";
 
 interface VehicleOption {
   id: number;
@@ -43,15 +47,6 @@ interface PickerOption {
 
 export type OrderBoardViewMode = "list" | "grid";
 
-function regionKey(order: OrderListCardOrder): string {
-  return (
-    order.region?.trim() ||
-    order.city?.trim() ||
-    order.location?.trim() ||
-    "Unknown"
-  );
-}
-
 function locationDetail(order: OrderListCardOrder): string {
   const region = order.region?.trim();
   const city = order.city?.trim();
@@ -59,28 +54,6 @@ function locationDetail(order: OrderListCardOrder): string {
   if (location && location !== region) return location;
   if (city && city !== region) return city;
   return location || city || "—";
-}
-
-function groupByRegion(orders: OrderListCardOrder[]) {
-  const map = new Map<string, OrderListCardOrder[]>();
-  for (const order of orders) {
-    const key = regionKey(order);
-    const bucket = map.get(key) ?? [];
-    bucket.push(order);
-    map.set(key, bucket);
-  }
-
-  return [...map.entries()]
-    .sort(([a], [b]) => a.localeCompare(b, undefined, { sensitivity: "base" }))
-    .map(([region, regionOrders]) => ({
-      region,
-      orders: [...regionOrders].sort((a, b) => {
-        const aAssigned = a.assignment ? 1 : 0;
-        const bAssigned = b.assignment ? 1 : 0;
-        if (aAssigned !== bAssigned) return aAssigned - bAssigned;
-        return a.invoiceNumber.localeCompare(b.invoiceNumber);
-      }),
-    }));
 }
 
 function StageBadge({ order }: { order: OrderListCardOrder }) {
@@ -323,7 +296,7 @@ function OrderRow({
           <p className="truncate text-sm text-zinc-800">{order.customerName}</p>
           <div className="min-w-0">
             <p className="truncate text-sm font-medium text-zinc-700">
-              {regionKey(order)}
+              {orderRegionKey(order)}
             </p>
             <p className="truncate text-xs text-zinc-500">
               {locationDetail(order)}
@@ -438,7 +411,12 @@ export function OrderBoardView({
   onWarning,
   onQuickAssignToFocus,
 }: OrderBoardViewProps) {
-  const groups = groupByRegion(orders);
+  const groups = groupOrdersByRegion(orders, (a, b) => {
+    const aAssigned = a.assignment ? 1 : 0;
+    const bAssigned = b.assignment ? 1 : 0;
+    if (aAssigned !== bAssigned) return aAssigned - bAssigned;
+    return a.invoiceNumber.localeCompare(b.invoiceNumber);
+  });
 
   return (
     <div className="space-y-5">

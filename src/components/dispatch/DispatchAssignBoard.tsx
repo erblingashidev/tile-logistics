@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Badge, Card, Input } from "@/components/ui";
 import { formatDeliveryRound } from "@/lib/delivery-rounds";
 import { truckColorForVehicle } from "@/lib/dispatch/truck-colors";
+import { groupOrdersByRegion } from "@/lib/orders/group-by-region";
 import type {
   DispatchBoardOrder,
   DispatchBoardRound,
@@ -85,6 +86,11 @@ export function DispatchAssignBoard({
       return haystack.includes(q);
     });
   }, [search, unassignedOrders]);
+
+  const orderGroups = useMemo(
+    () => groupOrdersByRegion(filteredOrders),
+    [filteredOrders]
+  );
 
   async function assignOrder(
     orderId: number,
@@ -237,8 +243,31 @@ export function DispatchAssignBoard({
               : "No orders match your filter."}
           </Card>
         ) : (
-          <div className="space-y-2">
-            {filteredOrders.map((order) => {
+          <div className="space-y-5">
+            {orderGroups.map(({ region, orders: regionOrders }) => {
+              const palletTotal = regionOrders.reduce(
+                (sum, o) => sum + o.totalPallets,
+                0
+              );
+
+              return (
+                <section
+                  key={region}
+                  className="overflow-hidden rounded-xl border border-zinc-200 bg-white"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 bg-zinc-100/90 px-3 py-2.5">
+                    <div>
+                      <h3 className="font-semibold text-zinc-900">{region}</h3>
+                      <p className="text-xs text-zinc-500">
+                        {regionOrders.length} order
+                        {regionOrders.length === 1 ? "" : "s"} · {palletTotal}{" "}
+                        plt total
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="divide-y divide-zinc-100">
+                    {regionOrders.map((order) => {
               const isDragging = draggingOrderId === order.id;
               const isBusy = busyOrderId === order.id;
 
@@ -255,9 +284,9 @@ export function DispatchAssignBoard({
                     setDraggingOrderId(null);
                     setActiveDrop(null);
                   }}
-                  className={`cursor-grab rounded border border-zinc-200 bg-white border-l-4 p-3 transition active:cursor-grabbing ${
+                  className={`cursor-grab border-l-4 border-zinc-200 bg-white p-3 transition active:cursor-grabbing ${
                     isDragging ? "opacity-50" : ""
-                  } ${isBusy ? "opacity-60" : "hover:border-zinc-300 hover:shadow-sm"}`}
+                  } ${isBusy ? "opacity-60" : "hover:bg-zinc-50/80"}`}
                   style={{ borderLeftColor: order.priority === "urgent" ? "#dc2626" : "#71717a" }}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-2">
@@ -294,6 +323,10 @@ export function DispatchAssignBoard({
                     </div>
                   </div>
                 </div>
+              );
+                    })}
+                  </div>
+                </section>
               );
             })}
           </div>
