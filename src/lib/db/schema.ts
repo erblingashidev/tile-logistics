@@ -24,6 +24,10 @@ export const orders = sqliteTable("orders", {
   notes: text("notes"),
   priority: text("priority").notNull().default("normal"),
   customerHasForklift: integer("customer_has_forklift").notNull().default(0),
+  /** Manual dispatch hint: prefer this truck when planning routes. */
+  preferredTruckId: integer("preferred_truck_id").references(() => vehicles.id, {
+    onDelete: "set null",
+  }),
   salesEmployeeId: integer("sales_employee_id").references(() => employees.id, {
     onDelete: "set null",
   }),

@@ -41,7 +41,7 @@ function OrderTable({
           <th className="text-left">Region / location</th>
           <th className="text-right">Plt</th>
           <th className="text-right">kg</th>
-          <th className="text-left">Flags</th>
+          <th className="text-left">Preferred truck</th>
           <th className="text-left">Status</th>
           <th className="text-left">Pick</th>
           <th className="text-left">Load</th>
@@ -67,13 +67,7 @@ function OrderTable({
               {Math.round(order.totalWeightKg)}
             </td>
             <td className="text-xs">
-              {order.requiresCrane && (
-                <span className="text-violet-700">Crane </span>
-              )}
-              {order.hasLargeTiles && (
-                <span className="text-amber-700">Large tile</span>
-              )}
-              {!order.requiresCrane && !order.hasLargeTiles && "—"}
+              {order.preferredTruckName ?? "—"}
             </td>
             <td>{order.deliveryStageLabel}</td>
             <td>{prepStatusLabel(order.prepStatus)}</td>

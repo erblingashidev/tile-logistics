@@ -11,10 +11,8 @@ import {
   pickerFromRouteOrders,
   pickerOnTruckRound,
 } from "@/lib/dispatch/picker-resolution";
-import { analyzeOrderCargo } from "@/lib/dispatch/large-tiles";
 import {
   rankVehiclesForLoad,
-  vehicleHasCrane,
   type DispatchVehicle,
 } from "@/lib/dispatch/vehicles";
 
@@ -103,7 +101,6 @@ async function toDispatchVehicle(
     maxWeightKg: v.maxWeightKg,
     status: v.status,
     notes: v.notes,
-    hasCrane: vehicleHasCrane(v),
     costPerKm: 1.1,
     usedPallets: load.totals.pallets,
     usedWeightKg: load.totals.weightKg,
@@ -155,13 +152,14 @@ export async function recommendUrgentPlacement(
     return { ok: false, error: "Order needs a mapped delivery location" };
   }
 
-  const cargo = analyzeOrderCargo(order.items ?? []);
+  const preferredTruckId = order.preferredTruckId ?? null;
   const candidates: UrgentPlacementOption[] = [];
   const fleet = await listTransportVehicles();
 
   for (let round = 1; round <= MAX_DELIVERY_ROUNDS; round++) {
     for (const vehicle of fleet) {
       if (vehicle.status !== "available") continue;
+      if (preferredTruckId != null && vehicle.id !== preferredTruckId) continue;
 
       const load = await getVehicleLoad(vehicle.id, round);
       const dispatchV = await toDispatchVehicle(vehicle, round);
@@ -169,7 +167,15 @@ export async function recommendUrgentPlacement(
       if (remaining < order.totalPallets) continue;
 
       const capacity = checkVehicleCapacity(
-        [{ totalPallets: load.totals.pallets, totalWeightKg: load.totals.weightKg, totalM2: 0, totalPieces: 0, totalTruckPalletSlots: load.totals.pallets }],
+        [
+          {
+            totalPallets: load.totals.pallets,
+            totalWeightKg: load.totals.weightKg,
+            totalM2: 0,
+            totalPieces: 0,
+            totalTruckPalletSlots: load.totals.pallets,
+          },
+        ],
         {
           totalPallets: order.totalPallets,
           totalWeightKg: order.totalWeightKg,
@@ -181,10 +187,6 @@ export async function recommendUrgentPlacement(
         dispatchV.maxWeightKg
       );
       if (!capacity.palletsOk) continue;
-
-      const craneOk =
-        !cargo.requiresCrane || dispatchV.hasCrane;
-      if (!craneOk) continue;
 
       const routeOrders = load.assignedOrders.filter(
         (o) => o.status !== "delivered" && o.status !== "cancelled"
@@ -206,7 +208,11 @@ export async function recommendUrgentPlacement(
           vehicleName: vehicle.name,
           plateNumber: vehicle.plateNumber,
           deliveryRound: round,
-          fitScore: 400 - distWh * 3 + (round === 1 ? 20 : round === 2 ? 10 : 0),
+          fitScore:
+            400 -
+            distWh * 3 +
+            (preferredTruckId != null ? 200 : 0) +
+            (round === 1 ? 20 : round === 2 ? 10 : 0),
           distanceToRouteKm: Math.round(distWh * 10) / 10,
           routeSpreadKm: 0,
           sameRegion: false,
@@ -219,9 +225,11 @@ export async function recommendUrgentPlacement(
           driverName: driver?.name ?? null,
           kind: round === 1 ? "new_route" : "next_round",
           reasons: [
-            round === 1
-              ? `Start a new route on ${vehicle.name} — ${Math.round(distWh)} km from depot`
-              : `Round ${round} is free — dedicated run (~${Math.round(distWh)} km from depot)`,
+            preferredTruckId != null
+              ? `Preferred truck ${vehicle.name} — new run (~${Math.round(distWh)} km from depot)`
+              : round === 1
+                ? `Start a new route on ${vehicle.name} — ${Math.round(distWh)} km from depot`
+                : `Round ${round} is free — dedicated run (~${Math.round(distWh)} km from depot)`,
           ],
         });
         continue;
@@ -234,14 +242,14 @@ export async function recommendUrgentPlacement(
 
       const combined = [...geoRoute, stop];
       const spread = groupSpreadKm(combined);
-      if (spread > maxSpread) continue;
+      if (spread > maxSpread && preferredTruckId == null) continue;
 
       const distToRoute = minDistanceToRoute(stop, routeOrders);
       const regions = routeRegions(routeOrders);
       const sameRegion = regions.some(
         (r) => r.toLowerCase() === (order.region ?? order.city ?? "").toLowerCase()
       );
-      if (!sameRegion) continue;
+      if (!sameRegion && preferredTruckId == null) continue;
 
       const almostReady = Boolean(
         truckStatus?.canDepart || truckStatus?.allResolved
@@ -252,10 +260,14 @@ export async function recommendUrgentPlacement(
         distToRoute * 12 -
         spread * 2 +
         (sameRegion ? 100 : 0) +
+        (preferredTruckId != null ? 250 : 0) +
         (almostReady ? 150 : truckStatus && truckStatus.resolvedCount > 0 ? 40 : 0) +
         (round === 1 ? 15 : round === 2 ? 8 : 0);
 
       const reasons: string[] = [];
+      if (preferredTruckId != null) {
+        reasons.push(`Preferred truck ${vehicle.name}`);
+      }
       if (almostReady) {
         reasons.push(
           `Truck almost ready to leave — add to same run (${truckStatus!.resolvedCount}/${truckStatus!.totalOrders} loader steps done)`
@@ -311,17 +323,19 @@ export async function recommendUrgentPlacement(
       await Promise.all(
         fleet
           .filter((v) => v.status === "available")
+          .filter((v) => preferredTruckId == null || v.id === preferredTruckId)
           .map((v) => toDispatchVehicle(v, 1))
       ),
       order.totalPallets,
-      order.totalWeightKg,
-      cargo.requiresCrane
+      order.totalWeightKg
     );
     if (ranked.length === 0) {
       return {
         ok: false,
         error:
-          "No truck route close enough and no free capacity — widen area or use next round manually",
+          preferredTruckId != null
+            ? "Preferred truck has no capacity — free space or change preferred truck on the order"
+            : "No truck route close enough and no free capacity — widen area or use next round manually",
       };
     }
     const pick = ranked[0];
@@ -350,7 +364,9 @@ export async function recommendUrgentPlacement(
           driverName: (await getDriverForVehicle(pick.id))?.name ?? null,
           kind: "new_route",
           reasons: [
-            `No nearby route within ${maxSpread} km — closest option is ${pick.name} (new dedicated run)`,
+            preferredTruckId != null
+              ? `Preferred truck ${pick.name} — new dedicated run`
+              : `No nearby route within ${maxSpread} km — closest option is ${pick.name} (new dedicated run)`,
           ],
         },
       ],

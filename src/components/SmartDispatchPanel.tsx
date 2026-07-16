@@ -11,7 +11,8 @@ interface DispatchOrderStop {
   customerName: string;
   city: string;
   totalPallets: number;
-  requiresCrane: boolean;
+  preferredTruckId?: number | null;
+  preferredTruckName?: string | null;
 }
 
 interface DispatchRecommendation {
@@ -22,7 +23,6 @@ interface DispatchRecommendation {
   vehicleId: number;
   vehicleName: string;
   plateNumber: string;
-  hasCrane: boolean;
   pickerId: number | null;
   pickerName: string | null;
   driverId: number | null;
@@ -34,6 +34,7 @@ interface DispatchRecommendation {
   routeCluster?: string;
   reasons: string[];
   warnings: string[];
+  preferredTruck?: boolean;
 }
 
 interface DispatchPlan {
@@ -43,7 +44,7 @@ interface DispatchPlan {
   summary: {
     totalOrders: number;
     plannedOrders: number;
-    craneRoutes: number;
+    preferredTruckRoutes: number;
     estimatedTotalKm: number;
     estimatedCostScore: number;
   };
@@ -252,7 +253,6 @@ export function SmartDispatchPanel({
   async function applyRecommendations(
     recommendationIds?: string[],
     ignoreWeightWarning = false,
-    ignoreCraneRule = false,
     options?: { silent?: boolean }
   ): Promise<boolean> {
     if (!plan?.recommendations.length) return false;
@@ -297,7 +297,6 @@ export function SmartDispatchPanel({
         recommendations,
         recommendationIds: recommendationIds,
         ignoreWeightWarning,
-        ignoreCraneRule,
       }),
     });
     const data = await res.json();
@@ -309,24 +308,7 @@ export function SmartDispatchPanel({
 
     if (res.status === 422 && !ignoreWeightWarning) {
       if (confirm("Some routes exceed weight limits.\n\nProceed?")) {
-        return applyRecommendations(
-          recommendationIds,
-          true,
-          ignoreCraneRule,
-          options
-        );
-      }
-      return false;
-    }
-
-    if (res.status === 409 && !ignoreCraneRule) {
-      if (confirm("Crane truck required.\n\nProceed?")) {
-        return applyRecommendations(
-          recommendationIds,
-          ignoreWeightWarning,
-          true,
-          options
-        );
+        return applyRecommendations(recommendationIds, true, options);
       }
       return false;
     }
@@ -355,7 +337,7 @@ export function SmartDispatchPanel({
   async function applyAllRoutes() {
     if (!plan?.recommendations.length) return;
     setApplying(true);
-    const ok = await applyRecommendations(undefined, false, false, {
+    const ok = await applyRecommendations(undefined, false, {
       silent: true,
     });
     setApplying(false);
@@ -542,8 +524,8 @@ export function SmartDispatchPanel({
                               {rec.routeCluster ??
                                 rec.orders.map((o) => o.city).join(" · ")}
                             </p>
-                            {rec.hasCrane && (
-                              <Badge tone="amber">Crane</Badge>
+                            {rec.preferredTruck && (
+                              <Badge tone="amber">Preferred truck</Badge>
                             )}
                             {rec.reasons[0] && (
                               <span className="text-xs text-zinc-500">
@@ -563,9 +545,9 @@ export function SmartDispatchPanel({
                               <li key={o.id}>
                                 {o.invoiceNumber} — {o.customerName} ({o.city})
                                 · {o.totalPallets} plt
-                                {o.requiresCrane && (
-                                  <span className="ml-1 text-amber-700">
-                                    · crane
+                                {o.preferredTruckName && (
+                                  <span className="ml-1 text-sky-700">
+                                    · prefer {o.preferredTruckName}
                                   </span>
                                 )}
                               </li>

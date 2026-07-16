@@ -1,5 +1,3 @@
-import { analyzeDispatchCargo } from "@/lib/services/dispatch-planning";
-import { vehicleHasCrane, isDafTruck, isExcludedSmallVan, DAF_MIN_PALLETS } from "@/lib/dispatch/vehicles";
 import { isTransportVehicle } from "@/lib/services/vehicles";
 import { getDb } from "@/lib/db";
 import { dbOne } from "@/lib/db/query";
@@ -7,33 +5,24 @@ import { vehicles } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { getOrder } from "@/lib/services/orders";
 
-type OrderCargoInput = {
-  customerHasForklift?: boolean;
-  totalPieces?: number | null;
-  totalPallets?: number | null;
-  items?: Array<{
-    productType?: string | null;
-    tileWidthCm?: number | null;
-    tileHeightCm?: number | null;
-    quantity?: number | null;
-    calculatedPieces?: number | null;
-  }>;
-};
-
+/**
+ * Assignment gate — transport trucks only.
+ * Tile/crane preference is manual via order.preferredTruckId (smart dispatch honors it).
+ */
 export async function validateTruckForOrder(
   orderId: number,
   vehicleId: number,
   options?: {
+    /** @deprecated No longer used — kept for API compatibility. */
     ignoreCraneRule?: boolean;
-    preloadedOrder?: OrderCargoInput;
+    preloadedOrder?: unknown;
     preloadedVehicle?: typeof vehicles.$inferSelect;
   }
 ): Promise<
   | { ok: true; warning?: string }
   | { ok: false; error: string; requiresCrane?: true }
 > {
-  const order =
-    options?.preloadedOrder ?? (await getOrder(orderId));
+  const order = options?.preloadedOrder ?? (await getOrder(orderId));
   if (!order) return { ok: false, error: "Order not found" };
 
   const db = await getDb();
@@ -49,45 +38,6 @@ export async function validateTruckForOrder(
       ok: false,
       error:
         "This vehicle is a sales / company car — use a delivery truck for orders.",
-    };
-  }
-
-  const cargo = analyzeDispatchCargo(order.items ?? [], {
-    customerHasForklift: Boolean(order.customerHasForklift),
-    totalPieces: order.totalPieces ?? undefined,
-  });
-  const isCrane = vehicleHasCrane(vehicle);
-
-  if ((cargo.requiresCrane || cargo.preferCrane) && !isCrane && !options?.ignoreCraneRule) {
-    return {
-      ok: false,
-      error:
-        "Large/jumbo tiles require the crane truck. Proceed without crane?",
-      requiresCrane: true,
-    };
-  }
-
-  if (!cargo.requiresCrane && !cargo.preferCrane && !cargo.hasLargeTiles && isCrane) {
-    return {
-      ok: true,
-      warning:
-        "Crane / Krani truck is for jumbo tiles only — use Sprinter or Iveco for standard sizes like 60×120.",
-    };
-  }
-
-  if (cargo.hasLargeTiles && isExcludedSmallVan(vehicle) && !cargo.preferAtego) {
-    return {
-      ok: false,
-      error:
-        "Large tiles cannot go on Iveco/Sprinter without crane — use Volvo, Atego, or DAF.",
-    };
-  }
-
-  const orderPallets = order.totalPallets ?? 0;
-  if (isDafTruck(vehicle) && orderPallets < DAF_MIN_PALLETS) {
-    return {
-      ok: true,
-      warning: `DAF is for large loads (${DAF_MIN_PALLETS}+ pallets). This order has ${orderPallets} — consider Sprinter or Iveco.`,
     };
   }
 

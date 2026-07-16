@@ -104,6 +104,7 @@ interface Order {
   notes?: string | null;
   salesAgentName?: string | null;
   customerHasForklift?: boolean;
+  preferredTruckId?: number | null;
   priority?: string | null;
   totalM2: number;
   totalPieces: number;
@@ -256,6 +257,7 @@ function createEmptyOrderForm() {
     deliveryTimePreference: "flexible" as "flexible" | "morning" | "afternoon",
     priority: "normal" as "normal" | "urgent",
     customerHasForklift: false,
+    preferredTruckId: "" as string,
     items: [emptyItem()] as OrderItem[],
   };
 }
@@ -463,6 +465,9 @@ export default function OrdersPage() {
       requestedDeliveryDate: form.requestedDeliveryDate.trim() || null,
       deliveryTimePreference: form.deliveryTimePreference,
       priority: form.priority,
+      preferredTruckId: form.preferredTruckId
+        ? Number(form.preferredTruckId)
+        : null,
       salesAgentName: form.salesAgent.trim() || undefined,
       notes: buildOrderNotes(form.salesAgent, form.customerPhone),
       items: form.items,
@@ -527,6 +532,9 @@ export default function OrdersPage() {
         "flexible",
       priority: isOrderUrgent(order) ? "urgent" : "normal",
       customerHasForklift: Boolean(order.customerHasForklift),
+      preferredTruckId: order.preferredTruckId
+        ? String(order.preferredTruckId)
+        : "",
       items:
         order.items.length > 0
           ? order.items.map((i) => {
@@ -707,16 +715,6 @@ export default function OrdersPage() {
           )
         ) {
           await bulkTransferToTruck(true, ignoreCraneRule, ignoreLinkedWarning);
-        }
-        return;
-      }
-      if (res.status === 409 && data.results?.some((r: { requiresCrane?: boolean }) => r.requiresCrane)) {
-        if (
-          confirm(
-            "Crane truck required for one or more orders.\n\nProceed?"
-          )
-        ) {
-          await bulkTransferToTruck(ignoreWeightWarning, true, ignoreLinkedWarning);
         }
         return;
       }
@@ -1043,6 +1041,7 @@ export default function OrdersPage() {
       deliveryTimePreference: importForm.deliveryTimePreference,
       priority: "normal" as "normal" | "urgent",
       customerHasForklift: false,
+      preferredTruckId: "",
       items: importForm.items.map((item) => ({
         unit: normalizeOrderUnit(item.unit),
         productEan: item.productEan,
@@ -1559,7 +1558,7 @@ export default function OrdersPage() {
                 />
                 <span className="font-medium text-red-800">Urgent delivery</span>
               </label>
-              <label className="flex items-center gap-2 rounded border border-sky-100 bg-sky-50/50 px-3 py-2 text-sm sm:col-span-2">
+              <label className="flex items-center gap-2 rounded border border-sky-100 bg-sky-50/50 px-3 py-2 text-sm">
                 <input
                   type="checkbox"
                   checked={form.customerHasForklift}
@@ -1571,9 +1570,23 @@ export default function OrdersPage() {
                   }
                 />
                 <span className="font-medium text-sky-900">
-                  Customer has working forklift (large tiles can use non-crane trucks)
+                  Customer has working forklift
                 </span>
               </label>
+              <Select
+                label="Preferred truck (manual)"
+                value={form.preferredTruckId}
+                onChange={(e) =>
+                  setForm({ ...form, preferredTruckId: e.target.value })
+                }
+              >
+                <option value="">Auto — smart dispatch chooses</option>
+                {vehicles.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name} ({v.plateNumber})
+                  </option>
+                ))}
+              </Select>
             </div>
 
             <div className="space-y-3">

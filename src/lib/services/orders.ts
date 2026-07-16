@@ -118,6 +118,8 @@ export interface OrderPayload {
   notes?: string;
   priority?: "normal" | "urgent";
   customerHasForklift?: boolean;
+  /** Manual dispatch hint — smart dispatch puts this order on this truck when set. */
+  preferredTruckId?: number | null;
   salesEmployeeId?: number | null;
   salesAgentName?: string | null;
   items: OrderItemPayload[];
@@ -781,6 +783,7 @@ export async function createOrder(
         notes: payload.notes ?? null,
         priority: payload.priority ?? "normal",
         customerHasForklift: payload.customerHasForklift ? 1 : 0,
+        preferredTruckId: payload.preferredTruckId ?? null,
         salesEmployeeId: payload.salesEmployeeId ?? null,
         salesAgentName: payload.salesAgentName ?? null,
         createdAt: now,
@@ -997,6 +1000,10 @@ export async function updateOrder(id: number, payload: OrderPayload) {
       notes: payload.notes ?? null,
       priority: payload.priority ?? undefined,
       customerHasForklift: payload.customerHasForklift ? 1 : 0,
+      preferredTruckId:
+        payload.preferredTruckId === undefined
+          ? existing.preferredTruckId
+          : payload.preferredTruckId,
       salesEmployeeId: payload.salesEmployeeId ?? existing.salesEmployeeId,
       salesAgentName: payload.salesAgentName ?? existing.salesAgentName,
       updatedAt: now,

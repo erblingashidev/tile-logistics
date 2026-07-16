@@ -15,11 +15,16 @@ export async function GET(request: NextRequest) {
     : 1;
 
   if (orderId) {
-    const result = await recommendOrderAssignment(orderId, deliveryRound);
-    if (!result.ok) {
-      return NextResponse.json(result, { status: 404 });
+    const recommendation = await recommendOrderAssignment(orderId, {
+      deliveryRound,
+    });
+    if (!recommendation) {
+      return NextResponse.json(
+        { ok: false, error: "No recommendation for this order" },
+        { status: 404 }
+      );
     }
-    return NextResponse.json(result);
+    return NextResponse.json({ ok: true, recommendation });
   }
 
   if (sp.get("allRounds") === "true") {

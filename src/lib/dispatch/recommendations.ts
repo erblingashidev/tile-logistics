@@ -1,12 +1,6 @@
-import { eq, and, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { dbAll, dbOne } from "@/lib/db/query";
-import {
-  employees,
-  orderEmployeeAssignments,
-  orders,
-  vehicles,
-} from "@/lib/db/schema";
+import { dbAll } from "@/lib/db/query";
+import { vehicles } from "@/lib/db/schema";
 import {
   orderStopsForRoundTrip,
   normalizeDispatchRegion,
@@ -15,32 +9,25 @@ import { checkVehicleCapacity } from "@/lib/calculations";
 import { listOrders, getVehicleLoad } from "@/lib/services/orders";
 import { isTransportVehicle } from "@/lib/services/vehicles";
 import { getDriverForVehicle } from "@/lib/services/employees";
-import { isOrderReadyToShip } from "@/lib/delivery-schedule";
 import { isOrderUrgent } from "@/lib/order-priority";
 import { resolveOrderGeo } from "@/lib/locations";
 import { recommendUrgentPlacement } from "@/lib/dispatch/urgent-routing";
 import {
-  pickerOnTruckRound,
   resolvePickerForTruck,
   type PickerAssignmentContext,
 } from "@/lib/dispatch/picker-resolution";
 import {
   type DispatchVehicle,
   estimateRouteCostKm,
-  vehicleHasCrane,
   vehicleCostPerKm,
-  DAF_MIN_PALLETS,
-  explainNoStandardTruckCapacity,
+  rankVehiclesForLoad,
+  explainNoTruckCapacity,
 } from "@/lib/dispatch/vehicles";
 import {
-  analyzeDispatchCargo,
   clusterStopsForDispatch,
   describeRouteCluster,
   mergeSameCityGroups,
-  rankVehiclesForDispatch,
   sortGroupsForRoundPlanning,
-  isPrishtinaArea,
-  type DispatchCargoProfile,
 } from "@/lib/services/dispatch-planning";
 import { MAX_DELIVERY_ROUNDS } from "@/lib/constants";
 
@@ -57,10 +44,8 @@ export interface DispatchOrderStop {
   totalWeightKg: number;
   totalM2: number;
   totalPieces: number;
-  requiresCrane: boolean;
-  hasLargeTiles: boolean;
-  customerHasForklift: boolean;
-  cargoReasons: string[];
+  preferredTruckId: number | null;
+  preferredTruckName: string | null;
   priority: "normal" | "urgent";
 }
 
@@ -72,7 +57,6 @@ export interface DispatchRecommendation {
   vehicleId: number;
   vehicleName: string;
   plateNumber: string;
-  hasCrane: boolean;
   pickerId: number | null;
   pickerName: string | null;
   driverId: number | null;
@@ -85,6 +69,7 @@ export interface DispatchRecommendation {
   routeCluster: string;
   reasons: string[];
   warnings: string[];
+  preferredTruck: boolean;
 }
 
 export interface DispatchPlan {
@@ -94,7 +79,7 @@ export interface DispatchPlan {
   summary: {
     totalOrders: number;
     plannedOrders: number;
-    craneRoutes: number;
+    preferredTruckRoutes: number;
     estimatedTotalKm: number;
     estimatedCostScore: number;
   };
@@ -105,7 +90,7 @@ export interface FullDayDispatchPlan {
   summary: {
     totalOrders: number;
     plannedOrders: number;
-    craneRoutes: number;
+    preferredTruckRoutes: number;
     estimatedTotalKm: number;
     estimatedCostScore: number;
   };
@@ -125,7 +110,6 @@ async function loadDispatchVehicles(deliveryRound: number): Promise<DispatchVehi
         maxWeightKg: v.maxWeightKg,
         status: v.status,
         notes: v.notes,
-        hasCrane: vehicleHasCrane(v),
         costPerKm: vehicleCostPerKm(v),
         usedPallets: load.totals.pallets,
         usedWeightKg: load.totals.weightKg,
@@ -144,7 +128,8 @@ async function resolvePicker(
 }
 
 function toStop(
-  order: Awaited<ReturnType<typeof listOrders>>[number]
+  order: Awaited<ReturnType<typeof listOrders>>[number],
+  truckNameById: Map<number, string>
 ): DispatchOrderStop | null {
   const geo = resolveOrderGeo({
     location: order.location,
@@ -155,11 +140,7 @@ function toStop(
     lng: order.lng,
   });
   if (!geo) return null;
-  const cargo = analyzeDispatchCargo(order.items ?? [], {
-    customerHasForklift: Boolean(order.customerHasForklift),
-    totalPieces: order.totalPieces,
-    totalPallets: order.totalPallets,
-  });
+  const preferredTruckId = order.preferredTruckId ?? null;
   return {
     id: order.id,
     invoiceNumber: order.invoiceNumber,
@@ -173,69 +154,11 @@ function toStop(
     totalWeightKg: order.totalWeightKg,
     totalM2: order.totalM2,
     totalPieces: order.totalPieces,
-    requiresCrane: cargo.requiresCrane,
-    hasLargeTiles: cargo.hasLargeTiles,
-    customerHasForklift: cargo.customerHasForklift,
-    cargoReasons: cargo.reasons,
+    preferredTruckId,
+    preferredTruckName: preferredTruckId
+      ? truckNameById.get(preferredTruckId) ?? `Truck #${preferredTruckId}`
+      : null,
     priority: isOrderUrgent(order) ? "urgent" : "normal",
-  };
-}
-
-function groupCargoProfile(
-  group: DispatchOrderStop[],
-  orderItems?: Awaited<ReturnType<typeof listOrders>>[number]["items"]
-): DispatchCargoProfile {
-  if (group.length === 1 && orderItems) {
-    return analyzeDispatchCargo(orderItems, {
-      customerHasForklift: group[0].customerHasForklift,
-      totalPieces: group[0].totalPieces,
-      totalPallets: group[0].totalPallets,
-    });
-  }
-
-  const requiresCrane = group.some((o) => o.requiresCrane);
-  const hasLargeTiles = group.some((o) => o.hasLargeTiles);
-  const customerHasForklift = group.some((o) => o.customerHasForklift);
-  const perOrderReasons = [...new Set(group.flatMap((o) => o.cargoReasons))];
-
-  if (group.length > 1) {
-    const reasons = requiresCrane
-      ? perOrderReasons.filter((r) => r.includes("crane required"))
-      : [
-          "Same-city combined route — standard truck OK",
-          ...perOrderReasons.filter((r) => r.includes("OK on standard")),
-        ];
-    return {
-      requiresCrane,
-      hasLargeTiles,
-      largeTilePieces: 0,
-      preferCrane: false,
-      preferAtego: false,
-      excludeIvecoSprinter:
-        hasLargeTiles && customerHasForklift && !requiresCrane,
-      customerHasForklift,
-      reasons,
-    };
-  }
-
-  const preferCrane = group.some((o) =>
-    o.cargoReasons.some((r) => r.includes("without forklift"))
-  );
-  const preferAtego = group.some((o) =>
-    o.cargoReasons.some((r) => r.includes("hand unload"))
-  );
-  const reasons = perOrderReasons;
-
-  return {
-    requiresCrane,
-    hasLargeTiles,
-    largeTilePieces: 0,
-    preferCrane: preferCrane || (hasLargeTiles && !customerHasForklift && !preferAtego),
-    preferAtego,
-    excludeIvecoSprinter:
-      hasLargeTiles && customerHasForklift && !requiresCrane,
-    customerHasForklift,
-    reasons,
   };
 }
 
@@ -255,103 +178,95 @@ async function buildRecommendation(
   group: DispatchOrderStop[],
   vehicle: DispatchVehicle,
   deliveryRound: number,
-  fleet: DispatchVehicle[],
-  pickerCtx?: PickerAssignmentContext
+  pickerCtx?: PickerAssignmentContext,
+  options?: { preferredTruck?: boolean; extraReasons?: string[] }
 ): Promise<DispatchRecommendation | null> {
   const totalPallets = group.reduce((s, o) => s + o.totalPallets, 0);
   const totalWeightKg = group.reduce((s, o) => s + o.totalWeightKg, 0);
-  const cargo = groupCargoProfile(group);
-
-  const ranked = rankVehiclesForDispatch(
-    fleet,
-    totalPallets,
-    totalWeightKg,
-    cargo
-  );
-  const pick = ranked.find((v) => v.id === vehicle.id) ?? ranked[0];
-  if (!pick) return null;
 
   const check = checkVehicleCapacity(
-    [{ totalPallets: pick.usedPallets, totalWeightKg: pick.usedWeightKg, totalM2: 0, totalPieces: 0, totalTruckPalletSlots: pick.usedPallets }],
-    { totalPallets, totalWeightKg, totalM2: 0, totalPieces: 0, totalTruckPalletSlots: totalPallets },
-    pick.maxPallets,
-    pick.maxWeightKg
+    [
+      {
+        totalPallets: vehicle.usedPallets,
+        totalWeightKg: vehicle.usedWeightKg,
+        totalM2: 0,
+        totalPieces: 0,
+        totalTruckPalletSlots: vehicle.usedPallets,
+      },
+    ],
+    {
+      totalPallets,
+      totalWeightKg,
+      totalM2: 0,
+      totalPieces: 0,
+      totalTruckPalletSlots: totalPallets,
+    },
+    vehicle.maxPallets,
+    vehicle.maxWeightKg
   );
   if (!check.palletsOk) return null;
 
   const orderedStops = orderStopsForRoundTrip(group);
   const { totalKm, costScore } = estimateRouteCostKm(
-    pick,
+    vehicle,
     orderedStops.map((g) => ({ lat: g.lat, lng: g.lng }))
   );
 
   const picker = await resolvePicker(
-    pick.id,
+    vehicle.id,
     deliveryRound,
     pickerCtx,
     group.length
   );
-  const driver = await getDriverForVehicle(pick.id);
+  const driver = await getDriverForVehicle(vehicle.id);
   const routeCluster = describeRouteCluster(group);
+  const preferredTruck = Boolean(options?.preferredTruck);
 
-  const reasons: string[] = [];
-  if (cargo.requiresCrane) {
-    reasons.push("Crane truck required — jumbo tile qty on route");
+  const reasons: string[] = [...(options?.extraReasons ?? [])];
+  if (preferredTruck) {
+    reasons.push(`Manual truck preference — ${vehicle.name}`);
   } else if (group.length > 1) {
-    reasons.push("Same-city combined route — standard truck OK");
-  } else if (cargo.preferCrane) {
-    reasons.push("Crane / Volvo truck — large tiles without forklift");
-  } else if (cargo.preferAtego) {
-    reasons.push("Small large-tile qty — prefer Atego (hand unload)");
-  } else {
-    const dafNote =
-      pick.name.toLowerCase().includes("daf") && totalPallets >= DAF_MIN_PALLETS
-        ? " — linehaul truck for larger load"
-        : "";
-    reasons.push(
-      `Best-fit ${pick.name} (${remainingLabel(pick, totalPallets)} pallets left after load)${dafNote}`
-    );
-  }
-  if (group.length > 1) {
     const regionLabel = [
       ...new Set(group.map((o) => normalizeDispatchRegion(o))),
     ].join(" · ");
     reasons.push(
-      `${group.length} stops in ${regionLabel} — corridor cluster, one truck`
+      `${group.length} stops in ${regionLabel} — clustered onto one truck`
     );
-  } else if (group[0]?.region) {
+  } else {
+    const left = Math.max(0, vehicle.maxPallets - vehicle.usedPallets - totalPallets);
+    reasons.push(
+      `Best capacity fit: ${vehicle.name} (${left} pallets left after load)`
+    );
+  }
+  if (group[0]?.region && group.length === 1) {
     reasons.push(`Delivery area: ${group[0].region}`);
   }
   reasons.push(`~${totalKm} km round trip · cost score ${costScore}`);
   if (picker.name) {
-    reasons.push(`Picker ${picker.name} — one picker per truck, balanced load`);
+    reasons.push(`Picker ${picker.name}`);
   }
   if (driver?.name) {
-    reasons.push(`Driver ${driver.name} from truck link`);
+    reasons.push(`Driver ${driver.name}`);
   }
 
   const warnings: string[] = [];
   if (!check.weightOk) warnings.push(check.weightWarning ?? "Weight advisory");
-  for (const o of group) {
-    warnings.push(...o.cargoReasons.filter((r) => r.includes("OK on standard")));
-  }
 
   const score =
     1000 -
     costScore * 10 -
     totalKm * 2 +
     (group.length > 1 ? group.length * 30 : 0) +
-    (pick.hasCrane && !cargo.requiresCrane ? -50 : 0);
+    (preferredTruck ? 80 : 0);
 
   return {
-    id: `rec-${pick.id}-r${deliveryRound}-${group.map((o) => o.id).join("-")}`,
+    id: `rec-${vehicle.id}-r${deliveryRound}-${group.map((o) => o.id).join("-")}`,
     deliveryRound,
     orderIds: group.map((o) => o.id),
-    orders: group,
-    vehicleId: pick.id,
-    vehicleName: pick.name,
-    plateNumber: pick.plateNumber,
-    hasCrane: pick.hasCrane,
+    orders: orderedStops,
+    vehicleId: vehicle.id,
+    vehicleName: vehicle.name,
+    plateNumber: vehicle.plateNumber,
     pickerId: picker.id,
     pickerName: picker.name,
     driverId: driver?.id ?? null,
@@ -364,28 +279,65 @@ async function buildRecommendation(
     routeCluster,
     reasons,
     warnings,
+    preferredTruck,
   };
 }
 
-function remainingLabel(v: DispatchVehicle, load: number): number {
-  return Math.max(0, v.maxPallets - v.usedPallets - load);
-}
-
-function rankTrucksForGroup(
-  fleet: DispatchVehicle[],
+async function planGroupOntoVehicle(
   group: DispatchOrderStop[],
-  items?: Awaited<ReturnType<typeof listOrders>>[number]["items"]
-) {
-  const totalPallets = group.reduce((s, o) => s + o.totalPallets, 0);
-  const totalWeightKg = group.reduce((s, o) => s + o.totalWeightKg, 0);
-  const cargo = groupCargoProfile(group, items);
-  let ranked = rankVehiclesForDispatch(fleet, totalPallets, totalWeightKg, cargo);
-  if (ranked.length === 0 && !cargo.requiresCrane && !cargo.preferCrane) {
-    ranked = rankVehiclesForDispatch(fleet, totalPallets, totalWeightKg, cargo, {
-      allowDafBelowMin: true,
-    });
+  vehicle: DispatchVehicle,
+  fleet: DispatchVehicle[],
+  deliveryRound: number,
+  recommendations: DispatchRecommendation[],
+  skipped: DispatchPlan["skipped"],
+  pickerCtx: PickerAssignmentContext,
+  options?: { preferredTruck?: boolean; extraReasons?: string[] }
+): Promise<DispatchVehicle[]> {
+  const rec = await buildRecommendation(
+    group,
+    vehicle,
+    deliveryRound,
+    pickerCtx,
+    options
+  );
+  if (!rec) {
+    if (group.length > 1) {
+      for (const stop of group) {
+        fleet = await planGroupOntoVehicle(
+          [stop],
+          vehicle,
+          fleet,
+          deliveryRound,
+          recommendations,
+          skipped,
+          pickerCtx,
+          options
+        );
+      }
+      return fleet;
+    }
+    for (const o of group) {
+      skipped.push({
+        orderId: o.id,
+        invoiceNumber: o.invoiceNumber,
+        reason: options?.preferredTruck
+          ? `${vehicle.name} does not have enough pallet space`
+          : "Could not fit on available trucks",
+      });
+    }
+    return fleet;
   }
-  return ranked;
+
+  recommendations.push(rec);
+  const idx = fleet.findIndex((v) => v.id === rec.vehicleId);
+  if (idx >= 0) {
+    fleet[idx] = simulateVehicleAfterAssign(
+      fleet[idx],
+      rec.totalPallets,
+      rec.totalWeightKg
+    );
+  }
+  return fleet;
 }
 
 async function planStandardGroup(
@@ -394,10 +346,11 @@ async function planStandardGroup(
   deliveryRound: number,
   recommendations: DispatchRecommendation[],
   skipped: DispatchPlan["skipped"],
-  pickerCtx?: PickerAssignmentContext
+  pickerCtx: PickerAssignmentContext
 ): Promise<DispatchVehicle[]> {
   const totalPallets = group.reduce((s, o) => s + o.totalPallets, 0);
-  const ranked = rankTrucksForGroup(fleet, group);
+  const totalWeightKg = group.reduce((s, o) => s + o.totalWeightKg, 0);
+  const ranked = rankVehiclesForLoad(fleet, totalPallets, totalWeightKg);
 
   if (ranked.length === 0 && group.length > 1) {
     for (const stop of group) {
@@ -414,7 +367,7 @@ async function planStandardGroup(
   }
 
   if (ranked.length === 0) {
-    const reason = explainNoStandardTruckCapacity(fleet, totalPallets);
+    const reason = explainNoTruckCapacity(fleet, totalPallets);
     for (const o of group) {
       skipped.push({
         orderId: o.id,
@@ -425,70 +378,105 @@ async function planStandardGroup(
     return fleet;
   }
 
-  const rec = await buildRecommendation(
+  return planGroupOntoVehicle(
     group,
     ranked[0],
-    deliveryRound,
     fleet,
+    deliveryRound,
+    recommendations,
+    skipped,
     pickerCtx
   );
-  if (!rec) {
-    if (group.length > 1) {
-      for (const stop of group) {
-        fleet = await planStandardGroup(
-          [stop],
-          fleet,
-          deliveryRound,
-          recommendations,
-          skipped
-        );
-      }
-      return fleet;
-    }
-    for (const o of group) {
-      skipped.push({
-        orderId: o.id,
-        invoiceNumber: o.invoiceNumber,
-        reason: "Could not fit on available trucks",
-      });
-    }
-    return fleet;
-  }
-
-  if (
-    rec.vehicleName.toLowerCase().includes("daf") &&
-    totalPallets < DAF_MIN_PALLETS
-  ) {
-    rec.warnings.push(
-      `DAF used as fallback — only truck with ${totalPallets} plt space left this round`
-    );
-  }
-
-  recommendations.push(rec);
-  const idx = fleet.findIndex((v) => v.id === rec.vehicleId);
-  if (idx >= 0) {
-    fleet[idx] = simulateVehicleAfterAssign(
-      fleet[idx],
-      rec.totalPallets,
-      rec.totalWeightKg
-    );
-  }
-  return fleet;
 }
 
-function filterStopsForRound(
+/**
+ * Pack stops that share a preferred truck onto that truck (nearest-neighbor order).
+ * Excess stops that don't fit are skipped with a clear reason.
+ */
+async function planPreferredTruckGroups(
   stops: DispatchOrderStop[],
+  fleet: DispatchVehicle[],
   deliveryRound: number,
-  hasFartherPending: boolean
-): DispatchOrderStop[] {
-  if (deliveryRound === 1 && hasFartherPending) {
-    const prishtina = stops.filter((s) => isPrishtinaArea(s));
-    const farther = stops.filter((s) => !isPrishtinaArea(s));
-    if (farther.length > 0 && prishtina.length > 0) {
-      return farther;
+  recommendations: DispatchRecommendation[],
+  skipped: DispatchPlan["skipped"],
+  pickerCtx: PickerAssignmentContext
+): Promise<{ fleet: DispatchVehicle[]; remaining: DispatchOrderStop[] }> {
+  const byTruck = new Map<number, DispatchOrderStop[]>();
+  const remaining: DispatchOrderStop[] = [];
+
+  for (const stop of stops) {
+    if (stop.preferredTruckId == null) {
+      remaining.push(stop);
+      continue;
     }
+    const list = byTruck.get(stop.preferredTruckId) ?? [];
+    list.push(stop);
+    byTruck.set(stop.preferredTruckId, list);
   }
-  return stops;
+
+  let nextFleet = fleet;
+
+  for (const [truckId, group] of byTruck) {
+    const vehicle = nextFleet.find((v) => v.id === truckId);
+    if (!vehicle) {
+      for (const o of group) {
+        skipped.push({
+          orderId: o.id,
+          invoiceNumber: o.invoiceNumber,
+          reason: `Preferred truck #${truckId} not found or not a delivery truck`,
+        });
+      }
+      continue;
+    }
+    if (vehicle.status !== "available") {
+      for (const o of group) {
+        skipped.push({
+          orderId: o.id,
+          invoiceNumber: o.invoiceNumber,
+          reason: `Preferred truck ${vehicle.name} is not available`,
+        });
+      }
+      continue;
+    }
+
+    const ordered = orderStopsForRoundTrip(group);
+    const pack: DispatchOrderStop[] = [];
+    let used = vehicle.usedPallets;
+
+    for (const stop of ordered) {
+      if (used + stop.totalPallets <= vehicle.maxPallets) {
+        pack.push(stop);
+        used += stop.totalPallets;
+      } else {
+        skipped.push({
+          orderId: stop.id,
+          invoiceNumber: stop.invoiceNumber,
+          reason: `Preferred truck ${vehicle.name} is full — free space or change preferred truck on the order`,
+        });
+      }
+    }
+
+    if (pack.length === 0) continue;
+
+    nextFleet = await planGroupOntoVehicle(
+      pack,
+      vehicle,
+      nextFleet,
+      deliveryRound,
+      recommendations,
+      skipped,
+      pickerCtx,
+      {
+        preferredTruck: true,
+        extraReasons:
+          pack.length > 1
+            ? [`${pack.length} orders preferring ${vehicle.name}`]
+            : undefined,
+      }
+    );
+  }
+
+  return { fleet: nextFleet, remaining };
 }
 
 export async function generateDispatchPlan(options?: {
@@ -504,6 +492,8 @@ export async function generateDispatchPlan(options?: {
   const maxDistanceKm = options?.maxDistanceKm ?? 30;
 
   let fleet = await loadDispatchVehicles(deliveryRound);
+  const truckNameById = new Map(fleet.map((v) => [v.id, v.name]));
+
   const rawOrders = options?.stops
     ? null
     : await listOrders({
@@ -520,7 +510,7 @@ export async function generateDispatchPlan(options?: {
     stops.push(...options.stops);
   } else if (rawOrders) {
     for (const o of rawOrders) {
-      const stop = toStop(o);
+      const stop = toStop(o, truckNameById);
       if (!stop) {
         skipped.push({
           orderId: o.id,
@@ -533,30 +523,18 @@ export async function generateDispatchPlan(options?: {
     }
   }
 
-  const hasFartherPending = stops.some((s) => !isPrishtinaArea(s));
-  const roundStops = filterStopsForRound(stops, deliveryRound, hasFartherPending);
-  const deferredPrishtina = stops.filter(
-    (s) => !roundStops.some((r) => r.id === s.id)
-  );
-
-  for (const s of deferredPrishtina) {
-    skipped.push({
-      orderId: s.id,
-      invoiceNumber: s.invoiceNumber,
-      reason: `Prishtinë area — defer to round ${deliveryRound + 1} while farther routes go first`,
-    });
-  }
-
-  let remainingStops = [...roundStops];
-  const plannedUrgentIds = new Set<number>();
-
+  let remainingStops = [...stops];
   const recommendations: DispatchRecommendation[] = [];
   const pickerCtx: PickerAssignmentContext = {
     truckPicker: new Map(),
     plannedOrders: new Map(),
   };
 
+  // Urgent: try join-nearby / dedicated placement for this round only.
+  const plannedUrgentIds = new Set<number>();
   for (const stop of remainingStops.filter((s) => s.priority === "urgent")) {
+    if (stop.preferredTruckId != null) continue;
+
     const placement = await recommendUrgentPlacement(stop.id);
     if (!placement.ok) {
       skipped.push({
@@ -567,42 +545,48 @@ export async function generateDispatchPlan(options?: {
       continue;
     }
     const best = placement.options[0];
-    if (best.deliveryRound !== deliveryRound) {
+    if (!best || best.deliveryRound !== deliveryRound) {
       skipped.push({
         orderId: stop.id,
         invoiceNumber: stop.invoiceNumber,
-        reason: `Urgent: best fit is ${best.vehicleName} · round ${best.deliveryRound} (see Dispatch board)`,
+        reason: best
+          ? `Urgent: best fit is ${best.vehicleName} · round ${best.deliveryRound} (see Dispatch board)`
+          : "Urgent: no placement found",
       });
       continue;
     }
     const vehicle = fleet.find((v) => v.id === best.vehicleId);
     if (!vehicle) continue;
-    const rec = await buildRecommendation([stop], vehicle, deliveryRound, fleet, pickerCtx);
-    if (!rec) {
-      skipped.push({
-        orderId: stop.id,
-        invoiceNumber: stop.invoiceNumber,
-        reason: "Urgent: no capacity on suggested truck",
-      });
-      continue;
-    }
-    rec.reasons = [`Urgent — ${best.reasons[0]}`, ...rec.reasons];
-    if (best.almostReady) {
-      rec.warnings.push("Adds to truck almost ready to leave");
-    }
-    recommendations.push(rec);
-    plannedUrgentIds.add(stop.id);
-    const idx = fleet.findIndex((v) => v.id === rec.vehicleId);
-    if (idx >= 0) {
-      fleet[idx] = simulateVehicleAfterAssign(
-        fleet[idx],
-        rec.totalPallets,
-        rec.totalWeightKg
-      );
+
+    const before = recommendations.length;
+    fleet = await planGroupOntoVehicle(
+      [stop],
+      vehicle,
+      fleet,
+      deliveryRound,
+      recommendations,
+      skipped,
+      pickerCtx,
+      { extraReasons: [`Urgent — ${best.reasons[0]}`] }
+    );
+    if (recommendations.length > before) {
+      plannedUrgentIds.add(stop.id);
     }
   }
 
   remainingStops = remainingStops.filter((s) => !plannedUrgentIds.has(s.id));
+
+  // Manual preferred trucks before auto clustering.
+  const preferredResult = await planPreferredTruckGroups(
+    remainingStops,
+    fleet,
+    deliveryRound,
+    recommendations,
+    skipped,
+    pickerCtx
+  );
+  fleet = preferredResult.fleet;
+  remainingStops = preferredResult.remaining;
 
   let groups = clusterStopsForDispatch(remainingStops, {
     maxOrders,
@@ -610,7 +594,7 @@ export async function generateDispatchPlan(options?: {
     regionMaxDistanceKm: Math.max(maxDistanceKm, 45),
   });
   groups = mergeSameCityGroups(groups, maxOrders);
-  groups = sortGroupsForRoundPlanning(groups, deliveryRound);
+  groups = sortGroupsForRoundPlanning(groups);
 
   for (const group of groups) {
     fleet = await planStandardGroup(
@@ -634,7 +618,7 @@ export async function generateDispatchPlan(options?: {
     summary: {
       totalOrders: stops.length,
       plannedOrders: plannedIds.size,
-      craneRoutes: recommendations.filter((r) => r.hasCrane).length,
+      preferredTruckRoutes: recommendations.filter((r) => r.preferredTruck).length,
       estimatedTotalKm: recommendations.reduce((s, r) => s + r.estimatedKm, 0),
       estimatedCostScore: recommendations.reduce((s, r) => s + r.costScore, 0),
     },
@@ -646,135 +630,92 @@ export async function generateFullDayDispatchPlan(options?: {
   maxOrdersPerRoute?: number;
   maxDistanceKm?: number;
   region?: string;
+  city?: string;
 }): Promise<FullDayDispatchPlan> {
-  const maxRounds = Math.min(MAX_DELIVERY_ROUNDS, options?.maxRounds ?? 3);
-  const rawOrders = await listOrders({
-    unassigned: true,
-    readyToShip: true,
+  const maxRounds = Math.min(
+    MAX_DELIVERY_ROUNDS,
+    options?.maxRounds ?? MAX_DELIVERY_ROUNDS
+  );
+
+  const first = await generateDispatchPlan({
+    deliveryRound: 1,
+    maxOrdersPerRoute: options?.maxOrdersPerRoute,
+    maxDistanceKm: options?.maxDistanceKm,
     region: options?.region,
+    city: options?.city,
   });
 
-  const allStops: DispatchOrderStop[] = [];
-  const globalSkipped: DispatchPlan["skipped"] = [];
+  const rounds: DispatchPlan[] = [first];
+  let carrySkipped = first.skipped;
 
-  for (const o of rawOrders) {
-    const stop = toStop(o);
-    if (!stop) {
-      globalSkipped.push({
-        orderId: o.id,
-        invoiceNumber: o.invoiceNumber,
-        reason: "Missing map coordinates — set location on order",
-      });
-      continue;
-    }
-    allStops.push(stop);
-  }
+  for (let round = 2; round <= maxRounds; round++) {
+    const orderIds = carrySkipped.map((s) => s.orderId);
+    if (orderIds.length === 0) break;
 
-  const rounds: DispatchPlan[] = [];
-  let remaining = [...allStops];
+    const allUnassigned = await listOrders({
+      unassigned: true,
+      readyToShip: true,
+      region: options?.region,
+      city: options?.city,
+    });
+    const fleet = await loadDispatchVehicles(round);
+    const truckNameById = new Map(fleet.map((v) => [v.id, v.name]));
+    const idSet = new Set(orderIds);
+    const stops = allUnassigned
+      .filter((o) => idSet.has(o.id))
+      .map((o) => toStop(o, truckNameById))
+      .filter((s): s is DispatchOrderStop => s != null);
 
-  for (let round = 1; round <= maxRounds && remaining.length > 0; round++) {
+    if (stops.length === 0) break;
+
     const plan = await generateDispatchPlan({
       deliveryRound: round,
       maxOrdersPerRoute: options?.maxOrdersPerRoute,
       maxDistanceKm: options?.maxDistanceKm,
-      region: options?.region,
-      stops: remaining,
+      stops,
     });
-
-    const plannedIds = new Set(plan.recommendations.flatMap((r) => r.orderIds));
-    remaining = remaining.filter((s) => !plannedIds.has(s.id));
-
-    const roundSkipped = plan.skipped.filter(
-      (s) =>
-        s.reason.includes("defer to round") &&
-        round < maxRounds
-    );
-    const keptSkipped = plan.skipped.filter(
-      (s) => !s.reason.includes("defer to round") || round >= maxRounds
-    );
-
-    if (roundSkipped.length > 0 && round < maxRounds) {
-      const deferredIds = new Set(roundSkipped.map((s) => s.orderId));
-      remaining = [
-        ...remaining,
-        ...allStops.filter((s) => deferredIds.has(s.id)),
-      ];
-    }
-
-    rounds.push({
-      ...plan,
-      skipped: [...keptSkipped, ...globalSkipped.filter(() => round === 1)],
-    });
+    rounds.push(plan);
+    carrySkipped = plan.skipped;
   }
-
-  if (remaining.length > 0) {
-    const last = rounds[rounds.length - 1];
-    if (last) {
-      for (const s of remaining) {
-        last.skipped.push({
-          orderId: s.id,
-          invoiceNumber: s.invoiceNumber,
-          reason: "Could not plan in available rounds",
-        });
-      }
-    }
-  }
-
-  const allRecs = rounds.flatMap((r) => r.recommendations);
-  const plannedIds = new Set(allRecs.flatMap((r) => r.orderIds));
 
   return {
     rounds,
     summary: {
-      totalOrders: allStops.length,
-      plannedOrders: plannedIds.size,
-      craneRoutes: allRecs.filter((r) => r.hasCrane).length,
-      estimatedTotalKm: allRecs.reduce((s, r) => s + r.estimatedKm, 0),
-      estimatedCostScore: allRecs.reduce((s, r) => s + r.costScore, 0),
+      totalOrders: first.summary.totalOrders,
+      plannedOrders: rounds.reduce((s, r) => s + r.summary.plannedOrders, 0),
+      preferredTruckRoutes: rounds.reduce(
+        (s, r) => s + r.summary.preferredTruckRoutes,
+        0
+      ),
+      estimatedTotalKm: rounds.reduce(
+        (s, r) => s + r.summary.estimatedTotalKm,
+        0
+      ),
+      estimatedCostScore: rounds.reduce(
+        (s, r) => s + r.summary.estimatedCostScore,
+        0
+      ),
     },
   };
 }
 
-export async function recommendOrderAssignment(orderId: number, deliveryRound = 1) {
-  const order = (await listOrders()).find((o) => o.id === orderId);
-  if (!order) return { ok: false as const, error: "Order not found" };
-  if (order.assignment) {
-    return { ok: false as const, error: "Order already assigned" };
-  }
-  if (!isOrderReadyToShip(order)) {
-    return {
-      ok: false as const,
-      error: order.requestedDeliveryDate
-        ? `Scheduled for ${order.requestedDeliveryDate} — not ready to ship yet`
-        : "Order is not ready to ship yet",
-    };
-  }
-  const stop = toStop(order);
-  if (!stop) {
-    return { ok: false as const, error: "Order needs a mapped delivery location" };
-  }
+export async function recommendOrderAssignment(
+  orderId: number,
+  options?: { deliveryRound?: number }
+): Promise<DispatchRecommendation | null> {
+  const deliveryRound = options?.deliveryRound ?? 1;
+  const orders = await listOrders({ unassigned: true });
+  const order = orders.find((o) => o.id === orderId);
+  if (!order) return null;
 
   const fleet = await loadDispatchVehicles(deliveryRound);
-  const ranked = rankTrucksForGroup(fleet, [stop], order.items ?? []);
-  if (ranked.length === 0) {
-    const cargo = groupCargoProfile([stop]);
-    return {
-      ok: false as const,
-      error:
-        cargo.requiresCrane || cargo.preferCrane
-          ? "Crane truck required but none available with capacity"
-          : "No truck with capacity",
-    };
-  }
+  const truckNameById = new Map(fleet.map((v) => [v.id, v.name]));
+  const stop = toStop(order, truckNameById);
+  if (!stop) return null;
 
-  const rec = await buildRecommendation(
-    [stop],
-    ranked[0],
+  const plan = await generateDispatchPlan({
     deliveryRound,
-    fleet,
-    { truckPicker: new Map(), plannedOrders: new Map() }
-  );
-  if (!rec) return { ok: false as const, error: "Could not build recommendation" };
-  return { ok: true as const, recommendation: rec };
+    stops: [stop],
+  });
+  return plan.recommendations[0] ?? null;
 }

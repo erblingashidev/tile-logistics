@@ -3,10 +3,10 @@
  */
 import assert from "node:assert/strict";
 import {
-  analyzeDispatchCargo,
   clusterStopsForDispatch,
   mergeSameCityGroups,
 } from "../src/lib/services/dispatch-planning";
+import { rankVehiclesForLoad } from "../src/lib/dispatch/vehicles";
 
 function assertEqual<T>(actual: T, expected: T, label: string) {
   assert.deepEqual(actual, expected, label);
@@ -16,23 +16,6 @@ function assertEqual<T>(actual: T, expected: T, label: string) {
 const PRIZREN_A = { lat: 42.214, lng: 20.74 };
 const PRIZREN_B = { lat: 42.218, lng: 20.745 };
 const PRIZREN_C = { lat: 42.211, lng: 20.735 };
-
-// --- analyzeDispatchCargo: palletized jumbo should not force hand unload ---
-{
-  const cargo = analyzeDispatchCargo(
-    [
-      {
-        unit: "m2",
-        tileWidthCm: 120,
-        tileHeightCm: 280,
-        pieceCount: 1,
-      },
-    ],
-    { totalPallets: 1 }
-  );
-  assert.equal(cargo.requiresCrane, false, "1 jumbo piece OK on standard truck");
-  assert.equal(cargo.preferAtego, false, "single pallet should not prefer Atego");
-}
 
 // --- mergeSameCityGroups: 3 Prizren groups → 1 ---
 {
@@ -48,7 +31,7 @@ const PRIZREN_C = { lat: 42.211, lng: 20.735 };
   assert.equal(groups[0].length, 3, "merged group has all three stops");
 }
 
-// --- clusterStopsForDispatch: mixed requiresCrane stays in one region group ---
+// --- clusterStopsForDispatch: same city stays on one truck ---
 {
   const stops = [
     {
@@ -56,7 +39,6 @@ const PRIZREN_C = { lat: 42.211, lng: 20.735 };
       ...PRIZREN_A,
       region: "Prizren",
       city: "Prizren",
-      requiresCrane: false,
       totalPallets: 1,
     },
     {
@@ -64,7 +46,6 @@ const PRIZREN_C = { lat: 42.211, lng: 20.735 };
       ...PRIZREN_B,
       region: "Prizren",
       city: "Prizren",
-      requiresCrane: false,
       totalPallets: 2,
     },
     {
@@ -72,7 +53,6 @@ const PRIZREN_C = { lat: 42.211, lng: 20.735 };
       ...PRIZREN_C,
       region: "Prizren",
       city: "Prizren",
-      requiresCrane: false,
       totalPallets: 1,
     },
   ];
@@ -90,6 +70,36 @@ const PRIZREN_C = { lat: 42.211, lng: 20.735 };
     [10, 11, 12],
     "all order ids present"
   );
+}
+
+// --- rankVehiclesForLoad: smallest fitting truck wins ---
+{
+  const fleet = [
+    {
+      id: 1,
+      name: "Big",
+      plateNumber: "A",
+      maxPallets: 14,
+      maxWeightKg: 20000,
+      status: "available",
+      costPerKm: 1.3,
+      usedPallets: 0,
+      usedWeightKg: 0,
+    },
+    {
+      id: 2,
+      name: "Small",
+      plateNumber: "B",
+      maxPallets: 6,
+      maxWeightKg: 8000,
+      status: "available",
+      costPerKm: 0.9,
+      usedPallets: 0,
+      usedWeightKg: 0,
+    },
+  ];
+  const ranked = rankVehiclesForLoad(fleet, 4, 1000);
+  assert.equal(ranked[0]?.id, 2, "prefer smaller truck that fits");
 }
 
 console.log("All dispatch grouping checks passed.");

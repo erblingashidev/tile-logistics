@@ -155,23 +155,6 @@ export function DispatchAssignBoard({
         return;
       }
 
-      if (
-        res.status === 409 &&
-        data.results?.some((r: { requiresCrane?: boolean }) => r.requiresCrane)
-      ) {
-        if (confirm("Crane truck required for this order.\n\nProceed?")) {
-          await assignOrder(
-            orderId,
-            vehicleId,
-            deliveryRound,
-            ignoreWeightWarning,
-            true,
-            ignoreLinkedWarning
-          );
-        }
-        return;
-      }
-
       if (!res.ok) {
         onError(data.error ?? "Could not assign order");
         return;

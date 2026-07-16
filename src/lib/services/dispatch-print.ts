@@ -25,8 +25,7 @@ export interface DispatchPrintOrder {
   driverName: string | null;
   stopSequence: number | null;
   routeCluster: string | null;
-  hasLargeTiles: boolean;
-  requiresCrane: boolean;
+  preferredTruckName: string | null;
 }
 
 export interface DispatchPrintRound {
@@ -105,14 +104,10 @@ export type DispatchPrintFilters = {
 
 function toPrintOrder(
   order: Awaited<ReturnType<typeof listOrders>>[number],
-  extras?: Partial<DispatchPrintOrder>
+  extras?: Partial<DispatchPrintOrder>,
+  truckNameById?: Map<number, string>
 ): DispatchPrintOrder {
-  const hasLargeTiles = (order.items ?? []).some((item) => {
-    const w = item.tileWidthCm ?? 0;
-    const h = item.tileHeightCm ?? 0;
-    return w >= 120 && h >= 120;
-  });
-
+  const preferredTruckId = order.preferredTruckId ?? null;
   return {
     id: order.id,
     invoiceNumber: order.invoiceNumber,
@@ -131,8 +126,11 @@ function toPrintOrder(
       null,
     stopSequence: extras?.stopSequence ?? null,
     routeCluster: extras?.routeCluster ?? null,
-    hasLargeTiles: extras?.hasLargeTiles ?? hasLargeTiles,
-    requiresCrane: extras?.requiresCrane ?? false,
+    preferredTruckName:
+      extras?.preferredTruckName ??
+      (preferredTruckId != null
+        ? truckNameById?.get(preferredTruckId) ?? `Truck #${preferredTruckId}`
+        : null),
   };
 }
 
@@ -166,11 +164,15 @@ export async function getDispatchPrintSheet(
     hideDelivered: filters.hideDelivered !== false,
   });
 
+  const fleet = await listTransportVehicles();
+  const truckNameById = new Map(fleet.map((v) => [v.id, v.name]));
+
   const assigned = orders.filter((order) => order.assignment);
   const unassignedOrders = orders.filter((order) => !order.assignment);
-  const unassigned = unassignedOrders.map((o) => toPrintOrder(o));
+  const unassigned = unassignedOrders.map((o) =>
+    toPrintOrder(o, undefined, truckNameById)
+  );
 
-  const fleet = await listTransportVehicles();
   const trucks: DispatchPrintTruck[] = [];
 
   for (const vehicle of fleet) {
@@ -186,15 +188,19 @@ export async function getDispatchPrintSheet(
       if (roundAssigned.length === 0) continue;
 
       const roundOrders = roundAssigned.map((order, index) =>
-        toPrintOrder(order, {
-          stopSequence: index + 1,
-          routeCluster: describeRouteCluster(
-            roundAssigned.map((o) => ({
-              city: o.city ?? undefined,
-              region: o.region ?? undefined,
-            }))
-          ),
-        })
+        toPrintOrder(
+          order,
+          {
+            stopSequence: index + 1,
+            routeCluster: describeRouteCluster(
+              roundAssigned.map((o) => ({
+                city: o.city ?? undefined,
+                region: o.region ?? undefined,
+              }))
+            ),
+          },
+          truckNameById
+        )
       );
 
       const totals = sumOrders(roundOrders);
@@ -246,7 +252,7 @@ export async function getDispatchPrintSheet(
 
   const employeeMap = new Map<string, DispatchPrintEmployeeGroup>();
   for (const order of assigned) {
-    const printOrder = toPrintOrder(order);
+    const printOrder = toPrintOrder(order, undefined, truckNameById);
     const picker = order.staff?.picker?.employeeName;
     const driver =
       order.staff?.driver?.employeeName ??

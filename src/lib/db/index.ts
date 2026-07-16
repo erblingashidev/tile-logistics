@@ -141,6 +141,13 @@ async function ensureOrderSchemaPatches(client: Client) {
     "customer_has_forklift INTEGER NOT NULL DEFAULT 0",
     orderCols
   );
+  await addColumnIfMissing(
+    client,
+    "orders",
+    "preferred_truck_id",
+    "preferred_truck_id INTEGER REFERENCES vehicles(id)",
+    orderCols
+  );
 }
 
 async function ensureVehicleSchemaPatches(client: Client) {
@@ -387,6 +394,13 @@ async function runMigrations(client: Client) {
     "orders",
     "customer_has_forklift",
     "customer_has_forklift INTEGER NOT NULL DEFAULT 0",
+    orderCols2
+  );
+  await addColumnIfMissing(
+    client,
+    "orders",
+    "preferred_truck_id",
+    "preferred_truck_id INTEGER REFERENCES vehicles(id)",
     orderCols2
   );
   await client.execute(

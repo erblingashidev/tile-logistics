@@ -213,22 +213,11 @@ export function OrderAssignmentPanel({
       }
       return;
     }
-    if (res.status === 409 && data.requiresCrane && !ignoreCraneRule) {
-      if (
-        confirm(
-          `${data.error}\n\nProceed without crane truck?`
-        )
-      ) {
-        await saveBundle(ignoreWeightWarning, true, ignoreLinkedWarning, active);
-      }
-      return;
-    }
     if (!res.ok) {
       onError(data.error ?? "Could not save assignment");
       return;
     }
     if (data.weightWarning) onWarning(data.weightWarning);
-    if (data.craneWarning) onWarning(data.craneWarning);
     if (data.scheduleWarning) onWarning(data.scheduleWarning);
     if (data.linkedWarning) onWarning(data.linkedWarning);
     if (data.deliveryRoundReason && data.deliveryRound !== Number(active.round)) {
