@@ -50,6 +50,10 @@ export function isTransportVehicle(vehicle: {
   return normalizeVehicleCategory(vehicle.category) === "delivery";
 }
 
+/** Sales company cars are not used for deliveries — capacity fields are unused. */
+export const SALES_VEHICLE_MAX_PALLETS = 0;
+export const SALES_VEHICLE_MAX_WEIGHT_KG = 0;
+
 export const EMPLOYEE_STATUSES = [
   "available",
   "busy",

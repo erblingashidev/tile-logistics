@@ -6,6 +6,8 @@ import {
   DEFAULT_VEHICLE_CATEGORY,
   normalizeVehicleCategory,
   isTransportVehicle,
+  SALES_VEHICLE_MAX_PALLETS,
+  SALES_VEHICLE_MAX_WEIGHT_KG,
   type VehicleCategory,
   VEHICLE_CATEGORY_LABELS,
 } from "@/lib/constants";
@@ -26,8 +28,8 @@ export type { VehicleCategory };
 export interface VehiclePayload {
   name: string;
   plateNumber: string;
-  maxWeightKg: number;
-  maxPallets: number;
+  maxWeightKg?: number;
+  maxPallets?: number;
   status?: string;
   category?: VehicleCategory;
   notes?: string;
@@ -42,21 +44,43 @@ export interface ListVehiclesOptions {
 
 export { isTransportVehicle };
 
+function resolveVehicleCapacity(
+  category: VehicleCategory,
+  payload: { maxWeightKg?: number; maxPallets?: number },
+  existing?: { maxWeightKg: number; maxPallets: number }
+): { maxWeightKg: number; maxPallets: number } {
+  if (category === "sales") {
+    return {
+      maxWeightKg: SALES_VEHICLE_MAX_WEIGHT_KG,
+      maxPallets: SALES_VEHICLE_MAX_PALLETS,
+    };
+  }
+  return {
+    maxWeightKg: payload.maxWeightKg ?? existing?.maxWeightKg ?? 3000,
+    maxPallets: payload.maxPallets ?? existing?.maxPallets ?? 8,
+  };
+}
+
 async function hydrateVehicles(
   rows: (typeof vehicles.$inferSelect)[]
 ) {
   return Promise.all(
-    rows.map(async (v) => ({
-      ...v,
-      category: normalizeVehicleCategory(v.category),
-      assignedDriver: await getDriverForVehicle(v.id),
-      loads: await Promise.all(
-        DELIVERY_ROUNDS.map(async (round) => ({
-          round,
-          ...(await getVehicleLoad(v.id, round)),
-        }))
-      ),
-    }))
+    rows.map(async (v) => {
+      const category = normalizeVehicleCategory(v.category);
+      return {
+        ...v,
+        category,
+        assignedDriver: await getDriverForVehicle(v.id),
+        loads: isTransportVehicle({ category })
+          ? await Promise.all(
+              DELIVERY_ROUNDS.map(async (round) => ({
+                round,
+                ...(await getVehicleLoad(v.id, round)),
+              }))
+            )
+          : [],
+      };
+    })
   );
 }
 
@@ -95,13 +119,14 @@ export async function createVehicle(payload: VehiclePayload) {
   const category = normalizeVehicleCategory(
     payload.category ?? DEFAULT_VEHICLE_CATEGORY
   );
+  const capacity = resolveVehicleCapacity(category, payload);
   const [inserted] = await db
     .insert(vehicles)
     .values({
       name: payload.name,
       plateNumber: payload.plateNumber,
-      maxWeightKg: payload.maxWeightKg,
-      maxPallets: payload.maxPallets,
+      maxWeightKg: capacity.maxWeightKg,
+      maxPallets: capacity.maxPallets,
       status: payload.status ?? "available",
       category,
       notes: payload.notes ?? null,
@@ -118,8 +143,8 @@ export async function createVehicle(payload: VehiclePayload) {
     vehicleCreatedMessage(
       payload.name,
       payload.plateNumber,
-      payload.maxPallets,
-      payload.maxWeightKg
+      capacity.maxPallets,
+      capacity.maxWeightKg
     ),
     {
       category: "vehicles",
@@ -143,14 +168,15 @@ export async function updateVehicle(id: number, payload: Partial<VehiclePayload>
   const nextCategory = normalizeVehicleCategory(
     payload.category ?? existing.category
   );
+  const capacity = resolveVehicleCapacity(nextCategory, payload, existing);
 
   await db
     .update(vehicles)
     .set({
       name: payload.name ?? existing.name,
       plateNumber: payload.plateNumber ?? existing.plateNumber,
-      maxWeightKg: payload.maxWeightKg ?? existing.maxWeightKg,
-      maxPallets: payload.maxPallets ?? existing.maxPallets,
+      maxWeightKg: capacity.maxWeightKg,
+      maxPallets: capacity.maxPallets,
       status: nextStatus,
       category: nextCategory,
       notes: payload.notes ?? existing.notes,
@@ -191,10 +217,15 @@ export async function updateVehicle(id: number, payload: Partial<VehiclePayload>
   if (payload.plateNumber && payload.plateNumber !== existing.plateNumber) {
     changes.push(`plate → ${payload.plateNumber}`);
   }
-  if (payload.maxPallets != null && payload.maxPallets !== existing.maxPallets) {
+  if (
+    nextCategory === "delivery" &&
+    payload.maxPallets != null &&
+    payload.maxPallets !== existing.maxPallets
+  ) {
     changes.push(`max pallets ${existing.maxPallets} → ${payload.maxPallets}`);
   }
   if (
+    nextCategory === "delivery" &&
     payload.maxWeightKg != null &&
     payload.maxWeightKg !== existing.maxWeightKg
   ) {

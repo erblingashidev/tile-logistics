@@ -65,10 +65,19 @@ export default function VehiclesPage() {
 
   async function saveVehicle(e: React.FormEvent) {
     e.preventDefault();
+    const isSales = form.category === "sales";
     const payload = {
-      ...form,
-      maxWeightKg: Number(form.maxWeightKg),
-      maxPallets: Number(form.maxPallets),
+      name: form.name,
+      plateNumber: form.plateNumber,
+      status: form.status,
+      category: form.category,
+      notes: form.notes,
+      ...(isSales
+        ? {}
+        : {
+            maxWeightKg: Number(form.maxWeightKg),
+            maxPallets: Number(form.maxPallets),
+          }),
     };
     const url = editingId ? `/api/vehicles/${editingId}` : "/api/vehicles";
     const method = editingId ? "PUT" : "POST";
@@ -153,24 +162,6 @@ export default function VehiclesPage() {
                 setForm({ ...form, plateNumber: e.target.value })
               }
             />
-            <Input
-              label="Max weight (kg)"
-              type="number"
-              required
-              value={form.maxWeightKg}
-              onChange={(e) =>
-                setForm({ ...form, maxWeightKg: e.target.value })
-              }
-            />
-            <Input
-              label="Max pallets"
-              type="number"
-              required
-              value={form.maxPallets}
-              onChange={(e) =>
-                setForm({ ...form, maxPallets: e.target.value })
-              }
-            />
             <Select
               label="Category"
               value={form.category}
@@ -187,6 +178,30 @@ export default function VehiclesPage() {
                 </option>
               ))}
             </Select>
+            {form.category === "delivery" && (
+              <>
+                <Input
+                  label="Max weight (kg)"
+                  type="number"
+                  required
+                  min={1}
+                  value={form.maxWeightKg}
+                  onChange={(e) =>
+                    setForm({ ...form, maxWeightKg: e.target.value })
+                  }
+                />
+                <Input
+                  label="Max pallets"
+                  type="number"
+                  required
+                  min={1}
+                  value={form.maxPallets}
+                  onChange={(e) =>
+                    setForm({ ...form, maxPallets: e.target.value })
+                  }
+                />
+              </>
+            )}
             <Select
               label="Status"
               value={form.status}
@@ -241,9 +256,19 @@ export default function VehiclesPage() {
               </div>
             </div>
             <p className="mt-2 text-sm text-zinc-600">
-              {v.maxPallets} pallets · {v.maxWeightKg} kg max
-              {v.assignedDriver && ` · Driver: ${v.assignedDriver.name}`}
+              {v.category === "sales" ? (
+                <>
+                  Company car
+                  {v.assignedDriver && ` · ${v.assignedDriver.name}`}
+                </>
+              ) : (
+                <>
+                  {v.maxPallets} pallets · {v.maxWeightKg} kg max
+                  {v.assignedDriver && ` · Driver: ${v.assignedDriver.name}`}
+                </>
+              )}
             </p>
+            {v.category === "delivery" && (
             <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3 lg:grid-cols-5">
               {v.loads.map((load) => (
                 <div
@@ -261,6 +286,7 @@ export default function VehiclesPage() {
                 </div>
               ))}
             </div>
+            )}
             <div className="mt-3 flex flex-wrap gap-1 border-t border-zinc-100 pt-3">
               <Select
                 className="mb-2 w-full sm:hidden"

@@ -152,6 +152,9 @@ async function ensureVehicleSchemaPatches(client: Client) {
     "category TEXT NOT NULL DEFAULT 'delivery'",
     vehicleCols
   );
+  await client.execute(
+    "UPDATE vehicles SET max_pallets = 0, max_weight_kg = 0 WHERE category = 'sales'"
+  );
 }
 
 async function ensureAdminsTable(client: Client) {
