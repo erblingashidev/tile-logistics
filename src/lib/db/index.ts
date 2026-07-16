@@ -143,6 +143,17 @@ async function ensureOrderSchemaPatches(client: Client) {
   );
 }
 
+async function ensureVehicleSchemaPatches(client: Client) {
+  const vehicleCols = await tableColumns(client, "vehicles");
+  await addColumnIfMissing(
+    client,
+    "vehicles",
+    "category",
+    "category TEXT NOT NULL DEFAULT 'delivery'",
+    vehicleCols
+  );
+}
+
 async function ensureAdminsTable(client: Client) {
   await client.execute(`
     CREATE TABLE IF NOT EXISTS admins (
@@ -749,6 +760,8 @@ async function runMigrations(client: Client) {
   await client.execute(
     "CREATE INDEX IF NOT EXISTS idx_stock_movements_product ON stock_movements(product_id)"
   );
+
+  await ensureVehicleSchemaPatches(client);
 }
 
 /** Runtime migrations are for local/dev. On Netlify+Turso, apply schema via Turso CLI once. */
@@ -796,6 +809,7 @@ export async function getDb() {
         await ensureAdminsTable(clientInstance);
         await ensureOrderDeliveryLinksTable(clientInstance);
         await ensureOrderSchemaPatches(clientInstance);
+        await ensureVehicleSchemaPatches(clientInstance);
         await ensureInvoiceImportTables(clientInstance);
         dbInstance = drizzle(clientInstance, { schema });
         const { backfillAdminEmployeeLinks } = await import(

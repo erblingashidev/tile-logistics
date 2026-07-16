@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { Badge, Button, Card, EmptyState, Input, LoadingState, Select } from "@/components/ui";
-import { VEHICLE_STATUSES } from "@/lib/constants";
+import { VEHICLE_STATUSES, VEHICLE_CATEGORIES, VEHICLE_CATEGORY_LABELS, type VehicleCategory } from "@/lib/constants";
 import { DELIVERY_ROUND_SHORT_LABELS } from "@/lib/delivery-rounds";
 import { readJsonListWithError } from "@/lib/api/read-json-list";
 
@@ -15,6 +15,7 @@ interface Vehicle {
   maxWeightKg: number;
   maxPallets: number;
   status: string;
+  category: VehicleCategory;
   notes?: string | null;
   assignedDriver?: { id: number; name: string } | null;
   loads: Array<{
@@ -43,6 +44,7 @@ export default function VehiclesPage() {
     maxWeightKg: "3000",
     maxPallets: "8",
     status: "available",
+    category: "delivery" as VehicleCategory,
     notes: "",
   });
 
@@ -83,6 +85,7 @@ export default function VehiclesPage() {
       maxWeightKg: "3000",
       maxPallets: "8",
       status: "available",
+      category: "delivery",
       notes: "",
     });
     load();
@@ -96,6 +99,7 @@ export default function VehiclesPage() {
       maxWeightKg: String(v.maxWeightKg),
       maxPallets: String(v.maxPallets),
       status: v.status,
+      category: v.category ?? "delivery",
       notes: v.notes ?? "",
     });
     setShowForm(true);
@@ -168,6 +172,22 @@ export default function VehiclesPage() {
               }
             />
             <Select
+              label="Category"
+              value={form.category}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  category: e.target.value as VehicleCategory,
+                })
+              }
+            >
+              {VEHICLE_CATEGORIES.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
+                </option>
+              ))}
+            </Select>
+            <Select
               label="Status"
               value={form.status}
               onChange={(e) => setForm({ ...form, status: e.target.value })}
@@ -211,9 +231,14 @@ export default function VehiclesPage() {
                 <h3 className="font-semibold text-zinc-900">{v.name}</h3>
                 <p className="text-sm text-zinc-500">{v.plateNumber}</p>
               </div>
-              <Badge tone={statusTone[v.status] ?? "slate"}>
-                {v.status.replace("_", " ")}
-              </Badge>
+              <div className="flex flex-wrap items-start gap-2">
+                <Badge tone={statusTone[v.status] ?? "slate"}>
+                  {v.status.replace("_", " ")}
+                </Badge>
+                <Badge tone={v.category === "sales" ? "blue" : "slate"}>
+                  {VEHICLE_CATEGORY_LABELS[v.category ?? "delivery"]}
+                </Badge>
+              </div>
             </div>
             <p className="mt-2 text-sm text-zinc-600">
               {v.maxPallets} pallets · {v.maxWeightKg} kg max

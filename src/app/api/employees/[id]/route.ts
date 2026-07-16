@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   deleteEmployee,
   EmployeeCredentialError,
+  EmployeeVehicleError,
   getEmployee,
   updateEmployee,
   type EmployeePayload,
@@ -42,7 +43,10 @@ export async function PUT(
     }
     return NextResponse.json(employee);
   } catch (error) {
-    if (error instanceof EmployeeCredentialError) {
+    if (
+      error instanceof EmployeeCredentialError ||
+      error instanceof EmployeeVehicleError
+    ) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
     throw error;

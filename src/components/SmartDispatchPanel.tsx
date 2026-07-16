@@ -111,7 +111,7 @@ export function SmartDispatchPanel({
   useEffect(() => {
     void (async () => {
       const [vehiclesRes, employeesRes] = await Promise.all([
-        fetch("/api/vehicles"),
+        fetch("/api/vehicles?for=transport"),
         fetch("/api/employees"),
       ]);
       setVehicles(await readJsonList<Vehicle>(vehiclesRes));
@@ -345,7 +345,7 @@ export function SmartDispatchPanel({
       );
       onApplied();
       loadPlan();
-      void fetch("/api/vehicles")
+      void fetch("/api/vehicles?for=transport")
         .then((r) => readJsonList<Vehicle>(r))
         .then(setVehicles);
     }
@@ -363,7 +363,7 @@ export function SmartDispatchPanel({
       onWarning(`Applied ${plan.recommendations.length} route(s).`);
       onApplied();
       loadPlan();
-      void fetch("/api/vehicles")
+      void fetch("/api/vehicles?for=transport")
         .then((r) => readJsonList<Vehicle>(r))
         .then(setVehicles);
     }

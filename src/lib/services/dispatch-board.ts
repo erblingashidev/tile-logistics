@@ -14,7 +14,7 @@ import { isOrderUrgent, normalizeOrderPriority } from "@/lib/order-priority";
 import { getVehicleLoad } from "@/lib/services/orders";
 import { getTruckLoadStatus } from "@/lib/services/load-coordination";
 import { getDriverForVehicle } from "@/lib/services/employees";
-import { listVehicles } from "@/lib/services/vehicles";
+import { listTransportVehicles } from "@/lib/services/vehicles";
 
 export interface DispatchBoardOrder {
   id: number;
@@ -142,7 +142,7 @@ export async function getDispatchBoard(
   maxRounds = MAX_DELIVERY_ROUNDS
 ): Promise<DispatchBoard> {
   const db = await getDb();
-  const fleet = await listVehicles();
+  const fleet = await listTransportVehicles();
 
   const pickerRows = await dbAll(
     db

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   createEmployee,
   EmployeeCredentialError,
+  EmployeeVehicleError,
   listEmployees,
   type EmployeePayload,
 } from "@/lib/services/employees";
@@ -43,7 +44,10 @@ export async function POST(request: NextRequest) {
     const employee = await createEmployee(body);
     return NextResponse.json(employee, { status: 201 });
   } catch (error) {
-    if (error instanceof EmployeeCredentialError) {
+    if (
+      error instanceof EmployeeCredentialError ||
+      error instanceof EmployeeVehicleError
+    ) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
     throw error;

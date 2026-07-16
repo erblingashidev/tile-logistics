@@ -24,6 +24,32 @@ export const VEHICLE_STATUSES = [
 
 export type VehicleStatus = (typeof VEHICLE_STATUSES)[number];
 
+/** Warehouse delivery fleet vs sales company cars (excluded from dispatch). */
+export const VEHICLE_CATEGORIES = [
+  { id: "delivery", label: "Delivery truck" },
+  { id: "sales", label: "Sales / company car" },
+] as const;
+
+export type VehicleCategory = (typeof VEHICLE_CATEGORIES)[number]["id"];
+
+export const VEHICLE_CATEGORY_LABELS = Object.fromEntries(
+  VEHICLE_CATEGORIES.map((c) => [c.id, c.label])
+) as Record<VehicleCategory, string>;
+
+export const DEFAULT_VEHICLE_CATEGORY: VehicleCategory = "delivery";
+
+export function normalizeVehicleCategory(
+  value?: string | null
+): VehicleCategory {
+  return value === "sales" ? "sales" : "delivery";
+}
+
+export function isTransportVehicle(vehicle: {
+  category?: string | null;
+}): boolean {
+  return normalizeVehicleCategory(vehicle.category) === "delivery";
+}
+
 export const EMPLOYEE_STATUSES = [
   "available",
   "busy",

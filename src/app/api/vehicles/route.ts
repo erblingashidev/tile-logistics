@@ -4,16 +4,30 @@ import {
   listVehicles,
   createVehicle,
   type VehiclePayload,
+  type VehicleCategory,
 } from "@/lib/services/vehicles";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+function parseListOptions(searchParams: URLSearchParams) {
+  const forParam = searchParams.get("for");
+  if (forParam === "transport" || forParam === "delivery") {
+    return { forTransport: true as const };
+  }
+  const category = searchParams.get("category");
+  if (category === "delivery" || category === "sales") {
+    return { category: category as VehicleCategory };
+  }
+  return undefined;
+}
+
+export async function GET(request: NextRequest) {
   const auth = await requireApiSession();
   if (!auth.ok) return auth.response;
 
   try {
-    return NextResponse.json(await listVehicles());
+    const options = parseListOptions(request.nextUrl.searchParams);
+    return NextResponse.json(await listVehicles(options));
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Failed to load vehicles";

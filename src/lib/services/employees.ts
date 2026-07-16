@@ -12,7 +12,9 @@ import {
 import {
   EMPLOYEE_ROLE_LABELS,
   EMPLOYEE_STATUSES,
+  normalizeVehicleCategory,
   type EmployeeRole,
+  type VehicleCategory,
 } from "@/lib/constants";
 import { logActivity } from "@/lib/logger";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
@@ -46,10 +48,60 @@ export interface EmployeePayload {
 
 export const MIN_EMPLOYEE_PASSWORD_LENGTH = 6;
 
+function employeeCanHaveVehicle(roles: EmployeeRole[]): boolean {
+  return roles.some(
+    (r) => r === "driver" || r === "sales_agent" || r === "sales_admin"
+  );
+}
+
+function expectedVehicleCategoryForRoles(
+  roles: EmployeeRole[]
+): VehicleCategory | "any" {
+  const isDriver = roles.includes("driver");
+  const isSales = roles.some((r) => r === "sales_agent" || r === "sales_admin");
+  if (isDriver && isSales) return "any";
+  if (isSales) return "sales";
+  if (isDriver) return "delivery";
+  return "delivery";
+}
+
+async function assertEmployeeVehicleCategory(
+  roles: EmployeeRole[],
+  vehicleId: number
+) {
+  const expected = expectedVehicleCategoryForRoles(roles);
+  if (expected === "any") return;
+
+  const db = await getDb();
+  const vehicle = await dbOne(
+    db
+      .select({ category: vehicles.category, name: vehicles.name })
+      .from(vehicles)
+      .where(eq(vehicles.id, vehicleId))
+  );
+  if (!vehicle) throw new EmployeeVehicleError("Vehicle not found");
+
+  const category = normalizeVehicleCategory(vehicle.category);
+  if (category !== expected) {
+    throw new EmployeeVehicleError(
+      expected === "sales"
+        ? `${vehicle.name} is a delivery truck — assign a sales / company car to sales staff.`
+        : `${vehicle.name} is a sales car — assign a delivery truck to drivers.`
+    );
+  }
+}
+
 export class EmployeeCredentialError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "EmployeeCredentialError";
+  }
+}
+
+export class EmployeeVehicleError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "EmployeeVehicleError";
   }
 }
 
@@ -338,10 +390,8 @@ export async function createEmployee(payload: EmployeePayload) {
   if (!inserted) throw new Error("Failed to create employee");
 
   const id = inserted.id;
-  if (
-    payload.assignedVehicleId &&
-    payload.roles.includes("driver")
-  ) {
+  if (payload.assignedVehicleId && employeeCanHaveVehicle(payload.roles)) {
+    await assertEmployeeVehicleCategory(payload.roles, payload.assignedVehicleId);
     await setDriverVehicle(id, payload.assignedVehicleId);
   }
   if (payload.roles.includes("group_leader")) {
@@ -409,7 +459,7 @@ export async function updateEmployee(id: number, payload: Partial<EmployeePayloa
   const now = new Date().toISOString();
   const nextRoles = payload.roles ?? existing.roles;
   const nextStatus = payload.status ?? existing.status;
-  const isDriver = nextRoles.includes("driver");
+  const canHaveVehicle = employeeCanHaveVehicle(nextRoles);
 
   let nextUsername = existing.username;
   let nextPasswordHash: string | null | undefined;
@@ -467,8 +517,12 @@ export async function updateEmployee(id: number, payload: Partial<EmployeePayloa
   await db.update(employees).set(updateFields).where(eq(employees.id, id));
 
   if (payload.assignedVehicleId !== undefined) {
-    await setDriverVehicle(id, isDriver ? payload.assignedVehicleId : null);
-  } else if (payload.roles && !isDriver) {
+    const vehicleId = canHaveVehicle ? payload.assignedVehicleId : null;
+    if (vehicleId) {
+      await assertEmployeeVehicleCategory(nextRoles, vehicleId);
+    }
+    await setDriverVehicle(id, vehicleId);
+  } else if (payload.roles && !canHaveVehicle) {
     await setDriverVehicle(id, null);
   }
 

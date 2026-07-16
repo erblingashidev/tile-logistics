@@ -321,7 +321,7 @@ export default function OrdersPage() {
       appendOrderFilterParams(params, filters);
       const [ordersRes, vehiclesRes, employeesRes] = await Promise.all([
         fetch(`/api/orders?${params}`, { cache: "no-store" }),
-        fetch("/api/vehicles", { cache: "no-store" }),
+        fetch("/api/vehicles?for=transport", { cache: "no-store" }),
         fetch("/api/employees", { cache: "no-store" }),
       ]);
 

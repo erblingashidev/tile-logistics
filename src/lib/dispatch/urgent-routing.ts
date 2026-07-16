@@ -6,7 +6,7 @@ import { isOrderUrgent } from "@/lib/order-priority";
 import { getOrder, getVehicleLoad } from "@/lib/services/orders";
 import { getDriverForVehicle } from "@/lib/services/employees";
 import { getTruckLoadStatus } from "@/lib/services/load-coordination";
-import { listVehicles } from "@/lib/services/vehicles";
+import { listTransportVehicles } from "@/lib/services/vehicles";
 import {
   pickerFromRouteOrders,
   pickerOnTruckRound,
@@ -91,7 +91,7 @@ function routeRegions(
 }
 
 async function toDispatchVehicle(
-  v: Awaited<ReturnType<typeof listVehicles>>[number],
+  v: Awaited<ReturnType<typeof listTransportVehicles>>[number],
   deliveryRound: number
 ): Promise<DispatchVehicle> {
   const load = await getVehicleLoad(v.id, deliveryRound);
@@ -157,7 +157,7 @@ export async function recommendUrgentPlacement(
 
   const cargo = analyzeOrderCargo(order.items ?? []);
   const candidates: UrgentPlacementOption[] = [];
-  const fleet = await listVehicles();
+  const fleet = await listTransportVehicles();
 
   for (let round = 1; round <= MAX_DELIVERY_ROUNDS; round++) {
     for (const vehicle of fleet) {

@@ -81,6 +81,8 @@ export const vehicles = sqliteTable("vehicles", {
   maxWeightKg: real("max_weight_kg").notNull(),
   maxPallets: integer("max_pallets").notNull(),
   status: text("status").notNull().default("available"),
+  /** delivery = warehouse trucks; sales = company cars for sales staff */
+  category: text("category").notNull().default("delivery"),
   notes: text("notes"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),

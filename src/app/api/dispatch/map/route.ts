@@ -12,7 +12,7 @@ import { isOrderUrgent } from "@/lib/order-priority";
 import { getDispatchBoard } from "@/lib/services/dispatch-board";
 import { listOrders, getVehicleLoad } from "@/lib/services/orders";
 import { getDriverForVehicle } from "@/lib/services/employees";
-import { listVehicles } from "@/lib/services/vehicles";
+import { listTransportVehicles } from "@/lib/services/vehicles";
 import { getTruckLoadStatus } from "@/lib/services/load-coordination";
 
 export const runtime = "nodejs";
@@ -123,7 +123,7 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  const fleet = await listVehicles();
+  const fleet = await listTransportVehicles();
   const board = await getDispatchBoard();
   const boardTruckById = new Map(board.trucks.map((t) => [t.vehicleId, t]));
 

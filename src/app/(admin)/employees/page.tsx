@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Badge, Button, Card, EmptyState, Input, LoadingState, Select } from "@/components/ui";
 import {
@@ -8,6 +8,7 @@ import {
   EMPLOYEE_ROLES,
   EMPLOYEE_ROLE_LABELS,
   EMPLOYEE_STATUSES,
+  normalizeVehicleCategory,
   type EmployeeRole,
 } from "@/lib/constants";
 import { primaryCategory, categoryLabel } from "@/lib/employee-categories";
@@ -53,6 +54,28 @@ interface VehicleOption {
   id: number;
   name: string;
   plateNumber: string;
+  category?: string | null;
+}
+
+function employeeCanHaveVehicle(roles: EmployeeRole[]): boolean {
+  return roles.some(
+    (r) => r === "driver" || r === "sales_agent" || r === "sales_admin"
+  );
+}
+
+function vehicleOptionsForRoles(
+  vehicles: VehicleOption[],
+  roles: EmployeeRole[]
+): VehicleOption[] {
+  const isDriver = roles.includes("driver");
+  const isSales = roles.some((r) => r === "sales_agent" || r === "sales_admin");
+  return vehicles.filter((v) => {
+    const category = normalizeVehicleCategory(v.category);
+    if (isDriver && isSales) return true;
+    if (isSales) return category === "sales";
+    if (isDriver) return category === "delivery";
+    return false;
+  });
 }
 
 const statusTone: Record<string, "green" | "amber" | "blue" | "red" | "slate"> =
@@ -103,6 +126,17 @@ export default function EmployeesPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const assignableVehicles = useMemo(
+    () => vehicleOptionsForRoles(vehicles, form.roles),
+    [vehicles, form.roles]
+  );
+
+  const vehicleFieldLabel = form.roles.includes("driver")
+    ? form.roles.some((r) => r === "sales_agent" || r === "sales_admin")
+      ? "Assigned vehicle"
+      : "Assigned truck"
+    : "Company car";
 
   function toggleRole(role: EmployeeRole) {
     setForm((f) => {
@@ -158,7 +192,7 @@ export default function EmployeesPage() {
         roles: form.roles,
         notes: form.notes,
         assignedVehicleId:
-          form.roles.includes("driver") && form.assignedVehicleId
+          employeeCanHaveVehicle(form.roles) && form.assignedVehicleId
             ? Number(form.assignedVehicleId)
             : null,
         warehouseZones: form.roles.includes("group_leader")
@@ -352,18 +386,21 @@ export default function EmployeesPage() {
                 </div>
               )}
             </div>
-            {form.roles.includes("driver") && (
+            {employeeCanHaveVehicle(form.roles) && (
               <Select
-                label="Assigned truck"
+                label={vehicleFieldLabel}
                 value={form.assignedVehicleId}
                 onChange={(e) =>
                   setForm({ ...form, assignedVehicleId: e.target.value })
                 }
               >
-                <option value="">No truck assigned</option>
-                {vehicles.map((v) => (
+                <option value="">No vehicle assigned</option>
+                {assignableVehicles.map((v) => (
                   <option key={v.id} value={v.id}>
                     {v.name} ({v.plateNumber})
+                    {normalizeVehicleCategory(v.category) === "sales"
+                      ? " · sales car"
+                      : ""}
                   </option>
                 ))}
               </Select>
@@ -509,9 +546,9 @@ export default function EmployeesPage() {
                       <p className="mt-1 text-xs text-zinc-400">
                         {categoryLabel(primaryCategory(e.roles))}
                       </p>
-                      {e.roles.includes("driver") && e.assignedVehicle && (
+                      {employeeCanHaveVehicle(e.roles) && e.assignedVehicle && (
                         <p className="mt-2 text-xs text-zinc-500">
-                          Truck: {e.assignedVehicle.name} (
+                          Vehicle: {e.assignedVehicle.name} (
                           {e.assignedVehicle.plateNumber})
                         </p>
                       )}

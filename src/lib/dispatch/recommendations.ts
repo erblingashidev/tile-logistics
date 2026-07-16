@@ -13,6 +13,7 @@ import {
 } from "@/lib/dispatch/route-cluster";
 import { checkVehicleCapacity } from "@/lib/calculations";
 import { listOrders, getVehicleLoad } from "@/lib/services/orders";
+import { isTransportVehicle } from "@/lib/services/vehicles";
 import { getDriverForVehicle } from "@/lib/services/employees";
 import { isOrderReadyToShip } from "@/lib/delivery-schedule";
 import { isOrderUrgent } from "@/lib/order-priority";
@@ -112,7 +113,7 @@ export interface FullDayDispatchPlan {
 
 async function loadDispatchVehicles(deliveryRound: number): Promise<DispatchVehicle[]> {
   const db = await getDb();
-  const rows = await dbAll(db.select().from(vehicles));
+  const rows = (await dbAll(db.select().from(vehicles))).filter(isTransportVehicle);
   return Promise.all(
     rows.map(async (v) => {
       const load = await getVehicleLoad(v.id, deliveryRound);

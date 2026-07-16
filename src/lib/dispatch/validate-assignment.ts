@@ -1,5 +1,6 @@
 import { analyzeDispatchCargo } from "@/lib/services/dispatch-planning";
 import { vehicleHasCrane, isDafTruck, isExcludedSmallVan, DAF_MIN_PALLETS } from "@/lib/dispatch/vehicles";
+import { isTransportVehicle } from "@/lib/services/vehicles";
 import { getDb } from "@/lib/db";
 import { dbOne } from "@/lib/db/query";
 import { vehicles } from "@/lib/db/schema";
@@ -42,6 +43,14 @@ export async function validateTruckForOrder(
       db.select().from(vehicles).where(eq(vehicles.id, vehicleId))
     ));
   if (!vehicle) return { ok: false, error: "Vehicle not found" };
+
+  if (!isTransportVehicle(vehicle)) {
+    return {
+      ok: false,
+      error:
+        "This vehicle is a sales / company car — use a delivery truck for orders.",
+    };
+  }
 
   const cargo = analyzeDispatchCargo(order.items ?? [], {
     customerHasForklift: Boolean(order.customerHasForklift),

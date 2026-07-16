@@ -8,7 +8,7 @@ import { formatDeliveryRound } from "@/lib/delivery-rounds";
 import { generateFullDayDispatchPlan } from "@/lib/dispatch/recommendations";
 import { describeRouteCluster } from "@/lib/services/dispatch-planning";
 import { listOrders } from "@/lib/services/orders";
-import { listVehicles } from "@/lib/services/vehicles";
+import { listTransportVehicles } from "@/lib/services/vehicles";
 
 export interface DispatchPrintOrder {
   id: number;
@@ -170,7 +170,7 @@ export async function getDispatchPrintSheet(
   const unassignedOrders = orders.filter((order) => !order.assignment);
   const unassigned = unassignedOrders.map((o) => toPrintOrder(o));
 
-  const fleet = await listVehicles();
+  const fleet = await listTransportVehicles();
   const trucks: DispatchPrintTruck[] = [];
 
   for (const vehicle of fleet) {

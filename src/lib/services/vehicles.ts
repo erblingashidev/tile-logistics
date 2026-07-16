@@ -2,6 +2,13 @@ import { eq, desc } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { dbAll, dbOne } from "@/lib/db/query";
 import { vehicles } from "@/lib/db/schema";
+import {
+  DEFAULT_VEHICLE_CATEGORY,
+  normalizeVehicleCategory,
+  isTransportVehicle,
+  type VehicleCategory,
+  VEHICLE_CATEGORY_LABELS,
+} from "@/lib/constants";
 import { logActivity } from "@/lib/logger";
 import {
   formatStatusLabel,
@@ -14,23 +21,34 @@ import { getVehicleLoad } from "@/lib/services/orders";
 import { getDriverForVehicle } from "@/lib/services/employees";
 import { DELIVERY_ROUNDS } from "@/lib/constants";
 
+export type { VehicleCategory };
+
 export interface VehiclePayload {
   name: string;
   plateNumber: string;
   maxWeightKg: number;
   maxPallets: number;
   status?: string;
+  category?: VehicleCategory;
   notes?: string;
 }
 
-export async function listVehicles() {
-  const db = await getDb();
-  const rows = await dbAll(
-    db.select().from(vehicles).orderBy(desc(vehicles.updatedAt))
-  );
+export interface ListVehiclesOptions {
+  /** Shorthand: only warehouse delivery trucks (dispatch / order assignment). */
+  forTransport?: boolean;
+  /** Filter by category; default returns all vehicles. */
+  category?: VehicleCategory | "all";
+}
+
+export { isTransportVehicle };
+
+async function hydrateVehicles(
+  rows: (typeof vehicles.$inferSelect)[]
+) {
   return Promise.all(
     rows.map(async (v) => ({
       ...v,
+      category: normalizeVehicleCategory(v.category),
       assignedDriver: await getDriverForVehicle(v.id),
       loads: await Promise.all(
         DELIVERY_ROUNDS.map(async (round) => ({
@@ -42,27 +60,41 @@ export async function listVehicles() {
   );
 }
 
+export async function listVehicles(options?: ListVehiclesOptions) {
+  const db = await getDb();
+  let rows = await dbAll(
+    db.select().from(vehicles).orderBy(desc(vehicles.updatedAt))
+  );
+
+  if (options?.forTransport || options?.category === "delivery") {
+    rows = rows.filter(isTransportVehicle);
+  } else if (options?.category === "sales") {
+    rows = rows.filter((v) => normalizeVehicleCategory(v.category) === "sales");
+  }
+
+  return hydrateVehicles(rows);
+}
+
+export async function listTransportVehicles() {
+  return listVehicles({ forTransport: true });
+}
+
 export async function getVehicle(id: number) {
   const db = await getDb();
   const vehicle = await dbOne(
     db.select().from(vehicles).where(eq(vehicles.id, id))
   );
   if (!vehicle) return null;
-  return {
-    ...vehicle,
-    assignedDriver: await getDriverForVehicle(id),
-    loads: await Promise.all(
-      DELIVERY_ROUNDS.map(async (round) => ({
-        round,
-        ...(await getVehicleLoad(id, round)),
-      }))
-    ),
-  };
+  const [hydrated] = await hydrateVehicles([vehicle]);
+  return hydrated;
 }
 
 export async function createVehicle(payload: VehiclePayload) {
   const db = await getDb();
   const now = new Date().toISOString();
+  const category = normalizeVehicleCategory(
+    payload.category ?? DEFAULT_VEHICLE_CATEGORY
+  );
   const [inserted] = await db
     .insert(vehicles)
     .values({
@@ -71,6 +103,7 @@ export async function createVehicle(payload: VehiclePayload) {
       maxWeightKg: payload.maxWeightKg,
       maxPallets: payload.maxPallets,
       status: payload.status ?? "available",
+      category,
       notes: payload.notes ?? null,
       createdAt: now,
       updatedAt: now,
@@ -90,7 +123,11 @@ export async function createVehicle(payload: VehiclePayload) {
     ),
     {
       category: "vehicles",
-      details: { name: payload.name, plateNumber: payload.plateNumber },
+      details: {
+        name: payload.name,
+        plateNumber: payload.plateNumber,
+        vehicleCategory: category,
+      },
     }
   );
   return await getVehicle(id);
@@ -103,6 +140,9 @@ export async function updateVehicle(id: number, payload: Partial<VehiclePayload>
 
   const now = new Date().toISOString();
   const nextStatus = payload.status ?? existing.status;
+  const nextCategory = normalizeVehicleCategory(
+    payload.category ?? existing.category
+  );
 
   await db
     .update(vehicles)
@@ -112,6 +152,7 @@ export async function updateVehicle(id: number, payload: Partial<VehiclePayload>
       maxWeightKg: payload.maxWeightKg ?? existing.maxWeightKg,
       maxPallets: payload.maxPallets ?? existing.maxPallets,
       status: nextStatus,
+      category: nextCategory,
       notes: payload.notes ?? existing.notes,
       updatedAt: now,
     })
@@ -159,6 +200,11 @@ export async function updateVehicle(id: number, payload: Partial<VehiclePayload>
   ) {
     changes.push(
       `recommended kg ${existing.maxWeightKg} → ${payload.maxWeightKg}`
+    );
+  }
+  if (payload.category && nextCategory !== existing.category) {
+    changes.push(
+      `category ${VEHICLE_CATEGORY_LABELS[existing.category as VehicleCategory] ?? existing.category} → ${VEHICLE_CATEGORY_LABELS[nextCategory]}`
     );
   }
   if (payload.notes != null && payload.notes !== (existing.notes ?? "")) {

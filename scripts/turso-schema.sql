@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS vehicles (
   max_weight_kg REAL NOT NULL,
   max_pallets INTEGER NOT NULL,
   status TEXT NOT NULL DEFAULT 'available',
+  category TEXT NOT NULL DEFAULT 'delivery',
   notes TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
