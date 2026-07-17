@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
 import { getDb, hasDeliveryProofDbPhotos, setDeliveryProofDbPhotosEnabled } from "@/lib/db";
 import { dbAll, dbOne } from "@/lib/db/query";
 import { deliveryProofs, employees, orders, assignments, orderEmployeeAssignments } from "@/lib/db/schema";
@@ -27,7 +27,20 @@ import {
   orderHasDeparted,
   orderWasLoaded,
 } from "@/lib/services/load-coordination";
+import {
+  computeShipmentProgress,
+  validatePartialSend,
+  type OrderShipmentProgress,
+} from "@/lib/shipment-progress";
 
+/** Trip phases cleared after a partial delivery so the remainder can ship again. */
+const TRIP_RESET_PHASES = [
+  "prepared",
+  "loaded",
+  "load_skipped",
+  "departed",
+  "arrived",
+] as const;
 const UPLOAD_ROOT = getUploadRoot();
 
 const LOADER_PHASES = new Set<DeliveryProofPhase>([
@@ -173,6 +186,9 @@ async function queryDeliveryProofs(orderId: number, includeDbPhoto: boolean) {
     phase: deliveryProofs.phase,
     photoPath: deliveryProofs.photoPath,
     notes: deliveryProofs.notes,
+    sentPallets: deliveryProofs.sentPallets,
+    sentM2: deliveryProofs.sentM2,
+    sentPieces: deliveryProofs.sentPieces,
     lat: deliveryProofs.lat,
     lng: deliveryProofs.lng,
     capturedAt: deliveryProofs.capturedAt,
@@ -217,6 +233,38 @@ export async function listDeliveryProofs(orderId: number) {
     }
     throw err;
   }
+}
+
+export async function getOrderShipmentProgress(
+  orderId: number
+): Promise<OrderShipmentProgress | null> {
+  const db = await getDb();
+  const order = await dbOne(
+    db.select().from(orders).where(eq(orders.id, orderId))
+  );
+  if (!order) return null;
+  const proofs = await listDeliveryProofs(orderId);
+  return computeShipmentProgress(order, proofs);
+}
+
+/**
+ * After a partial delivery: keep shipment proofs, clear this trip's load/drive
+ * steps, and unassign so the remaining qty can go on another truck.
+ */
+async function releaseOrderAfterPartialDelivery(orderId: number) {
+  const db = await getDb();
+  await db
+    .delete(deliveryProofs)
+    .where(
+      and(
+        eq(deliveryProofs.orderId, orderId),
+        inArray(deliveryProofs.phase, [...TRIP_RESET_PHASES])
+      )
+    );
+  await db.delete(assignments).where(eq(assignments.orderId, orderId));
+  await db
+    .delete(orderEmployeeAssignments)
+    .where(eq(orderEmployeeAssignments.orderId, orderId));
 }
 
 async function pickerOnSameTruck(
@@ -297,6 +345,9 @@ async function insertProofRecord(input: {
   photoData?: Buffer | null;
   photoMime?: string | null;
   notes?: string;
+  sentPallets?: number | null;
+  sentM2?: number | null;
+  sentPieces?: number | null;
   lat?: number;
   lng?: number;
 }) {
@@ -310,6 +361,9 @@ async function insertProofRecord(input: {
     photoData: input.photoData ?? null,
     photoMime: input.photoMime ?? null,
     notes: input.notes?.trim() || null,
+    sentPallets: input.sentPallets ?? null,
+    sentM2: input.sentM2 ?? null,
+    sentPieces: input.sentPieces ?? null,
     lat: input.lat ?? null,
     lng: input.lng ?? null,
     capturedAt: now,
@@ -445,6 +499,10 @@ export async function submitDeliveryProof(input: {
   notes?: string;
   lat?: number;
   lng?: number;
+  /** Qty delivered on this stop (required for partial_delivery). */
+  sentPallets?: number;
+  sentM2?: number;
+  sentPieces?: number;
 }) {
   const check = await employeeCanSubmitPhase(
     input.employeeId,
@@ -538,7 +596,7 @@ export async function submitDeliveryProof(input: {
     );
   }
 
-  if (input.phase === "arrived" || input.phase === "delivered") {
+  if (input.phase === "arrived" || input.phase === "delivered" || input.phase === "partial_delivery") {
     if (!(await orderWasLoaded(input.orderId))) {
       return {
         ok: false as const,
@@ -553,22 +611,61 @@ export async function submitDeliveryProof(input: {
     }
   }
 
-  const existing = await dbOne(
-    db
-      .select({ id: deliveryProofs.id })
-      .from(deliveryProofs)
-      .where(
-        and(
-          eq(deliveryProofs.orderId, input.orderId),
-          eq(deliveryProofs.phase, input.phase)
-        )
-      )
+  const proofsBefore = await listDeliveryProofs(input.orderId);
+  const progress = computeShipmentProgress(order, proofsBefore);
+
+  let sentPallets: number | null = input.sentPallets ?? null;
+  let sentM2: number | null = input.sentM2 ?? null;
+  let sentPieces: number | null = input.sentPieces ?? null;
+
+  if (input.phase === "partial_delivery") {
+    const checkSend = validatePartialSend(progress.remaining, {
+      pallets: input.sentPallets,
+      m2: input.sentM2,
+      pieces: input.sentPieces,
+    });
+    if (!checkSend.ok) {
+      return { ok: false as const, error: checkSend.error };
+    }
+    sentPallets = checkSend.sent.pallets;
+    sentM2 = checkSend.sent.m2;
+    sentPieces = checkSend.sent.pieces;
+  }
+
+  if (input.phase === "delivered") {
+    // Full remaining (or full order if first delivery).
+    sentPallets = progress.remaining.pallets;
+    sentM2 = progress.remaining.m2;
+    sentPieces = progress.remaining.pieces;
+    if (sentPallets <= 0 && sentM2 <= 0 && sentPieces <= 0) {
+      // Already fully accounted — still allow closing if somehow stuck.
+      sentPallets = progress.ordered.pallets;
+      sentM2 = progress.ordered.m2;
+      sentPieces = progress.ordered.pieces;
+    }
+  }
+
+  const allowMultiple = Boolean(
+    "allowMultiple" in phaseDef && phaseDef.allowMultiple
   );
-  if (existing) {
-    return {
-      ok: false as const,
-      error: `"${phaseDef.label}" was already recorded for this order`,
-    };
+  if (!allowMultiple) {
+    const existing = await dbOne(
+      db
+        .select({ id: deliveryProofs.id })
+        .from(deliveryProofs)
+        .where(
+          and(
+            eq(deliveryProofs.orderId, input.orderId),
+            eq(deliveryProofs.phase, input.phase)
+          )
+        )
+    );
+    if (existing) {
+      return {
+        ok: false as const,
+        error: `"${phaseDef.label}" was already recorded for this order`,
+      };
+    }
   }
 
   let storedPhoto: StoredProofPhoto = {
@@ -613,6 +710,9 @@ export async function submitDeliveryProof(input: {
     phase: input.phase,
     ...storedPhoto,
     notes: input.notes,
+    sentPallets,
+    sentM2,
+    sentPieces,
     lat: input.lat,
     lng: input.lng,
   });
@@ -629,6 +729,10 @@ export async function submitDeliveryProof(input: {
     hasStoredPhoto(storedPhoto)
   );
 
+  if (input.phase === "partial_delivery") {
+    await releaseOrderAfterPartialDelivery(input.orderId);
+  }
+
   if (input.phase === "delivered") {
     await syncAfterOrderDelivered(input.orderId);
   }
@@ -638,6 +742,11 @@ export async function submitDeliveryProof(input: {
     proofs: await listDeliveryProofs(input.orderId),
     orderStatus: phaseDef.nextOrderStatus,
     warning: photoWarning,
+    shipment: await getOrderShipmentProgress(input.orderId),
+    sent:
+      sentPallets != null
+        ? { pallets: sentPallets, m2: sentM2 ?? 0, pieces: sentPieces ?? 0 }
+        : undefined,
   };
 }
 
@@ -686,6 +795,9 @@ export async function submitAdminDeliveryProof(input: {
   photoMime?: string;
   force?: boolean;
   allowDeliveredWithoutPhoto?: boolean;
+  sentPallets?: number;
+  sentM2?: number;
+  sentPieces?: number;
 }) {
   const phaseDef = DELIVERY_PROOF_PHASES.find((p) => p.id === input.phase);
   if (!phaseDef) return { ok: false as const, error: "Invalid phase" };
@@ -795,7 +907,11 @@ export async function submitAdminDeliveryProof(input: {
     };
   }
 
-  if (input.phase === "arrived" || input.phase === "delivered") {
+  if (
+    input.phase === "arrived" ||
+    input.phase === "delivered" ||
+    input.phase === "partial_delivery"
+  ) {
     if (!(await orderWasLoaded(input.orderId))) {
       if (!input.force) {
         return {
@@ -811,22 +927,54 @@ export async function submitAdminDeliveryProof(input: {
     }
   }
 
-  const existing = await dbOne(
-    db
-      .select({ id: deliveryProofs.id })
-      .from(deliveryProofs)
-      .where(
-        and(
-          eq(deliveryProofs.orderId, input.orderId),
-          eq(deliveryProofs.phase, input.phase)
-        )
-      )
+  const proofsBefore = await listDeliveryProofs(input.orderId);
+  const progress = computeShipmentProgress(order, proofsBefore);
+
+  let sentPallets: number | null = input.sentPallets ?? null;
+  let sentM2: number | null = input.sentM2 ?? null;
+  let sentPieces: number | null = input.sentPieces ?? null;
+
+  if (input.phase === "partial_delivery") {
+    const checkSend = validatePartialSend(progress.remaining, {
+      pallets: input.sentPallets,
+      m2: input.sentM2,
+      pieces: input.sentPieces,
+    });
+    if (!checkSend.ok) {
+      return { ok: false as const, error: checkSend.error };
+    }
+    sentPallets = checkSend.sent.pallets;
+    sentM2 = checkSend.sent.m2;
+    sentPieces = checkSend.sent.pieces;
+  }
+
+  if (input.phase === "delivered") {
+    sentPallets = progress.remaining.pallets || progress.ordered.pallets;
+    sentM2 = progress.remaining.m2 || progress.ordered.m2;
+    sentPieces = progress.remaining.pieces || progress.ordered.pieces;
+  }
+
+  const allowMultiple = Boolean(
+    "allowMultiple" in phaseDef && phaseDef.allowMultiple
   );
-  if (existing) {
-    return {
-      ok: false as const,
-      error: `"${phaseDef.label}" was already recorded for this order`,
-    };
+  if (!allowMultiple) {
+    const existing = await dbOne(
+      db
+        .select({ id: deliveryProofs.id })
+        .from(deliveryProofs)
+        .where(
+          and(
+            eq(deliveryProofs.orderId, input.orderId),
+            eq(deliveryProofs.phase, input.phase)
+          )
+        )
+    );
+    if (existing) {
+      return {
+        ok: false as const,
+        error: `"${phaseDef.label}" was already recorded for this order`,
+      };
+    }
   }
 
   let storedPhoto: StoredProofPhoto = {
@@ -862,6 +1010,9 @@ export async function submitAdminDeliveryProof(input: {
     phase: input.phase,
     ...storedPhoto,
     notes: proofNotes || undefined,
+    sentPallets,
+    sentM2,
+    sentPieces,
   });
 
   await updateOrderStatus(input.orderId, phaseDef.nextOrderStatus, actorId);
@@ -889,9 +1040,16 @@ export async function submitAdminDeliveryProof(input: {
         employeeId: actorId,
         notes: proofNotes || null,
         force: Boolean(input.force),
+        sentPallets,
+        sentM2,
+        sentPieces,
       },
     }
   );
+
+  if (input.phase === "partial_delivery") {
+    await releaseOrderAfterPartialDelivery(input.orderId);
+  }
 
   if (input.phase === "delivered") {
     await syncAfterOrderDelivered(input.orderId);
@@ -901,6 +1059,7 @@ export async function submitAdminDeliveryProof(input: {
     ok: true as const,
     proofs: await listDeliveryProofs(input.orderId),
     orderStatus: phaseDef.nextOrderStatus,
+    shipment: await getOrderShipmentProgress(input.orderId),
   };
 }
 

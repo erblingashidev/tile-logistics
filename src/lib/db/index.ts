@@ -270,6 +270,27 @@ async function ensureDeliveryProofPhotoColumns(client: Client) {
     "photo_mime TEXT",
     proofCols
   );
+  await addColumnIfMissing(
+    client,
+    "delivery_proofs",
+    "sent_pallets",
+    "sent_pallets REAL",
+    proofCols
+  );
+  await addColumnIfMissing(
+    client,
+    "delivery_proofs",
+    "sent_m2",
+    "sent_m2 REAL",
+    proofCols
+  );
+  await addColumnIfMissing(
+    client,
+    "delivery_proofs",
+    "sent_pieces",
+    "sent_pieces INTEGER",
+    proofCols
+  );
   if (!proofCols.has("photo_data")) {
     proofCols = await tableColumns(client, "delivery_proofs");
   }

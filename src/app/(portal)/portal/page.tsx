@@ -49,6 +49,13 @@ interface PortalOrder {
   canMarkLoaded?: boolean;
   loadBlockedReason?: string | null;
   loadNotes?: string | null;
+  shipment?: {
+    ordered: { pallets: number; m2: number; pieces: number };
+    sent: { pallets: number; m2: number; pieces: number };
+    remaining: { pallets: number; m2: number; pieces: number };
+    hasPartialShipments: boolean;
+    isFullyDelivered: boolean;
+  };
   assignment?: {
     vehicleId?: number;
     vehicleName: string;
@@ -65,6 +72,8 @@ interface PortalOrder {
     capturedAt: string;
     photoUrl?: string | null;
     notes?: string | null;
+    sentPallets?: number | null;
+    sentM2?: number | null;
   }>;
 }
 
@@ -147,6 +156,10 @@ export default function PortalPage() {
   const [skipOpen, setSkipOpen] = useState<Record<number, boolean>>({});
   const [detailsOpen, setDetailsOpen] = useState<Record<number, boolean>>({});
   const [statusOpen, setStatusOpen] = useState(false);
+  const [partialOpen, setPartialOpen] = useState<Record<number, boolean>>({});
+  const [partialPallets, setPartialPallets] = useState<Record<number, string>>(
+    {}
+  );
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const load = useCallback(async () => {
@@ -229,7 +242,8 @@ export default function PortalPage() {
   async function submitProof(
     orderId: number,
     phase: DeliveryProofPhase,
-    notes?: string
+    notes?: string,
+    extras?: { sentPallets?: number; sentM2?: number; sentPieces?: number }
   ) {
     setError("");
     setSuccess("");
@@ -251,10 +265,26 @@ export default function PortalPage() {
       return;
     }
 
+    if (phase === "partial_delivery") {
+      const pallets = extras?.sentPallets;
+      if (pallets == null || !Number.isFinite(pallets) || pallets <= 0) {
+        setError(sq.errors.partialPallets);
+        setBusyOrderId(null);
+        return;
+      }
+    }
+
     const form = new FormData();
     form.set("phase", phase);
     if (file) form.set("photo", file);
     if (notes?.trim()) form.set("notes", notes.trim());
+    if (extras?.sentPallets != null) {
+      form.set("sentPallets", String(extras.sentPallets));
+    }
+    if (extras?.sentM2 != null) form.set("sentM2", String(extras.sentM2));
+    if (extras?.sentPieces != null) {
+      form.set("sentPieces", String(extras.sentPieces));
+    }
 
     try {
       if (navigator.geolocation) {
@@ -295,6 +325,8 @@ export default function PortalPage() {
 
     if (data.warning) {
       setSuccess(`${proofLabelSq(phase)} — ${sq.successSaved} (${data.warning})`);
+    } else if (phase === "partial_delivery") {
+      setSuccess(sq.successPartialDelivery);
     } else if (phase === "loaded") {
       setSuccess(sq.successReadyOnTruck);
     } else {
@@ -305,6 +337,7 @@ export default function PortalPage() {
       );
     }
     if (input) input.value = "";
+    setPartialOpen((prev) => ({ ...prev, [orderId]: false }));
     setTimeout(() => setSuccess(""), 3000);
     load();
   }
@@ -334,9 +367,11 @@ export default function PortalPage() {
     if (!isDriver) return [];
     if (order.loadStatus !== "loaded") return [];
     if (!hasProof(order, "departed")) return [];
-    return DELIVERY_PROOF_PHASES.filter(
-      (p) => p.id === "arrived" || p.id === "delivered"
-    );
+    if (hasProof(order, "delivered")) return [];
+    if (!hasProof(order, "arrived")) {
+      return DELIVERY_PROOF_PHASES.filter((p) => p.id === "arrived");
+    }
+    return DELIVERY_PROOF_PHASES.filter((p) => p.id === "delivered");
   }
 
   function driverOrderIsInfoOnly(order: PortalOrder) {
@@ -534,7 +569,15 @@ export default function PortalPage() {
                           </p>
                         )}
                         <p className="mt-1 text-xs text-zinc-500">
-                          {sq.palletsShort(order.totalPallets)}
+                          {order.shipment?.hasPartialShipments
+                            ? sq.deliveryRemaining(
+                                order.shipment.sent.pallets,
+                                order.shipment.remaining.pallets
+                              )
+                            : sq.palletsShort(
+                                order.shipment?.remaining.pallets ??
+                                  order.totalPallets
+                              )}
                           {" · "}
                           {formatDeliverySchedule(order)}
                         </p>
@@ -545,13 +588,26 @@ export default function PortalPage() {
                             ? "green"
                             : order.loadStatus === "load_skipped"
                               ? "red"
-                              : statusTone[order.status] ?? "slate"
+                              : order.status === "partially_delivered"
+                                ? "amber"
+                                : statusTone[order.status] ?? "slate"
                         }
                       >
                         {order.deliveryStageLabel ??
                           orderStatusLabelSq(order.status)}
                       </Badge>
                     </div>
+
+                    {order.shipment?.hasPartialShipments && (
+                      <p className="mt-3 rounded-lg bg-orange-50 px-3 py-2 text-sm text-orange-900">
+                        {sq.deliveryOrdered(order.shipment.ordered.pallets)}
+                        {" · "}
+                        {sq.deliveryRemaining(
+                          order.shipment.sent.pallets,
+                          order.shipment.remaining.pallets
+                        )}
+                      </p>
+                    )}
 
                     {order.loadStatus === "load_skipped" && (
                       <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
@@ -654,8 +710,122 @@ export default function PortalPage() {
                     {driverPhases.length > 0 && (
                       <div className="mt-4 space-y-2">
                         {driverPhases.map((phase) => {
-                          const done = hasProof(order, phase.id);
-                          if (done) return null;
+                          if (phase.id === "delivered") {
+                            const remaining =
+                              order.shipment?.remaining.pallets ??
+                              order.totalPallets;
+                            const showPartial = Boolean(partialOpen[order.id]);
+                            return (
+                              <div
+                                key="delivery-choice"
+                                className="rounded-lg border border-zinc-200 p-3"
+                              >
+                                <p className="text-sm font-medium text-zinc-900">
+                                  {sq.driverDeliveredPhoto}
+                                </p>
+                                <p className="mt-1 text-xs text-zinc-500">
+                                  {sq.deliveryOrdered(
+                                    order.shipment?.ordered.pallets ??
+                                      order.totalPallets
+                                  )}
+                                  {" · "}
+                                  {sq.palletsShort(remaining)} mbeten
+                                </p>
+                                <input
+                                  ref={(el) => {
+                                    fileRefs.current[
+                                      `${order.id}-delivered`
+                                    ] = el;
+                                    fileRefs.current[
+                                      `${order.id}-partial_delivery`
+                                    ] = el;
+                                  }}
+                                  type="file"
+                                  accept="image/*"
+                                  capture="environment"
+                                  className="mt-2 block w-full text-xs"
+                                />
+                                <Button
+                                  className="mt-2 w-full py-3"
+                                  disabled={busyOrderId === order.id}
+                                  onClick={() =>
+                                    submitProof(order.id, "delivered")
+                                  }
+                                >
+                                  {sq.deliveryFull}
+                                </Button>
+                                {!showPartial ? (
+                                  <button
+                                    type="button"
+                                    className="mt-2 w-full py-2 text-center text-sm font-medium text-orange-800 underline-offset-2 hover:underline"
+                                    onClick={() =>
+                                      setPartialOpen({
+                                        ...partialOpen,
+                                        [order.id]: true,
+                                      })
+                                    }
+                                  >
+                                    {sq.deliveryPartial}
+                                  </button>
+                                ) : (
+                                  <div className="mt-3 rounded-lg border border-orange-200 bg-orange-50/70 p-3">
+                                    <p className="text-sm font-medium text-zinc-900">
+                                      {sq.deliveryPartialHint}
+                                    </p>
+                                    <label className="mt-2 block text-xs text-zinc-600">
+                                      {sq.deliveryPartialPallets}
+                                      <input
+                                        type="number"
+                                        min={0.1}
+                                        step={0.1}
+                                        max={remaining}
+                                        className="mt-1 w-full rounded border border-zinc-200 px-2 py-2 text-sm"
+                                        value={partialPallets[order.id] ?? ""}
+                                        onChange={(e) =>
+                                          setPartialPallets({
+                                            ...partialPallets,
+                                            [order.id]: e.target.value,
+                                          })
+                                        }
+                                        placeholder={`max ${remaining}`}
+                                      />
+                                    </label>
+                                    <Button
+                                      className="mt-2 w-full py-3"
+                                      disabled={busyOrderId === order.id}
+                                      onClick={() =>
+                                        submitProof(
+                                          order.id,
+                                          "partial_delivery",
+                                          undefined,
+                                          {
+                                            sentPallets: Number(
+                                              partialPallets[order.id]
+                                            ),
+                                          }
+                                        )
+                                      }
+                                    >
+                                      {sq.deliveryPartialConfirm}
+                                    </Button>
+                                    <button
+                                      type="button"
+                                      className="mt-2 w-full text-center text-xs text-zinc-500"
+                                      onClick={() =>
+                                        setPartialOpen({
+                                          ...partialOpen,
+                                          [order.id]: false,
+                                        })
+                                      }
+                                    >
+                                      {sq.hideDetails}
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          }
+
                           return (
                             <div
                               key={phase.id}
@@ -707,9 +877,12 @@ export default function PortalPage() {
                         </button>
                         {showDetails && (
                           <ul className="mt-2 space-y-1 text-xs text-zinc-600">
-                            {order.proofs!.map((p) => (
-                              <li key={p.phase}>
+                            {order.proofs!.map((p, idx) => (
+                              <li key={`${p.phase}-${p.capturedAt}-${idx}`}>
                                 ✓ {proofLabelSq(p.phase)}
+                                {p.sentPallets != null
+                                  ? ` — ${p.sentPallets} plt`
+                                  : ""}
                                 {p.notes ? ` — ${p.notes}` : ""}
                               </li>
                             ))}

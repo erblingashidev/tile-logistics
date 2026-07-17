@@ -59,6 +59,14 @@ export interface OrderInvoiceData {
   totalPieces: number;
   totalPallets: number;
   totalWeightKg: number;
+  shipment?: {
+    ordered: { pallets: number; m2: number; pieces: number };
+    sent: { pallets: number; m2: number; pieces: number };
+    remaining: { pallets: number; m2: number; pieces: number };
+    hasPartialShipments: boolean;
+    isFullyDelivered: boolean;
+    shipmentCount: number;
+  };
   items: OrderInvoiceItem[];
   assignment?: {
     vehicleId?: number;

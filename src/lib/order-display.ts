@@ -8,6 +8,7 @@ export type OrderDisplayStage =
   | "not_loaded"
   | "in_transit"
   | "arrived"
+  | "partially_delivered"
   | "delivered"
   | "cancelled";
 
@@ -19,6 +20,7 @@ export const ORDER_STAGE_LABELS: Record<OrderDisplayStage, string> = {
   not_loaded: "Not loaded",
   in_transit: "On the way",
   arrived: "Arrived",
+  partially_delivered: "Partially delivered",
   delivered: "Delivered",
   cancelled: "Cancelled",
 };
@@ -29,6 +31,8 @@ export function orderListRowClass(stage: OrderDisplayStage): string {
     case "delivered":
     case "arrived":
       return "bg-green-50/95 border-l-4 border-l-green-500";
+    case "partially_delivered":
+      return "bg-orange-50/95 border-l-4 border-l-orange-500";
     case "in_transit":
       return "bg-indigo-50/95 border-l-4 border-l-indigo-500";
     case "loaded":
@@ -78,6 +82,11 @@ export const ORDER_STAGE_LEGEND: Array<{
     swatchClass: "bg-green-200 ring-1 ring-green-400",
   },
   {
+    stage: "partially_delivered",
+    label: "Partial",
+    swatchClass: "bg-orange-200 ring-1 ring-orange-400",
+  },
+  {
     stage: "not_loaded",
     label: "Not loaded",
     swatchClass: "bg-red-200 ring-1 ring-red-400",
@@ -88,6 +97,7 @@ export function orderStageBadgeTone(
   stage: OrderDisplayStage
 ): "green" | "amber" | "slate" | "red" | "blue" {
   if (stage === "arrived" || stage === "delivered") return "green";
+  if (stage === "partially_delivered") return "amber";
   if (stage === "loaded") return "blue";
   if (stage === "prepared") return "blue";
   if (stage === "assigned" || stage === "in_transit") return "amber";
@@ -108,6 +118,9 @@ export function computeOrderDisplayStage(
   if (phases.has("load_skipped")) return "not_loaded";
   if (phases.has("loaded")) return "loaded";
   if (phases.has("prepared")) return "prepared";
+  if (status === "partially_delivered" || phases.has("partial_delivery")) {
+    return "partially_delivered";
+  }
   if (status === "assigned") return "assigned";
   if (status === "pending") return "pending";
   return "pending";
@@ -119,6 +132,7 @@ const WAITING_STAGES = new Set<OrderDisplayStage>([
   "prepared",
   "loaded",
   "not_loaded",
+  "partially_delivered",
 ]);
 
 const ON_THE_WAY_STAGES = new Set<OrderDisplayStage>([

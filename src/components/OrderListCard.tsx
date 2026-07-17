@@ -301,7 +301,11 @@ export function OrderListCard({
         <div className="grid grid-cols-2 gap-2 border-b border-zinc-100 bg-zinc-100/50 px-4 py-3 sm:grid-cols-4">
           <MetricBlock
             label="Pallets"
-            value={order.totalPallets}
+            value={
+              order.shipment?.hasPartialShipments
+                ? `${order.shipment.sent.pallets} sent / ${order.shipment.remaining.pallets} left`
+                : order.totalPallets
+            }
             emphasis
           />
           <MetricBlock label="m²" value={formatM2(order.totalM2)} />
@@ -311,6 +315,16 @@ export function OrderListCard({
           />
           <MetricBlock label="Pieces" value={order.totalPieces} />
         </div>
+
+        {order.shipment?.hasPartialShipments && (
+          <div className="border-b border-orange-100 bg-orange-50/80 px-4 py-2 text-sm text-orange-950">
+            Partial delivery: {order.shipment.sent.pallets} plt sent ·{" "}
+            {order.shipment.remaining.pallets} plt still to deliver
+            {order.shipment.shipmentCount > 1
+              ? ` · ${order.shipment.shipmentCount} trips`
+              : ""}
+          </div>
+        )}
 
         {order.items.length > 0 && (
           <div className="border-b border-zinc-100 px-4 py-3">

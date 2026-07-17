@@ -39,6 +39,18 @@ export async function POST(
     const lngRaw = form.get("lng");
     const lat = latRaw ? Number(latRaw) : undefined;
     const lng = lngRaw ? Number(lngRaw) : undefined;
+    const sentPalletsRaw = form.get("sentPallets");
+    const sentM2Raw = form.get("sentM2");
+    const sentPiecesRaw = form.get("sentPieces");
+    const sentPallets = sentPalletsRaw != null && String(sentPalletsRaw) !== ""
+      ? Number(sentPalletsRaw)
+      : undefined;
+    const sentM2 = sentM2Raw != null && String(sentM2Raw) !== ""
+      ? Number(sentM2Raw)
+      : undefined;
+    const sentPieces = sentPiecesRaw != null && String(sentPiecesRaw) !== ""
+      ? Number(sentPiecesRaw)
+      : undefined;
 
     const photo = form.get("photo");
     let photoBuffer: Buffer | undefined;
@@ -58,6 +70,9 @@ export async function POST(
       notes,
       lat: Number.isFinite(lat) ? lat : undefined,
       lng: Number.isFinite(lng) ? lng : undefined,
+      sentPallets: Number.isFinite(sentPallets) ? sentPallets : undefined,
+      sentM2: Number.isFinite(sentM2) ? sentM2 : undefined,
+      sentPieces: Number.isFinite(sentPieces) ? sentPieces : undefined,
     });
 
     if (!result.ok) {

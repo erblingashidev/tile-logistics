@@ -71,14 +71,6 @@ export const sq = {
   driverMarkDone: "Shëno si kryer",
   confirmWithPhoto: "Konfirmo me foto",
 
-  orderStatus: {
-    pending: "Në pritje",
-    assigned: "Caktuar",
-    in_transit: "Në transit",
-    delivered: "Dorëzuar",
-    cancelled: "Anuluar",
-  } as Record<string, string>,
-
   notLoadedPrefix: "Nuk u ngarkua:",
 
   proof: {
@@ -87,7 +79,27 @@ export const sq = {
     load_skipped: "Nuk u ngarkua",
     departed: "Doli nga depo",
     arrived: "Mbërriti te klienti",
+    partial_delivery: "Dorëzim i pjesshëm",
     delivered: "Dorëzuar te klienti",
+  } as Record<string, string>,
+
+  deliveryFull: "Dorëzuar të gjithë (mbetja)",
+  deliveryPartial: "Dorëzim i pjesshëm",
+  deliveryPartialHint: "Sa pallet po lëshon tani?",
+  deliveryPartialPallets: "Paletat e dërguara tani",
+  deliveryPartialConfirm: "Konfirmo dorëzimin e pjesshëm",
+  deliveryRemaining: (sent: number, left: number) =>
+    `Dërguar ${sent} plt · mbeten ${left} plt`,
+  deliveryOrdered: (n: number) => `Porosia: ${n} plt`,
+  successPartialDelivery: "Dorëzim i pjesshëm u ruajt — mbetja pret kamion tjetër",
+
+  orderStatus: {
+    pending: "Në pritje",
+    assigned: "Caktuar",
+    in_transit: "Në transit",
+    partially_delivered: "Pjesërisht dorëzuar",
+    delivered: "Dorëzuar",
+    cancelled: "Anuluar",
   } as Record<string, string>,
 
   successDeparted: "Kamioni doli — porositë janë në rrugë",
@@ -157,6 +169,7 @@ export const sq = {
     alreadyLoaded: "Porosia është tashmë në kamion.",
     alreadySkipped: "Porosia është shënuar si “nuk ngarkohet”.",
     prepareFirst: "Shëno fillimisht si e përgatitur.",
+    partialPallets: "Shkruaj sa pallet po dorëzon tani.",
   },
 
   reportsLink: "Raportet e depo",

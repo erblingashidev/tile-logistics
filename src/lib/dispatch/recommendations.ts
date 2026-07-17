@@ -141,6 +141,17 @@ function toStop(
   });
   if (!geo) return null;
   const preferredTruckId = order.preferredTruckId ?? null;
+  const shipment =
+    "shipment" in order && order.shipment
+      ? order.shipment
+      : null;
+  const pallets = shipment?.remaining.pallets ?? order.totalPallets;
+  const m2 = shipment?.remaining.m2 ?? order.totalM2;
+  const pieces = shipment?.remaining.pieces ?? order.totalPieces;
+  const weightKg =
+    order.totalPallets > 0
+      ? (pallets / order.totalPallets) * order.totalWeightKg
+      : order.totalWeightKg;
   return {
     id: order.id,
     invoiceNumber: order.invoiceNumber,
@@ -150,10 +161,10 @@ function toStop(
     region: order.region ?? geo.region,
     lat: geo.lat,
     lng: geo.lng,
-    totalPallets: order.totalPallets,
-    totalWeightKg: order.totalWeightKg,
-    totalM2: order.totalM2,
-    totalPieces: order.totalPieces,
+    totalPallets: pallets,
+    totalWeightKg: weightKg,
+    totalM2: m2,
+    totalPieces: pieces,
     preferredTruckId,
     preferredTruckName: preferredTruckId
       ? truckNameById.get(preferredTruckId) ?? `Truck #${preferredTruckId}`

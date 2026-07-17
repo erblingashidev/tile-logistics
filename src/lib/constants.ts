@@ -184,6 +184,7 @@ export const ORDER_STATUSES = [
   "pending",
   "assigned",
   "in_transit",
+  "partially_delivered",
   "delivered",
   "cancelled",
 ] as const;
@@ -237,6 +238,17 @@ export const DELIVERY_PROOF_PHASES = [
     nextOrderStatus: "in_transit" as OrderStatus,
     photoRequired: false,
     notesRequired: false,
+  },
+  {
+    id: "partial_delivery",
+    label: "Partial delivery — some qty left",
+    shortLabel: "Partial",
+    roles: ["driver"] as EmployeeRole[],
+    nextOrderStatus: "partially_delivered" as OrderStatus,
+    photoRequired: true,
+    notesRequired: false,
+    /** Multiple partial deliveries allowed on the same order. */
+    allowMultiple: true,
   },
   {
     id: "delivered",

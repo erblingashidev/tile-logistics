@@ -19,6 +19,7 @@ import {
   getDriverForVehicle,
 } from "@/lib/services/employees";
 import { listDeliveryProofs } from "@/lib/services/delivery-proofs";
+import { computeShipmentProgress } from "@/lib/shipment-progress";
 import { updateOrderStatus } from "@/lib/services/order-status";
 import { assertAdminPin } from "@/lib/auth/admin-pin";
 import {
@@ -373,6 +374,7 @@ export async function listOrders(filters?: {
           proofs,
           deliveryStage,
           deliveryStageLabel: ORDER_STAGE_LABELS[deliveryStage],
+          shipment: computeShipmentProgress(order, proofs),
           ...(await getOrderLoadStatus(order.id)),
           deliveryLinks: linkMap.get(order.id) ?? [],
           items: await dbAll(
@@ -451,6 +453,10 @@ export async function getOrder(id: number) {
     proofs,
     deliveryStage,
     deliveryStageLabel: ORDER_STAGE_LABELS[deliveryStage],
+    shipment: computeShipmentProgress(
+      { ...order, status: reconciledStatus },
+      proofs
+    ),
     ...(await getOrderLoadStatus(id)),
     deliveryLinks: await (
       await import("@/lib/services/order-delivery-links")
@@ -472,6 +478,11 @@ async function reconcileOrderStatusFromProofs(
     proofPhases.includes("arrived")
   ) {
     target = "in_transit";
+  } else if (
+    proofPhases.includes("partial_delivery") &&
+    currentStatus !== "delivered"
+  ) {
+    target = "partially_delivered";
   }
 
   if (target && target !== currentStatus) {
@@ -1206,11 +1217,25 @@ export async function assignOrderToVehicle(
       totalWeightKg: r.order.totalWeightKg,
     }));
 
+  const proofs =
+    "proofs" in order && Array.isArray(order.proofs)
+      ? order.proofs
+      : await listDeliveryProofs(orderId);
+  const shipment = computeShipmentProgress(order, proofs);
+  const loadPallets = shipment.remaining.pallets;
+  const loadM2 = shipment.remaining.m2;
+  const loadPieces = shipment.remaining.pieces;
+  // Weight scales roughly with remaining pallets when partial.
+  const loadWeight =
+    order.totalPallets > 0
+      ? (loadPallets / order.totalPallets) * order.totalWeightKg
+      : order.totalWeightKg;
+
   const newTotals = {
-    totalM2: order.totalM2,
-    totalPieces: order.totalPieces,
-    totalPallets: order.totalPallets,
-    totalWeightKg: order.totalWeightKg,
+    totalM2: loadM2,
+    totalPieces: loadPieces,
+    totalPallets: loadPallets,
+    totalWeightKg: loadWeight,
   };
 
   const capacity = checkVehicleCapacity(

@@ -189,6 +189,10 @@ export const deliveryProofs = sqliteTable("delivery_proofs", {
   photoData: blob("photo_data"),
   photoMime: text("photo_mime"),
   notes: text("notes"),
+  /** Qty sent on this delivery event (partial or full). Null = not tracked / legacy. */
+  sentPallets: real("sent_pallets"),
+  sentM2: real("sent_m2"),
+  sentPieces: integer("sent_pieces"),
   lat: real("lat"),
   lng: real("lng"),
   capturedAt: text("captured_at").notNull(),

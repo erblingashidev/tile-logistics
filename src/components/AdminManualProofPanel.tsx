@@ -43,6 +43,7 @@ export function AdminManualProofPanel({
 }: AdminManualProofPanelProps) {
   const [busyPhase, setBusyPhase] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
+  const [sentPallets, setSentPallets] = useState("");
   const [employeeId, setEmployeeId] = useState("");
   const [showNotesFor, setShowNotesFor] = useState<string | null>(null);
 
@@ -108,10 +109,17 @@ export function AdminManualProofPanel({
     ) {
       list.push({
         phase: "delivered",
-        label: "Close ticket — delivered",
+        label: "Close ticket — full remaining delivered",
         variant: "primary",
         needsNotes: true,
         hint: "Use when the driver confirmed by phone. Add a short note.",
+      });
+      list.push({
+        phase: "partial_delivery",
+        label: "Partial delivery — enter pallets sent",
+        variant: "secondary",
+        needsNotes: true,
+        hint: "Records how much went now; remainder stays open for another truck.",
       });
     }
 
@@ -125,6 +133,15 @@ export function AdminManualProofPanel({
       return;
     }
 
+    let partialPallets: number | undefined;
+    if (phase === "partial_delivery") {
+      partialPallets = Number(sentPallets);
+      if (!Number.isFinite(partialPallets) || partialPallets <= 0) {
+        onError("Enter how many pallets were delivered on this trip.");
+        return;
+      }
+    }
+
     setBusyPhase(phase);
     onError("");
 
@@ -135,8 +152,10 @@ export function AdminManualProofPanel({
         phase,
         notes: notes.trim() || undefined,
         employeeId: employeeId ? Number(employeeId) : undefined,
-        allowDeliveredWithoutPhoto: phase === "delivered",
-        force: phase === "loaded" || phase === "delivered",
+        allowDeliveredWithoutPhoto:
+          phase === "delivered" || phase === "partial_delivery",
+        force: phase === "loaded" || phase === "delivered" || phase === "partial_delivery",
+        sentPallets: partialPallets,
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -148,6 +167,7 @@ export function AdminManualProofPanel({
     }
 
     setNotes("");
+    setSentPallets("");
     setShowNotesFor(null);
     onSaved();
   }
@@ -190,14 +210,24 @@ export function AdminManualProofPanel({
         </div>
       )}
 
-      {(showNotesFor || notes) && (
-        <div className="mt-3">
+      {(showNotesFor || notes || sentPallets) && (
+        <div className="mt-3 space-y-2">
           <Input
             label="Note"
-            hint="Required for delivery close or cannot-load"
+            hint="Required for delivery close, partial delivery, or cannot-load"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
           />
+          {(showNotesFor === "partial_delivery" ||
+            actions.some((a) => a.phase === "partial_delivery")) && (
+            <Input
+              label="Pallets sent on this trip"
+              type="number"
+              value={sentPallets}
+              onChange={(e) => setSentPallets(e.target.value)}
+              hint="Required for partial delivery"
+            />
+          )}
         </div>
       )}
 

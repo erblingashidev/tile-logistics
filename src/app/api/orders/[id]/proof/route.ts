@@ -13,6 +13,7 @@ const ADMIN_PHASES = new Set<DeliveryProofPhase>([
   "load_skipped",
   "departed",
   "arrived",
+  "partial_delivery",
   "delivered",
 ]);
 
@@ -37,6 +38,9 @@ export async function POST(
   let allowDeliveredWithoutPhoto = false;
   let photoBuffer: Buffer | undefined;
   let photoMime: string | undefined;
+  let sentPallets: number | undefined;
+  let sentM2: number | undefined;
+  let sentPieces: number | undefined;
 
   if (contentType.includes("multipart/form-data")) {
     const form = await request.formData();
@@ -50,6 +54,12 @@ export async function POST(
     force = String(form.get("force") ?? "") === "true";
     allowDeliveredWithoutPhoto =
       String(form.get("allowDeliveredWithoutPhoto") ?? "") === "true";
+    const sp = form.get("sentPallets");
+    const sm = form.get("sentM2");
+    const spi = form.get("sentPieces");
+    if (sp != null && String(sp) !== "") sentPallets = Number(sp);
+    if (sm != null && String(sm) !== "") sentM2 = Number(sm);
+    if (spi != null && String(spi) !== "") sentPieces = Number(spi);
     const photo = form.get("photo");
     if (photo instanceof File && photo.size > 0) {
       photoBuffer = Buffer.from(await photo.arrayBuffer());
@@ -62,12 +72,18 @@ export async function POST(
       employeeId?: number;
       force?: boolean;
       allowDeliveredWithoutPhoto?: boolean;
+      sentPallets?: number;
+      sentM2?: number;
+      sentPieces?: number;
     };
     if (body.phase && ADMIN_PHASES.has(body.phase)) phase = body.phase;
     notes = body.notes?.trim() || undefined;
     employeeId = body.employeeId;
     force = Boolean(body.force);
     allowDeliveredWithoutPhoto = Boolean(body.allowDeliveredWithoutPhoto);
+    sentPallets = body.sentPallets;
+    sentM2 = body.sentM2;
+    sentPieces = body.sentPieces;
   }
 
   if (!phase) {
@@ -83,7 +99,12 @@ export async function POST(
     photoMime,
     force,
     allowDeliveredWithoutPhoto:
-      allowDeliveredWithoutPhoto || phase === "delivered",
+      allowDeliveredWithoutPhoto ||
+      phase === "delivered" ||
+      phase === "partial_delivery",
+    sentPallets: Number.isFinite(sentPallets) ? sentPallets : undefined,
+    sentM2: Number.isFinite(sentM2) ? sentM2 : undefined,
+    sentPieces: Number.isFinite(sentPieces) ? sentPieces : undefined,
   });
 
   if (!result.ok) {
