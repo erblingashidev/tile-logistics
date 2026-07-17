@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   buildOrdersExcel,
   buildLocationGroupedExcel,
+  buildPartialDeliveriesExcel,
 } from "@/lib/export/excel";
 import { parseWorkDayFilter } from "@/lib/delivery-schedule";
 
@@ -49,6 +50,24 @@ export async function GET(request: NextRequest) {
   const sp = request.nextUrl.searchParams;
   const type = sp.get("type") ?? "orders";
   const filters = parseExportFilters(sp);
+
+  if (type === "partial-deliveries") {
+    const buffer = await buildPartialDeliveriesExcel({
+      dateFrom: filters.dateFrom,
+      dateTo: filters.dateTo,
+      region: filters.region,
+      search: filters.search,
+      scope: sp.get("scope") === "all" ? "all" : "open",
+    });
+    return new NextResponse(new Uint8Array(buffer), {
+      headers: {
+        "Content-Type":
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition":
+          'attachment; filename="partial-deliveries.xlsx"',
+      },
+    });
+  }
 
   const buffer =
     type === "locations"

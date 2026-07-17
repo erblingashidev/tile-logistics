@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Badge, Button, Card, Input, PageSection, Select, StatCard, tableClass } from "@/components/ui";
@@ -70,6 +71,24 @@ export default function ReportsPage() {
 
   return (
     <AppShell title="Reports">
+      <div className="mb-6 grid gap-4 sm:grid-cols-2">
+        <Link href="/reports/partial-deliveries">
+          <Card className="h-full p-5 transition hover:border-zinc-400">
+            <p className="font-semibold text-zinc-900">Partial deliveries</p>
+            <p className="mt-1 text-sm text-zinc-600">
+              Open remaining qty, trip history, and Excel export for partial
+              orders.
+            </p>
+          </Card>
+        </Link>
+        <Card className="h-full p-5 border-dashed">
+          <p className="font-semibold text-zinc-900">Order analytics</p>
+          <p className="mt-1 text-sm text-zinc-600">
+            Filter by date, employee, and hour — table and Excel below.
+          </p>
+        </Card>
+      </div>
+
       <PageSection title="Filters">
         <Card className="p-4">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
