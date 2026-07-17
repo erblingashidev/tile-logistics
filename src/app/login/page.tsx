@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button, Card, Input, Alert } from "@/components/ui";
 import { BRAND } from "@/lib/brand";
+import { sq } from "@/lib/i18n/sq";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
@@ -22,14 +23,20 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "Login failed");
+        if (res.status === 400) {
+          setError(sq.login.required);
+        } else if (res.status === 401) {
+          setError(sq.login.invalid);
+        } else {
+          setError(data.error ?? sq.login.failed);
+        }
         return;
       }
       // Full navigation so the session cookie is picked up before middleware runs.
       window.location.href = data.redirect ?? "/";
       return;
     } catch {
-      setError("Could not connect. Try again.");
+      setError(sq.login.connect);
     } finally {
       setLoading(false);
     }
@@ -39,18 +46,19 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-zinc-100 px-4">
       <Card className="w-full max-w-md p-6">
         <p className="text-lg font-semibold text-zinc-900">{BRAND.name}</p>
-        <p className="mt-1 text-sm text-zinc-500">Sign in to continue</p>
+        <p className="mt-1 text-sm text-zinc-500">{sq.login.subtitle}</p>
+        <p className="mt-4 text-base font-medium text-zinc-900">{sq.login.title}</p>
 
-        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+        <form onSubmit={handleSubmit} className="mt-4 space-y-4">
           <Input
-            label="Username"
+            label={sq.login.username}
             autoComplete="username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             required
           />
           <Input
-            label="Password"
+            label={sq.login.password}
             type="password"
             autoComplete="current-password"
             value={password}
@@ -59,7 +67,7 @@ export default function LoginPage() {
           />
           {error && <Alert tone="error">{error}</Alert>}
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Signing in… (first load may take a moment)" : "Sign in"}
+            {loading ? sq.login.submitting : sq.login.submit}
           </Button>
         </form>
       </Card>

@@ -105,17 +105,6 @@ export async function assertLoaderCanMarkLoaded(
   }
 
   const db = await getDb();
-  const proofs = await dbAll(
-    db
-      .select({ phase: deliveryProofs.phase })
-      .from(deliveryProofs)
-      .where(eq(deliveryProofs.orderId, orderId))
-  );
-  const hasPrepared = proofs.some((p) => p.phase === "prepared");
-  if (!hasPrepared) {
-    return { ok: false, error: "Mark the order as prepared first." };
-  }
-
   const vehicle = await dbOne(
     db
       .select({ status: vehicles.status })
@@ -180,7 +169,7 @@ export async function getOrderLoadStatus(orderId: number): Promise<{
 
   let canMarkLoaded = false;
   let loadBlockedReason: string | null = null;
-  if (prepStatus === "prepared" && loadStatus === "pending") {
+  if (loadStatus === "pending") {
     const check = await assertLoaderCanMarkLoaded(orderId);
     canMarkLoaded = check.ok;
     loadBlockedReason = check.ok ? null : check.error;

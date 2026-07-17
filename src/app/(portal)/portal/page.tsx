@@ -20,12 +20,12 @@ import {
   type EmployeeRole,
 } from "@/lib/constants";
 import { WAREHOUSE_REPORT_ROLES } from "@/lib/employee-categories";
-import { BRAND } from "@/lib/brand";
 import {
   orderStatusLabelSq,
   proofLabelSq,
   sq,
   statusLabelSq,
+  localizePortalError,
 } from "@/lib/i18n/sq";
 import { formatDeliverySchedule } from "@/lib/delivery-schedule";
 import type { OrderDisplayStage } from "@/lib/order-display";
@@ -144,6 +144,9 @@ export default function PortalPage() {
   const [busyArriving, setBusyArriving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [skipNotes, setSkipNotes] = useState<Record<number, string>>({});
+  const [skipOpen, setSkipOpen] = useState<Record<number, boolean>>({});
+  const [detailsOpen, setDetailsOpen] = useState<Record<number, boolean>>({});
+  const [statusOpen, setStatusOpen] = useState(false);
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const load = useCallback(async () => {
@@ -192,7 +195,7 @@ export default function PortalPage() {
     });
     if (!res.ok) {
       const data = await res.json();
-      setError(data.error ?? sq.errors.status);
+      setError(localizePortalError(data.error) || sq.errors.status);
       return;
     }
     setMyStatus(status);
@@ -208,7 +211,7 @@ export default function PortalPage() {
     const data = await res.json();
     setBusyArriving(false);
     if (!res.ok) {
-      setError(data.error ?? sq.errors.status);
+      setError(localizePortalError(data.error) || sq.errors.status);
       return;
     }
     setSuccess(sq.truckArrivedSuccess);
@@ -282,16 +285,18 @@ export default function PortalPage() {
         setError(sq.errors.unauthorized);
       } else if (res.status === 403) {
         setError(sq.errors.forbidden);
-      } else if (msg.includes("not assigned")) {
+      } else if (String(msg).toLowerCase().includes("not assigned")) {
         setError(sq.errors.notAssigned);
       } else {
-        setError(msg);
+        setError(localizePortalError(msg));
       }
       return;
     }
 
     if (data.warning) {
       setSuccess(`${proofLabelSq(phase)} — ${sq.successSaved} (${data.warning})`);
+    } else if (phase === "loaded") {
+      setSuccess(sq.successReadyOnTruck);
     } else {
       setSuccess(
         phase === "departed"
@@ -320,17 +325,9 @@ export default function PortalPage() {
   const showReportsLink =
     employee?.roles.some((r) => WAREHOUSE_REPORT_ROLES.includes(r)) ?? false;
 
-  function loaderPhasesForOrder(order: PortalOrder) {
-    if (!isLoader) return [];
-    if (order.loadStatus === "loaded" || order.loadStatus === "load_skipped") {
-      return [];
-    }
-    if (order.prepStatus !== "prepared") {
-      return DELIVERY_PROOF_PHASES.filter((p) => p.id === "prepared");
-    }
-    return DELIVERY_PROOF_PHASES.filter(
-      (p) => p.id === "loaded" || p.id === "load_skipped"
-    );
+  function loaderNeedsAction(order: PortalOrder) {
+    if (!isLoader) return false;
+    return order.loadStatus !== "loaded" && order.loadStatus !== "load_skipped";
   }
 
   function driverPhasesForOrder(order: PortalOrder) {
@@ -391,25 +388,34 @@ export default function PortalPage() {
       )}
 
       <PortalCard>
-        <PortalSectionTitle className="mb-3 normal-case tracking-normal text-zinc-700">
-          {sq.myStatus}
-        </PortalSectionTitle>
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-          {EMPLOYEE_STATUSES.map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setStatus(s)}
-              className={`rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
-                myStatus === s
-                  ? "bg-zinc-900 text-white shadow-sm"
-                  : "border border-zinc-200 bg-zinc-50 text-zinc-700 hover:border-zinc-300"
-              }`}
-            >
-              {statusLabelSq(s)}
-            </button>
-          ))}
-        </div>
+        <button
+          type="button"
+          className="flex w-full items-center justify-between text-left"
+          onClick={() => setStatusOpen((v) => !v)}
+        >
+          <span className="text-sm font-semibold text-zinc-700">
+            {sq.showStatus}: {statusLabelSq(myStatus)}
+          </span>
+          <span className="text-xs text-zinc-400">{statusOpen ? "▴" : "▾"}</span>
+        </button>
+        {statusOpen && (
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            {EMPLOYEE_STATUSES.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setStatus(s)}
+                className={`rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
+                  myStatus === s
+                    ? "bg-zinc-900 text-white shadow-sm"
+                    : "border border-zinc-200 bg-zinc-50 text-zinc-700 hover:border-zinc-300"
+                }`}
+              >
+                {statusLabelSq(s)}
+              </button>
+            ))}
+          </div>
+        )}
       </PortalCard>
 
       {isDriver &&
@@ -501,28 +507,37 @@ export default function PortalPage() {
           ) : (
             <div className="space-y-3">
               {orders.map((order) => {
-                const loaderPhases = loaderPhasesForOrder(order);
+                const needsLoad = loaderNeedsAction(order);
                 const driverPhases = driverPhasesForOrder(order);
+                const showDetails = Boolean(detailsOpen[order.id]);
+                const showSkip = Boolean(skipOpen[order.id]);
+                const truckLine = order.assignment
+                  ? sq.truckRound(
+                      order.assignment.vehicleName,
+                      order.assignment.deliveryRound
+                    )
+                  : null;
 
                 return (
                   <PortalCard key={order.id} className="overflow-hidden">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="font-semibold text-zinc-900">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-lg font-bold tracking-tight text-zinc-900">
                           {order.invoiceNumber}
                         </p>
-                        <p className="text-sm text-zinc-600">
+                        <p className="mt-0.5 truncate text-sm text-zinc-600">
                           {order.customerName}
                         </p>
-                        <p className="mt-1 text-xs text-zinc-500">
-                          {formatDeliverySchedule(order)}
-                        </p>
-                        {order.assignment && (
-                          <p className="mt-1 text-xs text-zinc-500">
-                            {order.assignment.vehicleName} (R
-                            {order.assignment.deliveryRound})
+                        {truckLine && (
+                          <p className="mt-2 text-sm font-medium text-zinc-800">
+                            {truckLine}
                           </p>
                         )}
+                        <p className="mt-1 text-xs text-zinc-500">
+                          {sq.palletsShort(order.totalPallets)}
+                          {" · "}
+                          {formatDeliverySchedule(order)}
+                        </p>
                       </div>
                       <Badge
                         tone={
@@ -539,100 +554,99 @@ export default function PortalPage() {
                     </div>
 
                     {order.loadStatus === "load_skipped" && (
-                      <p className="mt-2 rounded bg-red-50 px-2 py-1.5 text-xs text-red-800">
+                      <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
                         {sq.notLoadedPrefix} {order.loadNotes ?? "—"}
                       </p>
                     )}
 
+                    {order.loadStatus === "loaded" && isLoader && (
+                      <p className="mt-3 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-800">
+                        {sq.loadedOnTruckPicker}
+                      </p>
+                    )}
+
                     {driverOrderIsInfoOnly(order) && (
-                      <p className="mt-2 rounded bg-zinc-100 px-2 py-1.5 text-xs text-zinc-700">
-                        {order.prepStatus === "prepared"
-                          ? sq.loadedOnTruckPicker
+                      <p className="mt-3 rounded-lg bg-zinc-100 px-3 py-2 text-sm text-zinc-700">
+                        {order.loadStatus === "load_skipped"
+                          ? sq.notOnTruck
                           : sq.driverWaitingLoad}
                       </p>
                     )}
 
-                    {(order.proofs ?? []).length > 0 && (
-                      <ul className="mt-3 space-y-1 border-t border-zinc-100 pt-3 text-xs text-zinc-600">
-                        {order.proofs!.map((p) => (
-                          <li key={p.phase}>
-                            ✓ {proofLabelSq(p.phase)}
-                            {p.notes ? ` — ${p.notes}` : ""}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-
-                    {isLoader && loaderPhases.length > 0 && (
-                      <div className="mt-4 space-y-2 border-t border-zinc-100 pt-3">
-                        {loaderPhases.some((p) => p.id === "prepared") && (
-                          <div className="rounded-lg border p-3">
-                            <p className="mb-2 text-xs font-medium text-zinc-700">
-                              {sq.loaderStepPrepare}
-                            </p>
-                            <Button
-                              className="w-full"
-                              disabled={busyOrderId === order.id}
-                              onClick={() => submitProof(order.id, "prepared")}
-                            >
-                              {sq.markPrepared}
-                            </Button>
-                          </div>
+                    {needsLoad && (
+                      <div className="mt-4 space-y-2">
+                        {order.loadBlockedReason && (
+                          <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                            {localizePortalError(order.loadBlockedReason)}
+                          </p>
                         )}
-                        {loaderPhases.some((p) => p.id === "loaded") && (
-                          <>
-                            <div className="rounded-lg border p-3">
-                              <p className="mb-2 text-xs font-medium text-zinc-700">
-                                {sq.loaderStepLoad}
-                              </p>
-                              {order.loadBlockedReason && (
-                                <p className="mb-2 rounded bg-amber-50 px-2 py-1.5 text-xs text-amber-900">
-                                  {order.loadBlockedReason}
-                                </p>
-                              )}
-                              <Button
-                                className="w-full"
-                                disabled={
-                                  busyOrderId === order.id ||
-                                  order.canMarkLoaded === false
+                        <Button
+                          className="w-full py-3 text-base"
+                          disabled={
+                            busyOrderId === order.id ||
+                            order.canMarkLoaded === false
+                          }
+                          onClick={() => submitProof(order.id, "loaded")}
+                        >
+                          {sq.readyOnTruck}
+                        </Button>
+
+                        {!showSkip ? (
+                          <button
+                            type="button"
+                            className="w-full py-2 text-center text-sm font-medium text-amber-800 underline-offset-2 hover:underline"
+                            onClick={() =>
+                              setSkipOpen({ ...skipOpen, [order.id]: true })
+                            }
+                          >
+                            {sq.cannotLoadProblem}
+                          </button>
+                        ) : (
+                          <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+                            <p className="text-sm font-medium text-zinc-900">
+                              {sq.cannotLoadTitle}
+                            </p>
+                            <textarea
+                              className="mt-2 w-full rounded border border-zinc-200 p-2 text-sm"
+                              rows={2}
+                              placeholder={sq.cannotLoadPlaceholder}
+                              value={skipNotes[order.id] ?? ""}
+                              onChange={(e) =>
+                                setSkipNotes({
+                                  ...skipNotes,
+                                  [order.id]: e.target.value,
+                                })
+                              }
+                            />
+                            <Button
+                              variant="secondary"
+                              className="mt-2 w-full"
+                              disabled={busyOrderId === order.id}
+                              onClick={() => {
+                                if (
+                                  !confirm(sq.confirmCannotLoadAsk)
+                                ) {
+                                  return;
                                 }
-                                onClick={() => submitProof(order.id, "loaded")}
-                              >
-                                {sq.markLoaded}
-                              </Button>
-                            </div>
-                            <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3">
-                              <p className="text-sm font-medium text-zinc-900">
-                                {sq.cannotLoadTitle}
-                              </p>
-                              <textarea
-                                className="mt-2 w-full rounded border border-zinc-200 p-2 text-sm"
-                                rows={2}
-                                placeholder={sq.cannotLoadPlaceholder}
-                                value={skipNotes[order.id] ?? ""}
-                                onChange={(e) =>
-                                  setSkipNotes({
-                                    ...skipNotes,
-                                    [order.id]: e.target.value,
-                                  })
-                                }
-                              />
-                              <Button
-                                variant="secondary"
-                                className="mt-2 w-full"
-                                disabled={busyOrderId === order.id}
-                                onClick={() =>
-                                  submitProof(
-                                    order.id,
-                                    "load_skipped",
-                                    skipNotes[order.id]
-                                  )
-                                }
-                              >
-                                {sq.confirmCannotLoad}
-                              </Button>
-                            </div>
-                          </>
+                                void submitProof(
+                                  order.id,
+                                  "load_skipped",
+                                  skipNotes[order.id]
+                                );
+                              }}
+                            >
+                              {sq.confirmCannotLoad}
+                            </Button>
+                            <button
+                              type="button"
+                              className="mt-2 w-full text-center text-xs text-zinc-500"
+                              onClick={() =>
+                                setSkipOpen({ ...skipOpen, [order.id]: false })
+                              }
+                            >
+                              {sq.hideDetails}
+                            </button>
+                          </div>
                         )}
                       </div>
                     )}
@@ -641,46 +655,66 @@ export default function PortalPage() {
                       <div className="mt-4 space-y-2">
                         {driverPhases.map((phase) => {
                           const done = hasProof(order, phase.id);
+                          if (done) return null;
                           return (
                             <div
                               key={phase.id}
-                              className={`rounded-lg border p-3 ${
-                                done
-                                  ? "border-green-200 bg-green-50"
-                                  : "border-zinc-200"
-                              }`}
+                              className="rounded-lg border border-zinc-200 p-3"
                             >
-                              {!done && (
-                                <>
-                                  <p className="text-sm font-medium">
-                                    {driverPhaseLabel(phase.id)}
-                                  </p>
-                                  <input
-                                    ref={(el) => {
-                                      fileRefs.current[`${order.id}-${phase.id}`] =
-                                        el;
-                                    }}
-                                    type="file"
-                                    accept="image/*"
-                                    capture="environment"
-                                    className="mt-2 block w-full text-xs"
-                                  />
-                                  <Button
-                                    className="mt-2 w-full"
-                                    disabled={busyOrderId === order.id}
-                                    onClick={() =>
-                                      submitProof(order.id, phase.id)
-                                    }
-                                  >
-                                    {phase.photoRequired
-                                      ? sq.confirmWithPhoto
-                                      : sq.driverMarkDone}
-                                  </Button>
-                                </>
-                              )}
+                              <p className="text-sm font-medium">
+                                {driverPhaseLabel(phase.id)}
+                              </p>
+                              <input
+                                ref={(el) => {
+                                  fileRefs.current[`${order.id}-${phase.id}`] =
+                                    el;
+                                }}
+                                type="file"
+                                accept="image/*"
+                                capture="environment"
+                                className="mt-2 block w-full text-xs"
+                              />
+                              <Button
+                                className="mt-2 w-full py-3"
+                                disabled={busyOrderId === order.id}
+                                onClick={() =>
+                                  submitProof(order.id, phase.id)
+                                }
+                              >
+                                {phase.photoRequired
+                                  ? sq.confirmWithPhoto
+                                  : sq.driverMarkDone}
+                              </Button>
                             </div>
                           );
                         })}
+                      </div>
+                    )}
+
+                    {(order.proofs ?? []).length > 0 && (
+                      <div className="mt-3 border-t border-zinc-100 pt-2">
+                        <button
+                          type="button"
+                          className="text-xs font-medium text-zinc-500"
+                          onClick={() =>
+                            setDetailsOpen({
+                              ...detailsOpen,
+                              [order.id]: !showDetails,
+                            })
+                          }
+                        >
+                          {showDetails ? sq.hideDetails : sq.showDetails}
+                        </button>
+                        {showDetails && (
+                          <ul className="mt-2 space-y-1 text-xs text-zinc-600">
+                            {order.proofs!.map((p) => (
+                              <li key={p.phase}>
+                                ✓ {proofLabelSq(p.phase)}
+                                {p.notes ? ` — ${p.notes}` : ""}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
                       </div>
                     )}
                   </PortalCard>

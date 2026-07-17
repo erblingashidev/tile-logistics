@@ -495,6 +495,18 @@ export async function submitDeliveryProof(input: {
     if (!loadCheck.ok) {
       return { ok: false as const, error: loadCheck.error };
     }
+    // One-tap floor path: auto-record prepared when missing.
+    if (loadStatus.prepStatus !== "prepared") {
+      await insertProofRecord({
+        orderId: input.orderId,
+        employeeId: input.employeeId,
+        phase: "prepared",
+        photoPath: null,
+        notes: undefined,
+        lat: input.lat,
+        lng: input.lng,
+      });
+    }
   }
 
   if (LOADER_PHASES.has(input.phase)) {
@@ -729,6 +741,18 @@ export async function submitAdminDeliveryProof(input: {
     if (!loadCheck.ok) {
       return { ok: false as const, error: loadCheck.error };
     }
+  }
+
+  if (
+    input.phase === "loaded" &&
+    loadStatus.prepStatus !== "prepared"
+  ) {
+    await insertProofRecord({
+      orderId: input.orderId,
+      employeeId: actorId,
+      phase: "prepared",
+      photoPath: null,
+    });
   }
 
   if (input.phase === "departed") {

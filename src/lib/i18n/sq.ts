@@ -48,14 +48,23 @@ export const sq = {
   loaderConfirm: "Ngarkuesi — konfirmo porosinë",
   markLoaded: "✓ Ngarkuar në kamion",
   markPrepared: "✓ E përgatitura",
+  /** One primary floor action — prepare + load in a single tap. */
+  readyOnTruck: "✓ Gati në kamion",
   waitingTruckReturn: "Kamioni nuk është kthyer ende — prit derisa shoferi të konfirmojë arritjen në depo.",
   driverWaitingLoad: "Pritet ngarkimi nga depo — pa veprime derisa ngarkuesi ta ngarkojë.",
   driverInfoOnly: "Informacion — raund tjetër",
   loaderStepPrepare: "Hapi 1 — e përgatitura",
   loaderStepLoad: "Hapi 2 — ngarko në kamion",
   cannotLoadTitle: "Nuk mund të ngarkohet?",
+  cannotLoadProblem: "Problem?",
   cannotLoadPlaceholder: "Shkruaj arsyen (e detyrueshme)…",
   confirmCannotLoad: "Konfirmo — nuk ngarkohet",
+  confirmCannotLoadAsk: "Je i sigurt? Porosia nuk do të ngarkohet në kamion.",
+  showDetails: "Detaje",
+  hideDetails: "Fshih",
+  showStatus: "Statusi im",
+  palletsShort: (n: number) => `${n} paleta`,
+  truckRound: (name: string, round: number) => `${name} · Raundi ${round}`,
 
   driverArrived: "Mbërrita te klienti",
   driverDeliveredPhoto: "Dorëzuar — bëj foto",
@@ -83,6 +92,20 @@ export const sq = {
 
   successDeparted: "Kamioni doli — porositë janë në rrugë",
   successSaved: "U ruaj",
+  successReadyOnTruck: "U shënua gati në kamion — prit shoferin",
+
+  login: {
+    title: "Hyr në sistem",
+    subtitle: "Depo · shofer · admin",
+    username: "Emri i përdoruesit",
+    password: "Fjalëkalimi",
+    submit: "Hyr",
+    submitting: "Duke u futur…",
+    failed: "Hyrja dështoi",
+    required: "Shkruaj emrin dhe fjalëkalimin",
+    invalid: "Emri ose fjalëkalimi janë gabim",
+    connect: "Nuk u lidh. Provo përsëri.",
+  },
 
   wmsTitle: "Depo — regjistrim",
   wmsReceive: "Shkarkim nga kamioni",
@@ -127,6 +150,13 @@ export const sq = {
     eanRequired: "Shkruaj kodin EAN.",
     m2Required: "Shkruaj sasinë në m².",
     locationRequired: "Zgjidh vendndodhjen.",
+    notOnTruck: "Porosia nuk është caktuar në kamion.",
+    truckStillOut:
+      "Kamioni është ende jashtë — prit derisa shoferi të konfirmojë arritjen në depo.",
+    alreadyPrepared: "Porosia është shënuar tashmë si e përgatitur.",
+    alreadyLoaded: "Porosia është tashmë në kamion.",
+    alreadySkipped: "Porosia është shënuar si “nuk ngarkohet”.",
+    prepareFirst: "Shëno fillimisht si e përgatitur.",
   },
 
   reportsLink: "Raportet e depo",
@@ -189,4 +219,51 @@ export function orderStatusLabelSq(status: string): string {
 
 export function proofLabelSq(phase: string): string {
   return sq.proof[phase] ?? phase;
+}
+
+/** Map known English API/server messages to Albanian for the portal. */
+export function localizePortalError(message: string | null | undefined): string {
+  if (!message?.trim()) return sq.errors.generic;
+  const m = message.trim();
+  const lower = m.toLowerCase();
+
+  if (lower.includes("not assigned to a truck") || lower.includes("order is not assigned")) {
+    return sq.errors.notOnTruck;
+  }
+  if (
+    lower.includes("still out or returning") ||
+    lower.includes("confirms arrival at the warehouse")
+  ) {
+    return sq.errors.truckStillOut;
+  }
+  if (lower.includes("mark the order as prepared")) {
+    return sq.errors.prepareFirst;
+  }
+  if (lower.includes("already marked as prepared")) {
+    return sq.errors.alreadyPrepared;
+  }
+  if (lower.includes("already loaded") || lower.includes("already marked as loaded")) {
+    return sq.errors.alreadyLoaded;
+  }
+  if (lower.includes("cannot load") || lower.includes("could not be loaded")) {
+    return sq.errors.alreadySkipped;
+  }
+  if (lower.includes("not assigned") && lower.includes("order")) {
+    return sq.errors.notAssigned;
+  }
+  if (lower.includes("photo is required") || lower.includes("photo")) {
+    if (lower.includes("required")) return sq.errors.photoRequired;
+  }
+  if (lower.includes("explain why")) {
+    return sq.errors.notesRequired;
+  }
+  if (lower.includes("unauthorized") || lower.includes("session")) {
+    return sq.errors.unauthorized;
+  }
+  if (lower.includes("forbidden") || lower.includes("permission")) {
+    return sq.errors.forbidden;
+  }
+
+  // Already Albanian or unknown — show as-is
+  return m;
 }
