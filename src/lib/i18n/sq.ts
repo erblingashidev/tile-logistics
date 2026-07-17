@@ -32,6 +32,7 @@ export const sq = {
       pending > 0 ? ` · ${pending} pret ngarkuesin` : ""
     }`,
   waitingLoader: "pret ngarkuesin",
+  waitingLoadOnTruck: "e përgatitura — pret ngarkimin",
   readyToLeave: "gati për nisje",
   allLeft: "✓ Të gjitha porositë e ngarkuara kanë dalë nga depo",
   leaveWarehouse: (n: number) =>
@@ -41,6 +42,8 @@ export const sq = {
 
   loadedOnTruckDriver: "✓ Ngarkuar — përdor “Dil nga depo” te kamioni",
   loadedOnTruckPicker: "✓ Ngarkuar në kamion — prit shoferin",
+  preparedWaitingLoad:
+    "✓ E përgatitura — pret ngarkimin në kamion / dorëzimin",
   waitingLoaderConfirm: "○ Pritet konfirmimi i ngarkuesit",
   notLoaded: "Nuk u ngarkua",
   notOnTruck: "Nuk është në kamion — nuk ka hapa dorëzimi.",
@@ -48,10 +51,11 @@ export const sq = {
   loaderConfirm: "Ngarkuesi — konfirmo porosinë",
   markLoaded: "✓ Ngarkuar në kamion",
   markPrepared: "✓ E përgatitura",
-  /** One primary floor action — prepare + load in a single tap. */
   readyOnTruck: "✓ Gati në kamion",
   waitingTruckReturn: "Kamioni nuk është kthyer ende — prit derisa shoferi të konfirmojë arritjen në depo.",
-  driverWaitingLoad: "Pritet ngarkimi nga depo — pa veprime derisa ngarkuesi ta ngarkojë.",
+  driverWaitingLoad: "Pritet përgatitja / ngarkimi nga depo — pa veprime derisa ngarkuesi ta ngarkojë.",
+  driverWaitingPrepared:
+    "E përgatitura në depo — pret ngarkimin në kamion.",
   driverInfoOnly: "Informacion — raund tjetër",
   loaderStepPrepare: "Hapi 1 — e përgatitura",
   loaderStepLoad: "Hapi 2 — ngarko në kamion",
@@ -104,6 +108,8 @@ export const sq = {
 
   successDeparted: "Kamioni doli — porositë janë në rrugë",
   successSaved: "U ruaj",
+  successPrepared: "U shënua e përgatitura — pret ngarkimin në kamion",
+  successLoaded: "U shënua ngarkuar në kamion — prit shoferin",
   successReadyOnTruck: "U shënua gati në kamion — prit shoferin",
 
   login: {

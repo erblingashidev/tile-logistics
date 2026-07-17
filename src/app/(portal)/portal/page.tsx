@@ -86,6 +86,7 @@ interface TruckLoadGroup {
     orderId: number;
     invoiceNumber: string;
     customerName: string;
+    prepStatus?: "pending" | "prepared";
     loadStatus: "pending" | "loaded" | "load_skipped";
     loadNotes: string | null;
     awaitingDepart?: boolean;
@@ -327,8 +328,10 @@ export default function PortalPage() {
       setSuccess(`${proofLabelSq(phase)} — ${sq.successSaved} (${data.warning})`);
     } else if (phase === "partial_delivery") {
       setSuccess(sq.successPartialDelivery);
+    } else if (phase === "prepared") {
+      setSuccess(sq.successPrepared);
     } else if (phase === "loaded") {
-      setSuccess(sq.successReadyOnTruck);
+      setSuccess(sq.successLoaded);
     } else {
       setSuccess(
         phase === "departed"
@@ -485,14 +488,20 @@ export default function PortalPage() {
                         ? "✓"
                         : o.loadStatus === "load_skipped"
                           ? "✗"
-                          : "○"}
+                          : o.prepStatus === "prepared"
+                            ? "◐"
+                            : "○"}
                     </span>
                     <span>
                       {o.invoiceNumber}
                       {o.loadStatus === "load_skipped" && o.loadNotes
                         ? ` — ${o.loadNotes}`
                         : ""}
-                      {o.loadStatus === "pending" ? ` — ${sq.waitingLoader}` : ""}
+                      {o.loadStatus === "pending"
+                        ? o.prepStatus === "prepared"
+                          ? ` — ${sq.waitingLoadOnTruck}`
+                          : ` — ${sq.waitingLoader}`
+                        : ""}
                       {o.awaitingDepart ? ` — ${sq.readyToLeave}` : ""}
                     </span>
                   </li>
@@ -588,13 +597,21 @@ export default function PortalPage() {
                             ? "green"
                             : order.loadStatus === "load_skipped"
                               ? "red"
+                              : order.prepStatus === "prepared"
+                                ? "blue"
                               : order.status === "partially_delivered"
                                 ? "amber"
                                 : statusTone[order.status] ?? "slate"
                         }
                       >
-                        {order.deliveryStageLabel ??
-                          orderStatusLabelSq(order.status)}
+                        {order.loadStatus === "loaded"
+                          ? sq.proof.loaded
+                          : order.loadStatus === "load_skipped"
+                            ? sq.proof.load_skipped
+                            : order.prepStatus === "prepared"
+                              ? sq.proof.prepared
+                              : order.deliveryStageLabel ??
+                                orderStatusLabelSq(order.status)}
                       </Badge>
                     </div>
 
@@ -621,11 +638,21 @@ export default function PortalPage() {
                       </p>
                     )}
 
+                    {isLoader &&
+                      order.prepStatus === "prepared" &&
+                      order.loadStatus === "pending" && (
+                      <p className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-900">
+                        {sq.preparedWaitingLoad}
+                      </p>
+                    )}
+
                     {driverOrderIsInfoOnly(order) && (
                       <p className="mt-3 rounded-lg bg-zinc-100 px-3 py-2 text-sm text-zinc-700">
                         {order.loadStatus === "load_skipped"
                           ? sq.notOnTruck
-                          : sq.driverWaitingLoad}
+                          : order.prepStatus === "prepared"
+                            ? sq.driverWaitingPrepared
+                            : sq.driverWaitingLoad}
                       </p>
                     )}
 
@@ -636,73 +663,87 @@ export default function PortalPage() {
                             {localizePortalError(order.loadBlockedReason)}
                           </p>
                         )}
-                        <Button
-                          className="w-full py-3 text-base"
-                          disabled={
-                            busyOrderId === order.id ||
-                            order.canMarkLoaded === false
-                          }
-                          onClick={() => submitProof(order.id, "loaded")}
-                        >
-                          {sq.readyOnTruck}
-                        </Button>
 
-                        {!showSkip ? (
-                          <button
-                            type="button"
-                            className="w-full py-2 text-center text-sm font-medium text-amber-800 underline-offset-2 hover:underline"
-                            onClick={() =>
-                              setSkipOpen({ ...skipOpen, [order.id]: true })
-                            }
+                        {order.prepStatus !== "prepared" ? (
+                          <Button
+                            className="w-full py-3 text-base"
+                            disabled={busyOrderId === order.id}
+                            onClick={() => submitProof(order.id, "prepared")}
                           >
-                            {sq.cannotLoadProblem}
-                          </button>
+                            {sq.markPrepared}
+                          </Button>
                         ) : (
-                          <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3">
-                            <p className="text-sm font-medium text-zinc-900">
-                              {sq.cannotLoadTitle}
-                            </p>
-                            <textarea
-                              className="mt-2 w-full rounded border border-zinc-200 p-2 text-sm"
-                              rows={2}
-                              placeholder={sq.cannotLoadPlaceholder}
-                              value={skipNotes[order.id] ?? ""}
-                              onChange={(e) =>
-                                setSkipNotes({
-                                  ...skipNotes,
-                                  [order.id]: e.target.value,
-                                })
-                              }
-                            />
+                          <>
                             <Button
-                              variant="secondary"
-                              className="mt-2 w-full"
-                              disabled={busyOrderId === order.id}
-                              onClick={() => {
-                                if (
-                                  !confirm(sq.confirmCannotLoadAsk)
-                                ) {
-                                  return;
-                                }
-                                void submitProof(
-                                  order.id,
-                                  "load_skipped",
-                                  skipNotes[order.id]
-                                );
-                              }}
-                            >
-                              {sq.confirmCannotLoad}
-                            </Button>
-                            <button
-                              type="button"
-                              className="mt-2 w-full text-center text-xs text-zinc-500"
-                              onClick={() =>
-                                setSkipOpen({ ...skipOpen, [order.id]: false })
+                              className="w-full py-3 text-base"
+                              disabled={
+                                busyOrderId === order.id ||
+                                order.canMarkLoaded === false
                               }
+                              onClick={() => submitProof(order.id, "loaded")}
                             >
-                              {sq.hideDetails}
-                            </button>
-                          </div>
+                              {sq.markLoaded}
+                            </Button>
+
+                            {!showSkip ? (
+                              <button
+                                type="button"
+                                className="w-full py-2 text-center text-sm font-medium text-amber-800 underline-offset-2 hover:underline"
+                                onClick={() =>
+                                  setSkipOpen({ ...skipOpen, [order.id]: true })
+                                }
+                              >
+                                {sq.cannotLoadProblem}
+                              </button>
+                            ) : (
+                              <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+                                <p className="text-sm font-medium text-zinc-900">
+                                  {sq.cannotLoadTitle}
+                                </p>
+                                <textarea
+                                  className="mt-2 w-full rounded border border-zinc-200 p-2 text-sm"
+                                  rows={2}
+                                  placeholder={sq.cannotLoadPlaceholder}
+                                  value={skipNotes[order.id] ?? ""}
+                                  onChange={(e) =>
+                                    setSkipNotes({
+                                      ...skipNotes,
+                                      [order.id]: e.target.value,
+                                    })
+                                  }
+                                />
+                                <Button
+                                  variant="secondary"
+                                  className="mt-2 w-full"
+                                  disabled={busyOrderId === order.id}
+                                  onClick={() => {
+                                    if (!confirm(sq.confirmCannotLoadAsk)) {
+                                      return;
+                                    }
+                                    void submitProof(
+                                      order.id,
+                                      "load_skipped",
+                                      skipNotes[order.id]
+                                    );
+                                  }}
+                                >
+                                  {sq.confirmCannotLoad}
+                                </Button>
+                                <button
+                                  type="button"
+                                  className="mt-2 w-full text-center text-xs text-zinc-500"
+                                  onClick={() =>
+                                    setSkipOpen({
+                                      ...skipOpen,
+                                      [order.id]: false,
+                                    })
+                                  }
+                                >
+                                  {sq.hideDetails}
+                                </button>
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     )}
