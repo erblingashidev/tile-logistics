@@ -53,7 +53,10 @@ interface PortalOrder {
     ordered: { pallets: number; m2: number; pieces: number };
     sent: { pallets: number; m2: number; pieces: number };
     remaining: { pallets: number; m2: number; pieces: number };
+    remainingUndelivered?: { pallets: number; m2: number; pieces: number };
+    onTruck?: { pallets: number; m2: number; pieces: number } | null;
     hasPartialShipments: boolean;
+    isPartialLoad?: boolean;
     isFullyDelivered: boolean;
   };
   assignment?: {
@@ -161,6 +164,12 @@ export default function PortalPage() {
   const [partialPallets, setPartialPallets] = useState<Record<number, string>>(
     {}
   );
+  const [partialLoadOpen, setPartialLoadOpen] = useState<
+    Record<number, boolean>
+  >({});
+  const [partialLoadPallets, setPartialLoadPallets] = useState<
+    Record<number, string>
+  >({});
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const load = useCallback(async () => {
@@ -275,6 +284,15 @@ export default function PortalPage() {
       }
     }
 
+    if (phase === "loaded" && extras?.sentPallets != null) {
+      const pallets = extras.sentPallets;
+      if (!Number.isFinite(pallets) || pallets <= 0) {
+        setError(sq.errors.partialLoadPallets);
+        setBusyOrderId(null);
+        return;
+      }
+    }
+
     const form = new FormData();
     form.set("phase", phase);
     if (file) form.set("photo", file);
@@ -331,7 +349,11 @@ export default function PortalPage() {
     } else if (phase === "prepared") {
       setSuccess(sq.successPrepared);
     } else if (phase === "loaded") {
-      setSuccess(sq.successLoaded);
+      setSuccess(
+        extras?.sentPallets != null
+          ? sq.successPartialLoad
+          : sq.successLoaded
+      );
     } else {
       setSuccess(
         phase === "departed"
@@ -615,14 +637,20 @@ export default function PortalPage() {
                       </Badge>
                     </div>
 
-                    {order.shipment?.hasPartialShipments && (
+                    {(order.shipment?.hasPartialShipments ||
+                      order.shipment?.isPartialLoad) && (
                       <p className="mt-3 rounded-lg bg-orange-50 px-3 py-2 text-sm text-orange-900">
                         {sq.deliveryOrdered(order.shipment.ordered.pallets)}
                         {" · "}
-                        {sq.deliveryRemaining(
-                          order.shipment.sent.pallets,
-                          order.shipment.remaining.pallets
-                        )}
+                        {order.shipment.onTruck
+                          ? sq.partialLoadOnTruck(
+                              order.shipment.onTruck.pallets,
+                              order.shipment.remaining.pallets
+                            )
+                          : sq.deliveryRemaining(
+                              order.shipment.sent.pallets,
+                              order.shipment.remaining.pallets
+                            )}
                       </p>
                     )}
 
@@ -682,8 +710,94 @@ export default function PortalPage() {
                               }
                               onClick={() => submitProof(order.id, "loaded")}
                             >
-                              {sq.markLoaded}
+                              {sq.markLoadedFull}
                             </Button>
+
+                            {!partialLoadOpen[order.id] ? (
+                              <button
+                                type="button"
+                                className="w-full py-2 text-center text-sm font-medium text-orange-800 underline-offset-2 hover:underline"
+                                onClick={() =>
+                                  setPartialLoadOpen({
+                                    ...partialLoadOpen,
+                                    [order.id]: true,
+                                  })
+                                }
+                              >
+                                {sq.markLoadedPartial}
+                              </button>
+                            ) : (
+                              <div className="rounded-lg border border-orange-200 bg-orange-50/70 p-3">
+                                <p className="text-sm font-medium text-zinc-900">
+                                  {sq.partialLoadHint}
+                                </p>
+                                <p className="mt-1 text-xs text-zinc-600">
+                                  {sq.palletsShort(
+                                    order.shipment?.remainingUndelivered
+                                      ?.pallets ??
+                                      order.shipment?.remaining.pallets ??
+                                      order.totalPallets
+                                  )}{" "}
+                                  {sq.partialLoadRemainingLabel}
+                                </p>
+                                <label className="mt-2 block text-xs text-zinc-600">
+                                  {sq.partialLoadPallets}
+                                  <input
+                                    type="number"
+                                    min={0.1}
+                                    step={0.1}
+                                    max={
+                                      order.shipment?.remainingUndelivered
+                                        ?.pallets ??
+                                      order.shipment?.remaining.pallets ??
+                                      order.totalPallets
+                                    }
+                                    className="mt-1 w-full rounded border border-zinc-200 px-2 py-2 text-sm"
+                                    value={partialLoadPallets[order.id] ?? ""}
+                                    onChange={(e) =>
+                                      setPartialLoadPallets({
+                                        ...partialLoadPallets,
+                                        [order.id]: e.target.value,
+                                      })
+                                    }
+                                    placeholder={`max ${
+                                      order.shipment?.remainingUndelivered
+                                        ?.pallets ??
+                                      order.shipment?.remaining.pallets ??
+                                      order.totalPallets
+                                    }`}
+                                  />
+                                </label>
+                                <Button
+                                  className="mt-2 w-full py-3"
+                                  disabled={
+                                    busyOrderId === order.id ||
+                                    order.canMarkLoaded === false
+                                  }
+                                  onClick={() =>
+                                    submitProof(order.id, "loaded", undefined, {
+                                      sentPallets: Number(
+                                        partialLoadPallets[order.id]
+                                      ),
+                                    })
+                                  }
+                                >
+                                  {sq.partialLoadConfirm}
+                                </Button>
+                                <button
+                                  type="button"
+                                  className="mt-2 w-full text-center text-xs text-zinc-500"
+                                  onClick={() =>
+                                    setPartialLoadOpen({
+                                      ...partialLoadOpen,
+                                      [order.id]: false,
+                                    })
+                                  }
+                                >
+                                  {sq.hideDetails}
+                                </button>
+                              </div>
+                            )}
 
                             {!showSkip ? (
                               <button
@@ -752,9 +866,12 @@ export default function PortalPage() {
                       <div className="mt-4 space-y-2">
                         {driverPhases.map((phase) => {
                           if (phase.id === "delivered") {
-                            const remaining =
+                            const onTruck = order.shipment?.onTruck?.pallets;
+                            const remainingUndelivered =
+                              order.shipment?.remainingUndelivered?.pallets ??
                               order.shipment?.remaining.pallets ??
                               order.totalPallets;
+                            const tripQty = onTruck ?? remainingUndelivered;
                             const showPartial = Boolean(partialOpen[order.id]);
                             return (
                               <div
@@ -770,7 +887,12 @@ export default function PortalPage() {
                                       order.totalPallets
                                   )}
                                   {" · "}
-                                  {sq.palletsShort(remaining)} mbeten
+                                  {onTruck
+                                    ? sq.partialLoadOnTruck(
+                                        onTruck,
+                                        order.shipment?.remaining.pallets ?? 0
+                                      )
+                                    : `${sq.palletsShort(remainingUndelivered)} mbeten`}
                                 </p>
                                 <input
                                   ref={(el) => {
@@ -793,7 +915,9 @@ export default function PortalPage() {
                                     submitProof(order.id, "delivered")
                                   }
                                 >
-                                  {sq.deliveryFull}
+                                  {onTruck
+                                    ? sq.deliveryTripLoad(tripQty)
+                                    : sq.deliveryFull}
                                 </Button>
                                 {!showPartial ? (
                                   <button
@@ -819,16 +943,19 @@ export default function PortalPage() {
                                         type="number"
                                         min={0.1}
                                         step={0.1}
-                                        max={remaining}
+                                        max={tripQty}
                                         className="mt-1 w-full rounded border border-zinc-200 px-2 py-2 text-sm"
-                                        value={partialPallets[order.id] ?? ""}
+                                        value={
+                                          partialPallets[order.id] ??
+                                          (onTruck != null ? String(onTruck) : "")
+                                        }
                                         onChange={(e) =>
                                           setPartialPallets({
                                             ...partialPallets,
                                             [order.id]: e.target.value,
                                           })
                                         }
-                                        placeholder={`max ${remaining}`}
+                                        placeholder={`max ${tripQty}`}
                                       />
                                     </label>
                                     <Button

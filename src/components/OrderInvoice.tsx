@@ -63,6 +63,7 @@ export interface OrderInvoiceData {
     ordered: { pallets: number; m2: number; pieces: number };
     sent: { pallets: number; m2: number; pieces: number };
     remaining: { pallets: number; m2: number; pieces: number };
+    onTruck?: { pallets: number; m2: number; pieces: number } | null;
     hasPartialShipments: boolean;
     isFullyDelivered: boolean;
     shipmentCount: number;

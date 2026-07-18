@@ -303,7 +303,9 @@ export function OrderListCard({
             label="Pallets"
             value={
               order.shipment?.hasPartialShipments
-                ? `${order.shipment.sent.pallets} sent / ${order.shipment.remaining.pallets} left`
+                ? order.shipment.onTruck
+                  ? `${order.shipment.onTruck.pallets} on truck / ${order.shipment.remaining.pallets} left`
+                  : `${order.shipment.sent.pallets} sent / ${order.shipment.remaining.pallets} left`
                 : order.totalPallets
             }
             emphasis
@@ -318,8 +320,9 @@ export function OrderListCard({
 
         {order.shipment?.hasPartialShipments && (
           <div className="border-b border-orange-100 bg-orange-50/80 px-4 py-2 text-sm text-orange-950">
-            Partial delivery: {order.shipment.sent.pallets} plt sent ·{" "}
-            {order.shipment.remaining.pallets} plt still to deliver
+            {order.shipment.onTruck
+              ? `Partial load: ${order.shipment.onTruck.pallets} plt on truck · ${order.shipment.remaining.pallets} plt still for another trip`
+              : `Partial delivery: ${order.shipment.sent.pallets} plt sent · ${order.shipment.remaining.pallets} plt still to deliver`}
             {order.shipment.shipmentCount > 1
               ? ` · ${order.shipment.shipmentCount} trips`
               : ""}

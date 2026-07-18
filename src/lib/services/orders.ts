@@ -1222,9 +1222,11 @@ export async function assignOrderToVehicle(
       ? order.proofs
       : await listDeliveryProofs(orderId);
   const shipment = computeShipmentProgress(order, proofs);
-  const loadPallets = shipment.remaining.pallets;
-  const loadM2 = shipment.remaining.m2;
-  const loadPieces = shipment.remaining.pieces;
+  const loadPallets =
+    shipment.onTruck?.pallets ?? shipment.remainingUndelivered.pallets;
+  const loadM2 = shipment.onTruck?.m2 ?? shipment.remainingUndelivered.m2;
+  const loadPieces =
+    shipment.onTruck?.pieces ?? shipment.remainingUndelivered.pieces;
   // Weight scales roughly with remaining pallets when partial.
   const loadWeight =
     order.totalPallets > 0

@@ -50,6 +50,8 @@ export const sq = {
 
   loaderConfirm: "Ngarkuesi — konfirmo porosinë",
   markLoaded: "✓ Ngarkuar në kamion",
+  markLoadedFull: "✓ Ngarkuar të gjitha (mbetja)",
+  markLoadedPartial: "Ngarkim i pjesshëm",
   markPrepared: "✓ E përgatitura",
   readyOnTruck: "✓ Gati në kamion",
   waitingTruckReturn: "Kamioni nuk është kthyer ende — prit derisa shoferi të konfirmojë arritjen në depo.",
@@ -59,6 +61,12 @@ export const sq = {
   driverInfoOnly: "Informacion — raund tjetër",
   loaderStepPrepare: "Hapi 1 — e përgatitura",
   loaderStepLoad: "Hapi 2 — ngarko në kamion",
+  partialLoadHint: "Sa pallet po ngarkon tani në kamion?",
+  partialLoadPallets: "Paletat e ngarkuara tani",
+  partialLoadConfirm: "Konfirmo ngarkimin e pjesshëm",
+  partialLoadRemainingLabel: "mbeten në porosi",
+  partialLoadOnTruck: (onTruck: number, left: number) =>
+    `Në kamion ${onTruck} plt · mbeten ${left} plt për kamion tjetër`,
   cannotLoadTitle: "Nuk mund të ngarkohet?",
   cannotLoadProblem: "Problem?",
   cannotLoadPlaceholder: "Shkruaj arsyen (e detyrueshme)…",
@@ -88,6 +96,7 @@ export const sq = {
   } as Record<string, string>,
 
   deliveryFull: "Dorëzuar të gjithë (mbetja)",
+  deliveryTripLoad: (n: number) => `Dorëzuar ngarkesën e kamionit (${n} plt)`,
   deliveryPartial: "Dorëzim i pjesshëm",
   deliveryPartialHint: "Sa pallet po lëshon tani?",
   deliveryPartialPallets: "Paletat e dërguara tani",
@@ -96,6 +105,8 @@ export const sq = {
     `Dërguar ${sent} plt · mbeten ${left} plt`,
   deliveryOrdered: (n: number) => `Porosia: ${n} plt`,
   successPartialDelivery: "Dorëzim i pjesshëm u ruajt — mbetja pret kamion tjetër",
+  successPartialLoad:
+    "Ngarkim i pjesshëm u ruajt — porosia është pjesërisht në kamion",
 
   orderStatus: {
     pending: "Në pritje",
@@ -176,6 +187,7 @@ export const sq = {
     alreadySkipped: "Porosia është shënuar si “nuk ngarkohet”.",
     prepareFirst: "Shëno fillimisht si e përgatitur.",
     partialPallets: "Shkruaj sa pallet po dorëzon tani.",
+    partialLoadPallets: "Shkruaj sa pallet po ngarkon tani.",
   },
 
   reportsLink: "Raportet e depo",

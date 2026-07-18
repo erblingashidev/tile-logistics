@@ -2,10 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Alert, Button, Input } from "@/components/ui";
-import {
-  DELIVERY_PROOF_LABELS,
-  type DeliveryProofPhase,
-} from "@/lib/constants";
+import { type DeliveryProofPhase } from "@/lib/constants";
 import type { OrderDisplayStage } from "@/lib/order-display";
 
 interface StaffOption {
@@ -49,10 +46,12 @@ export function AdminManualProofPanel({
 
   const actions = useMemo(() => {
     const list: Array<{
+      id: string;
       phase: DeliveryProofPhase;
       label: string;
       variant?: "primary" | "secondary" | "danger";
       needsNotes?: boolean;
+      needsPartialLoad?: boolean;
       hint?: string;
     }> = [];
 
@@ -62,7 +61,12 @@ export function AdminManualProofPanel({
       loadStatus !== "loaded" &&
       loadStatus !== "load_skipped"
     ) {
-      list.push({ phase: "prepared", label: "Mark prepared", variant: "secondary" });
+      list.push({
+        id: "prepared",
+        phase: "prepared",
+        label: "Mark prepared",
+        variant: "secondary",
+      });
     }
 
     if (
@@ -71,8 +75,22 @@ export function AdminManualProofPanel({
       !hasPhase(proofPhases, "loaded") &&
       !hasPhase(proofPhases, "load_skipped")
     ) {
-      list.push({ phase: "loaded", label: "Mark loaded on truck", variant: "primary" });
       list.push({
+        id: "loaded-full",
+        phase: "loaded",
+        label: "Mark loaded — full remaining",
+        variant: "primary",
+      });
+      list.push({
+        id: "loaded-partial",
+        phase: "loaded",
+        label: "Partial load — enter pallets",
+        variant: "secondary",
+        needsPartialLoad: true,
+        hint: "Picker confirms only part of the order goes on this truck.",
+      });
+      list.push({
+        id: "load_skipped",
         phase: "load_skipped",
         label: "Could not load",
         variant: "danger",
@@ -87,6 +105,7 @@ export function AdminManualProofPanel({
       deliveryStage !== "delivered"
     ) {
       list.push({
+        id: "departed",
         phase: "departed",
         label: "Truck departed",
         variant: "primary",
@@ -99,7 +118,12 @@ export function AdminManualProofPanel({
       !hasPhase(proofPhases, "arrived") &&
       !hasPhase(proofPhases, "delivered")
     ) {
-      list.push({ phase: "arrived", label: "Arrived at customer", variant: "secondary" });
+      list.push({
+        id: "arrived",
+        phase: "arrived",
+        label: "Arrived at customer",
+        variant: "secondary",
+      });
     }
 
     if (
@@ -108,6 +132,7 @@ export function AdminManualProofPanel({
       loadStatus !== "load_skipped"
     ) {
       list.push({
+        id: "delivered",
         phase: "delivered",
         label: "Close ticket — full remaining delivered",
         variant: "primary",
@@ -115,6 +140,7 @@ export function AdminManualProofPanel({
         hint: "Use when the driver confirmed by phone. Add a short note.",
       });
       list.push({
+        id: "partial_delivery",
         phase: "partial_delivery",
         label: "Partial delivery — enter pallets sent",
         variant: "secondary",
@@ -126,18 +152,26 @@ export function AdminManualProofPanel({
     return list;
   }, [proofPhases, prepStatus, loadStatus, deliveryStage]);
 
-  async function submit(phase: DeliveryProofPhase, needsNotes?: boolean) {
-    if (needsNotes && !notes.trim()) {
+  async function submit(
+    phase: DeliveryProofPhase,
+    opts?: { needsNotes?: boolean; needsPartialLoad?: boolean }
+  ) {
+    if (opts?.needsNotes && !notes.trim()) {
       setShowNotesFor(phase);
       onError("Add a note explaining what happened.");
       return;
     }
 
-    let partialPallets: number | undefined;
-    if (phase === "partial_delivery") {
-      partialPallets = Number(sentPallets);
-      if (!Number.isFinite(partialPallets) || partialPallets <= 0) {
-        onError("Enter how many pallets were delivered on this trip.");
+    let qty: number | undefined;
+    if (phase === "partial_delivery" || opts?.needsPartialLoad) {
+      qty = Number(sentPallets);
+      if (!Number.isFinite(qty) || qty <= 0) {
+        setShowNotesFor(phase);
+        onError(
+          opts?.needsPartialLoad
+            ? "Enter how many pallets are going on this truck."
+            : "Enter how many pallets were delivered on this trip."
+        );
         return;
       }
     }
@@ -154,8 +188,11 @@ export function AdminManualProofPanel({
         employeeId: employeeId ? Number(employeeId) : undefined,
         allowDeliveredWithoutPhoto:
           phase === "delivered" || phase === "partial_delivery",
-        force: phase === "loaded" || phase === "delivered" || phase === "partial_delivery",
-        sentPallets: partialPallets,
+        force:
+          phase === "loaded" ||
+          phase === "delivered" ||
+          phase === "partial_delivery",
+        sentPallets: qty,
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -219,13 +256,16 @@ export function AdminManualProofPanel({
             onChange={(e) => setNotes(e.target.value)}
           />
           {(showNotesFor === "partial_delivery" ||
-            actions.some((a) => a.phase === "partial_delivery")) && (
+            showNotesFor === "loaded" ||
+            actions.some(
+              (a) => a.phase === "partial_delivery" || a.needsPartialLoad
+            )) && (
             <Input
-              label="Pallets sent on this trip"
+              label="Pallets on this trip"
               type="number"
               value={sentPallets}
               onChange={(e) => setSentPallets(e.target.value)}
-              hint="Required for partial delivery"
+              hint="Required for partial load or partial delivery"
             />
           )}
         </div>
@@ -234,13 +274,18 @@ export function AdminManualProofPanel({
       <div className="mt-3 flex flex-wrap gap-2">
         {actions.map((action) => (
           <Button
-            key={action.phase}
+            key={action.id}
             type="button"
             variant={action.variant ?? "secondary"}
             disabled={busyPhase != null}
             onClick={() => {
               if (action.needsNotes && !notes.trim()) {
                 setShowNotesFor(action.phase);
+                return;
+              }
+              if (action.needsPartialLoad && !sentPallets.trim()) {
+                setShowNotesFor(action.phase);
+                onError("Enter how many pallets are going on this truck.");
                 return;
               }
               if (
@@ -251,7 +296,10 @@ export function AdminManualProofPanel({
               ) {
                 return;
               }
-              void submit(action.phase, action.needsNotes);
+              void submit(action.phase, {
+                needsNotes: action.needsNotes,
+                needsPartialLoad: action.needsPartialLoad,
+              });
             }}
           >
             {busyPhase === action.phase ? "Saving…" : action.label}
@@ -264,8 +312,8 @@ export function AdminManualProofPanel({
           {actions
             .filter((action) => action.hint)
             .map((action) => (
-              <p key={action.hint} className="text-[11px] text-amber-800">
-                {DELIVERY_PROOF_LABELS[action.phase]}: {action.hint}
+              <p key={action.id} className="text-[11px] text-amber-800">
+                {action.label}: {action.hint}
               </p>
             ))}
         </div>
