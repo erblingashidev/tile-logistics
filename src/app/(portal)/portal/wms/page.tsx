@@ -41,7 +41,14 @@ export default function PortalWmsPage() {
     id: number;
     zone: string;
   } | null>(null);
-  const [form, setForm] = useState({ ean: "", quantityM2: "", locationId: "" });
+  const [form, setForm] = useState({
+    ean: "",
+    quantityM2: "",
+    fullPallets: "",
+    packs: "",
+    loosePieces: "",
+    locationId: "",
+  });
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [refreshing, setRefreshing] = useState(false);
@@ -115,7 +122,14 @@ export default function PortalWmsPage() {
       const locData = await locRes.json();
       setLocations(locData.locations ?? []);
     }
-    setForm({ ean: "", quantityM2: "", locationId: "" });
+    setForm({
+      ean: "",
+      quantityM2: "",
+      fullPallets: "",
+      packs: "",
+      loosePieces: "",
+      locationId: "",
+    });
     await load();
   }
 
@@ -137,7 +151,14 @@ export default function PortalWmsPage() {
     }
     setSuccess(sq.inventorySectorClosed);
     setActiveSector(null);
-    setForm({ ean: "", quantityM2: "", locationId: "" });
+    setForm({
+      ean: "",
+      quantityM2: "",
+      fullPallets: "",
+      packs: "",
+      loosePieces: "",
+      locationId: "",
+    });
     setTimeout(() => setSuccess(""), 3000);
     await load();
   }
@@ -151,7 +172,10 @@ export default function PortalWmsPage() {
       body: JSON.stringify({
         action,
         ean: form.ean.trim(),
-        quantityM2: Number(form.quantityM2),
+        quantityM2: form.quantityM2 ? Number(form.quantityM2) : undefined,
+        fullPallets: form.fullPallets ? Number(form.fullPallets) : undefined,
+        packs: form.packs ? Number(form.packs) : undefined,
+        loosePieces: form.loosePieces ? Number(form.loosePieces) : undefined,
         locationId: form.locationId ? Number(form.locationId) : undefined,
         zone: activeSector?.zone,
         sectorCountId: activeSector?.id,
@@ -163,9 +187,20 @@ export default function PortalWmsPage() {
       return;
     }
     setSuccess(
-      action === "receive" ? sq.receiveSuccess : sq.inventoryLineSaved
+      action === "receive"
+        ? `${sq.receiveSuccess}${
+            data.quantityM2 != null ? ` · ${data.quantityM2} m²` : ""
+          }`
+        : sq.inventoryLineSaved
     );
-    setForm({ ean: "", quantityM2: "", locationId: form.locationId });
+    setForm({
+      ean: "",
+      quantityM2: "",
+      fullPallets: "",
+      packs: "",
+      loosePieces: "",
+      locationId: form.locationId,
+    });
     setTimeout(() => setSuccess(""), 3000);
     if (action === "inventory") await load();
   }
@@ -278,14 +313,57 @@ export default function PortalWmsPage() {
             onChange={(e) => setForm({ ...form, ean: e.target.value })}
             className="rounded-xl py-3 text-base"
           />
-          <Input
-            type="number"
-            step="0.01"
-            placeholder={sq.quantityM2}
-            value={form.quantityM2}
-            onChange={(e) => setForm({ ...form, quantityM2: e.target.value })}
-            className="rounded-xl py-3 text-base"
-          />
+          {tab === "receive" ? (
+            <>
+              <Input
+                type="number"
+                min={0}
+                placeholder={sq.fullPallets}
+                value={form.fullPallets}
+                onChange={(e) =>
+                  setForm({ ...form, fullPallets: e.target.value })
+                }
+                className="rounded-xl py-3 text-base"
+              />
+              <Input
+                type="number"
+                min={0}
+                placeholder={sq.extraBoxes}
+                value={form.packs}
+                onChange={(e) => setForm({ ...form, packs: e.target.value })}
+                className="rounded-xl py-3 text-base"
+              />
+              <Input
+                type="number"
+                min={0}
+                placeholder={sq.looseTiles}
+                value={form.loosePieces}
+                onChange={(e) =>
+                  setForm({ ...form, loosePieces: e.target.value })
+                }
+                className="rounded-xl py-3 text-base"
+              />
+              <Input
+                type="number"
+                step="0.01"
+                placeholder={sq.quantityM2Optional}
+                value={form.quantityM2}
+                onChange={(e) =>
+                  setForm({ ...form, quantityM2: e.target.value })
+                }
+                className="rounded-xl py-3 text-base"
+              />
+            </>
+          ) : (
+            <Input
+              type="number"
+              step="0.01"
+              placeholder={sq.quantityM2}
+              value={form.quantityM2}
+              onChange={(e) => setForm({ ...form, quantityM2: e.target.value })}
+              className="rounded-xl py-3 text-base"
+            />
+          )}
           <Select
             label={sq.location}
             value={form.locationId}
@@ -302,9 +380,14 @@ export default function PortalWmsPage() {
             className="w-full py-4 text-base font-semibold"
             disabled={
               !form.ean ||
-              !form.quantityM2 ||
               !form.locationId ||
-              (tab === "inventory" && !activeSector)
+              (tab === "inventory" && !activeSector) ||
+              (tab === "inventory" && !form.quantityM2) ||
+              (tab === "receive" &&
+                !form.quantityM2 &&
+                !form.fullPallets &&
+                !form.packs &&
+                !form.loosePieces)
             }
             onClick={() => submit(tab === "receive" ? "receive" : "inventory")}
           >

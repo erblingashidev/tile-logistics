@@ -68,10 +68,27 @@ export async function POST(request: Request) {
     if (body.action === "receive") {
       const result = await receiveStock({
         ean: String(body.ean ?? ""),
-        quantityM2: Number(body.quantityM2),
+        quantityM2:
+          body.quantityM2 != null && body.quantityM2 !== ""
+            ? Number(body.quantityM2)
+            : undefined,
+        fullPallets:
+          body.fullPallets != null && body.fullPallets !== ""
+            ? Number(body.fullPallets)
+            : undefined,
+        packs:
+          body.packs != null && body.packs !== ""
+            ? Number(body.packs)
+            : undefined,
+        loosePieces:
+          body.loosePieces != null && body.loosePieces !== ""
+            ? Number(body.loosePieces)
+            : undefined,
         locationId: Number(body.locationId),
         employeeId: session.employeeId,
         productName: body.productName,
+        batchCode: body.batchCode,
+        shipmentRef: body.shipmentRef,
         notes: body.notes,
       });
       if (!result.ok) {

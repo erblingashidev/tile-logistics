@@ -5,11 +5,11 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Card } from "@/components/ui";
 
 const links = [
-  { href: "/warehouse/locations", title: "Locations" },
-  { href: "/warehouse/stock", title: "Stock & receiving" },
-  { href: "/warehouse/products", title: "Product catalog" },
-  { href: "/warehouse/reports", title: "Warehouse reports" },
+  { href: "/warehouse/products", title: "Product lots & pack specs" },
+  { href: "/warehouse/stock", title: "Stock, receive & putaway" },
+  { href: "/warehouse/locations", title: "Locations / bins" },
   { href: "/warehouse/inventory", title: "Annual inventory" },
+  { href: "/warehouse/reports", title: "Warehouse reports" },
 ];
 
 export default function WarehouseHomePage() {

@@ -14,17 +14,27 @@ import {
   tileSpecOptionsForItem,
 } from "@/lib/calculations";
 import { logActivity } from "@/lib/logger";
-import { getProduct, upsertProduct } from "@/lib/services/products";
+import { quantityM2FromPackCounts } from "@/lib/product-pallet-spec";
+import { getProduct, getProductByEan, upsertProduct } from "@/lib/services/products";
 
 export interface ReceiveStockInput {
   ean: string;
-  quantityM2: number;
   locationId: number;
+  /** Direct m² — optional if pallets/packs/pieces provided. */
+  quantityM2?: number;
+  fullPallets?: number;
+  packs?: number;
+  loosePieces?: number;
   employeeId?: number;
   productName?: string;
   tileWidthCm?: number;
   tileHeightCm?: number;
   tileThicknessCm?: number;
+  batchCode?: string;
+  productionDate?: string;
+  shipmentRef?: string;
+  /** opening = first registration; receive = truck unload. */
+  movementType?: "receive" | "opening";
   notes?: string;
 }
 
@@ -238,34 +248,95 @@ async function getOrCreateBalance(productId: number, locationId: number) {
   );
 }
 
-/** Inbound from truck unload — registers product if new. */
+/** Inbound from truck unload / opening balance — uses catalog pack math when possible. */
 export async function receiveStock(input: ReceiveStockInput) {
-  if (input.quantityM2 <= 0) {
-    return { ok: false as const, error: "Sasia në m² duhet të jetë më e madhe se 0." };
+  const ean = input.ean?.trim();
+  if (!ean || ean.length < 4) {
+    return {
+      ok: false as const,
+      error: "Barcode / lot code required (min 4 characters).",
+    };
   }
 
-  const product = await upsertProduct({
-    ean: input.ean,
-    productName: input.productName,
-    tileWidthCm: input.tileWidthCm,
-    tileHeightCm: input.tileHeightCm,
-    tileThicknessCm: input.tileThicknessCm,
-    source: "receive",
-  });
+  let product = await getProductByEan(ean);
+  if (!product) {
+    product = await upsertProduct({
+      ean,
+      productName: input.productName,
+      tileWidthCm: input.tileWidthCm,
+      tileHeightCm: input.tileHeightCm,
+      tileThicknessCm: input.tileThicknessCm,
+      batchCode: input.batchCode,
+      productionDate: input.productionDate,
+      shipmentRef: input.shipmentRef,
+      source: "receive",
+      asNewLot: true,
+    });
+  } else if (
+    input.batchCode ||
+    input.productionDate ||
+    input.shipmentRef ||
+    input.productName
+  ) {
+    await upsertProduct({
+      ean,
+      productName: input.productName ?? product.productName,
+      batchCode: input.batchCode,
+      productionDate: input.productionDate,
+      shipmentRef: input.shipmentRef,
+      source: "receive",
+    });
+    product = (await getProduct(product.id)) ?? product;
+  }
 
   if (!product) {
     return { ok: false as const, error: "Produkti nuk u regjistrua." };
   }
 
+  const qty = quantityM2FromPackCounts(product, {
+    quantityM2: input.quantityM2,
+    fullPallets: input.fullPallets,
+    packs: input.packs,
+    loosePieces: input.loosePieces,
+  });
+  if (!qty.ok) {
+    return { ok: false as const, error: qty.error };
+  }
+  if (qty.quantityM2 <= 0) {
+    return {
+      ok: false as const,
+      error: "Sasia duhet të jetë më e madhe se 0.",
+    };
+  }
+
   const w = product.tileWidthCm ?? input.tileWidthCm ?? 60;
   const h = product.tileHeightCm ?? input.tileHeightCm ?? 60;
-  const breakdown = computePickBreakdown(
-    input.quantityM2,
-    w,
-    h,
-    product.tileThicknessCm
-  );
+  const catalogBreakdown =
+    product.piecesPerPallet && product.piecesPerPallet > 0
+      ? null
+      : computePickBreakdown(qty.quantityM2, w, h, product.tileThicknessCm);
+  const fullPallets = qty.fullPallets || catalogBreakdown?.fullPallets || 0;
+  const loosePieces = qty.loosePieces || catalogBreakdown?.loosePieces || 0;
+  const breakdown: PickBreakdown = {
+    totalPieces:
+      (product.piecesPerPallet ?? 0) > 0
+        ? fullPallets * (product.piecesPerPallet ?? 0) + loosePieces
+        : catalogBreakdown?.totalPieces ?? 0,
+    fullPallets,
+    loosePieces,
+    piecesPerPallet:
+      product.piecesPerPallet ?? catalogBreakdown?.piecesPerPallet ?? 1,
+    labelSq:
+      catalogBreakdown?.labelSq ??
+      ([
+        fullPallets > 0 ? `${fullPallets} paleta` : null,
+        loosePieces > 0 ? `${loosePieces} pllaka` : null,
+      ]
+        .filter(Boolean)
+        .join(" + ") || "0"),
+  };
 
+  const movementType = input.movementType === "opening" ? "opening" : "receive";
   const db = await getDb();
   const now = new Date().toISOString();
   const balance = await getOrCreateBalance(product.id, input.locationId);
@@ -273,9 +344,9 @@ export async function receiveStock(input: ReceiveStockInput) {
   await db
     .update(stockBalances)
     .set({
-      quantityM2: (balance!.quantityM2 ?? 0) + input.quantityM2,
-      fullPallets: (balance!.fullPallets ?? 0) + breakdown.fullPallets,
-      loosePieces: (balance!.loosePieces ?? 0) + breakdown.loosePieces,
+      quantityM2: (balance!.quantityM2 ?? 0) + qty.quantityM2,
+      fullPallets: (balance!.fullPallets ?? 0) + fullPallets,
+      loosePieces: (balance!.loosePieces ?? 0) + loosePieces,
       updatedAt: now,
     })
     .where(eq(stockBalances.id, balance!.id));
@@ -283,11 +354,11 @@ export async function receiveStock(input: ReceiveStockInput) {
   await db.insert(stockMovements).values({
     productId: product.id,
     locationId: input.locationId,
-    movementType: "receive",
-    quantityM2: input.quantityM2,
-    fullPallets: breakdown.fullPallets,
-    loosePieces: breakdown.loosePieces,
-    referenceType: "receive",
+    movementType,
+    quantityM2: qty.quantityM2,
+    fullPallets,
+    loosePieces,
+    referenceType: movementType,
     referenceId: null,
     employeeId: input.employeeId ?? null,
     notes: input.notes?.trim() || null,
@@ -298,14 +369,17 @@ export async function receiveStock(input: ReceiveStockInput) {
     "create",
     "stock",
     product.id,
-    `Received ${formatM2(input.quantityM2)} m² · EAN ${input.ean}`,
+    `${movementType === "opening" ? "Opening" : "Received"} ${formatM2(qty.quantityM2)} m² · ${ean}`,
     {
       category: "system",
       details: {
-        ean: input.ean,
-        quantityM2: input.quantityM2,
+        ean,
+        quantityM2: qty.quantityM2,
+        fullPallets,
+        loosePieces,
         locationId: input.locationId,
         employeeId: input.employeeId,
+        movementType,
       },
     }
   );
@@ -313,7 +387,91 @@ export async function receiveStock(input: ReceiveStockInput) {
   return {
     ok: true as const,
     product: await getProduct(product.id),
+    quantityM2: qty.quantityM2,
     breakdown,
+  };
+}
+
+/** Move stock from one bin to another (putaway / relocate). */
+export async function moveStock(input: {
+  productId: number;
+  fromLocationId: number;
+  toLocationId: number;
+  quantityM2?: number;
+  fullPallets?: number;
+  loosePieces?: number;
+  employeeId?: number;
+  notes?: string;
+}) {
+  if (input.fromLocationId === input.toLocationId) {
+    return { ok: false as const, error: "Choose a different destination bin." };
+  }
+
+  const product = await getProduct(input.productId);
+  if (!product) {
+    return { ok: false as const, error: "Product not found." };
+  }
+
+  const qty = quantityM2FromPackCounts(product, {
+    quantityM2: input.quantityM2,
+    fullPallets: input.fullPallets,
+    loosePieces: input.loosePieces,
+  });
+  if (!qty.ok) {
+    return { ok: false as const, error: qty.error };
+  }
+
+  const db = await getDb();
+  const now = new Date().toISOString();
+  const from = await getOrCreateBalance(input.productId, input.fromLocationId);
+  if ((from!.quantityM2 ?? 0) + 0.0001 < qty.quantityM2) {
+    return {
+      ok: false as const,
+      error: `Only ${formatM2(from!.quantityM2 ?? 0)} m² at source location.`,
+    };
+  }
+
+  await db
+    .update(stockBalances)
+    .set({
+      quantityM2: Math.max(0, (from!.quantityM2 ?? 0) - qty.quantityM2),
+      fullPallets: Math.max(0, (from!.fullPallets ?? 0) - qty.fullPallets),
+      loosePieces: Math.max(0, (from!.loosePieces ?? 0) - qty.loosePieces),
+      updatedAt: now,
+    })
+    .where(eq(stockBalances.id, from!.id));
+
+  const to = await getOrCreateBalance(input.productId, input.toLocationId);
+  await db
+    .update(stockBalances)
+    .set({
+      quantityM2: (to!.quantityM2 ?? 0) + qty.quantityM2,
+      fullPallets: (to!.fullPallets ?? 0) + qty.fullPallets,
+      loosePieces: (to!.loosePieces ?? 0) + qty.loosePieces,
+      updatedAt: now,
+    })
+    .where(eq(stockBalances.id, to!.id));
+
+  await db.insert(stockMovements).values({
+    productId: input.productId,
+    locationId: input.toLocationId,
+    movementType: "transfer",
+    quantityM2: qty.quantityM2,
+    fullPallets: qty.fullPallets,
+    loosePieces: qty.loosePieces,
+    referenceType: "transfer",
+    referenceId: input.fromLocationId,
+    employeeId: input.employeeId ?? null,
+    notes:
+      input.notes?.trim() ||
+      `Moved from location #${input.fromLocationId} → #${input.toLocationId}`,
+    createdAt: now,
+  });
+
+  return {
+    ok: true as const,
+    quantityM2: qty.quantityM2,
+    product: await getProduct(input.productId),
   };
 }
 
@@ -389,10 +547,16 @@ export async function listStockSummary() {
         productName: products.productName,
         tileWidthCm: products.tileWidthCm,
         tileHeightCm: products.tileHeightCm,
+        batchCode: products.batchCode,
+        shipmentRef: products.shipmentRef,
+        m2PerPallet: products.m2PerPallet,
+        piecesPerPallet: products.piecesPerPallet,
+        packsPerPallet: products.packsPerPallet,
         status: products.status,
         locationId: warehouseLocations.id,
         locationCode: warehouseLocations.code,
         locationLabel: warehouseLocations.label,
+        locationZone: warehouseLocations.zone,
         quantityM2: stockBalances.quantityM2,
         fullPallets: stockBalances.fullPallets,
         loosePieces: stockBalances.loosePieces,

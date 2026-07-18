@@ -8,6 +8,7 @@ import {
   searchProducts,
   deleteProduct,
   deleteProducts,
+  cloneProductAsNewLot,
 } from "@/lib/services/products";
 
 export const runtime = "nodejs";
@@ -33,6 +34,21 @@ export async function POST(request: Request) {
   try {
     await requireAdmin();
     const body = await request.json();
+
+    if (body.action === "clone_lot") {
+      const result = await cloneProductAsNewLot(Number(body.sourceId), {
+        ean: body.ean,
+        batchCode: body.batchCode,
+        productionDate: body.productionDate,
+        shipmentRef: body.shipmentRef,
+        productName: body.productName,
+      });
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error }, { status: 400 });
+      }
+      return NextResponse.json(result.product);
+    }
+
     const product = await upsertProduct({
       ean: body.ean,
       productName: body.productName,
@@ -46,12 +62,18 @@ export async function POST(request: Request) {
       piecesPerPack: body.piecesPerPack,
       m2PerPack: body.m2PerPack,
       kgPerPack: body.kgPerPack,
+      packsPerPallet: body.packsPerPallet,
       unitWeightKg: body.unitWeightKg,
       palletFootprintLengthCm: body.palletFootprintLengthCm,
       palletFootprintWidthCm: body.palletFootprintWidthCm,
       replacesStandardPallets: body.replacesStandardPallets,
+      familyKey: body.familyKey,
+      batchCode: body.batchCode,
+      productionDate: body.productionDate,
+      shipmentRef: body.shipmentRef,
       source: "manual",
       status: body.status === "confirmed" ? "confirmed" : "draft",
+      asNewLot: true,
     });
     return NextResponse.json(product);
   } catch {
@@ -74,11 +96,15 @@ export async function PATCH(request: Request) {
       body.piecesPerPallet !== undefined ||
       body.m2PerPallet !== undefined ||
       body.kgPerPallet !== undefined ||
+      body.piecesPerPack !== undefined ||
+      body.packsPerPallet !== undefined ||
       body.tileWidthCm !== undefined ||
       body.tileHeightCm !== undefined ||
       body.palletFootprintLengthCm !== undefined ||
       body.palletFootprintWidthCm !== undefined ||
       body.replacesStandardPallets !== undefined ||
+      body.batchCode !== undefined ||
+      body.familyKey !== undefined ||
       body.status !== undefined;
 
     if (hasSpecUpdate) {
@@ -95,10 +121,15 @@ export async function PATCH(request: Request) {
         piecesPerPack: body.piecesPerPack,
         m2PerPack: body.m2PerPack,
         kgPerPack: body.kgPerPack,
+        packsPerPallet: body.packsPerPallet,
         unitWeightKg: body.unitWeightKg,
         palletFootprintLengthCm: body.palletFootprintLengthCm,
         palletFootprintWidthCm: body.palletFootprintWidthCm,
         replacesStandardPallets: body.replacesStandardPallets,
+        familyKey: body.familyKey,
+        batchCode: body.batchCode,
+        productionDate: body.productionDate,
+        shipmentRef: body.shipmentRef,
         source: "manual",
         status: body.status === "confirmed" ? "confirmed" : body.status,
         notes: body.notes,

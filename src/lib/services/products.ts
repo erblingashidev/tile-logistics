@@ -11,7 +11,9 @@ import {
 import { normalizeOrderUnit, inferOrderUnitFromProductName, type OrderUnit } from "@/lib/constants";
 import { logActivity } from "@/lib/logger";
 import {
-  derivePalletFields,
+  buildFamilyKey,
+  derivePackFields,
+  generateLotEan,
   palletSpecFromProduct,
   type ProductPalletSpec,
 } from "@/lib/product-pallet-spec";
@@ -38,13 +40,20 @@ export interface ProductUpsertInput {
   piecesPerPack?: number | null;
   m2PerPack?: number | null;
   kgPerPack?: number | null;
+  packsPerPallet?: number | null;
   unitWeightKg?: number | null;
   palletFootprintLengthCm?: number | null;
   palletFootprintWidthCm?: number | null;
   replacesStandardPallets?: number | null;
+  familyKey?: string | null;
+  batchCode?: string | null;
+  productionDate?: string | null;
+  shipmentRef?: string | null;
   source: ProductSource;
   status?: "draft" | "confirmed";
   notes?: string | null;
+  /** When true with a new EAN, never merge into an existing same-name product. */
+  asNewLot?: boolean;
 }
 
 function normalizeEan(ean?: string | null): string | null {
@@ -171,8 +180,15 @@ export async function upsertProduct(input: ProductUpsertInput) {
       ? parseUnitWeightKgFromName(input.productName)
       : null);
 
+  // Lot-aware: with an EAN, only match that barcode. Same commercial name can
+  // be many shade/batch lots and must not collapse into one catalog row.
   let existing = ean ? await getProductByEan(ean) : null;
-  if (!existing && input.productName?.trim()) {
+  if (
+    !existing &&
+    !ean &&
+    !input.asNewLot &&
+    input.productName?.trim()
+  ) {
     const nameMatches = await searchProducts(input.productName.trim(), 3);
     existing =
       nameMatches.find(
@@ -182,23 +198,47 @@ export async function upsertProduct(input: ProductUpsertInput) {
       ) ?? null;
   }
 
+  const pack = derivePackFields({
+    tileWidthCm: width,
+    tileHeightCm: height,
+    piecesPerPack: input.piecesPerPack,
+    packsPerPallet: input.packsPerPallet,
+    piecesPerPallet: input.piecesPerPallet ?? line?.piecesPerPallet,
+    m2PerPack: input.m2PerPack,
+    m2PerPallet: input.m2PerPallet ?? line?.m2PerPallet,
+    kgPerPack: input.kgPerPack,
+    kgPerPallet: input.kgPerPallet ?? line?.kgPerPallet,
+  });
+
+  const familyKey =
+    input.familyKey?.trim() ||
+    buildFamilyKey({
+      productName: input.productName,
+      tileWidthCm: width,
+      tileHeightCm: height,
+    });
+
   const payload = {
     productName: input.productName?.trim() || null,
     unit,
     tileWidthCm: width ?? null,
     tileHeightCm: height ?? null,
     tileThicknessCm: input.tileThicknessCm ?? null,
-    piecesPerPallet:
-      input.piecesPerPallet ?? line?.piecesPerPallet ?? null,
-    m2PerPallet: input.m2PerPallet ?? line?.m2PerPallet ?? null,
-    kgPerPallet: input.kgPerPallet ?? line?.kgPerPallet ?? null,
-    piecesPerPack: input.piecesPerPack ?? null,
-    m2PerPack: input.m2PerPack ?? null,
+    piecesPerPallet: pack.piecesPerPallet,
+    m2PerPallet: pack.m2PerPallet,
+    kgPerPallet: pack.kgPerPallet,
+    piecesPerPack: pack.piecesPerPack,
+    m2PerPack: pack.m2PerPack,
     kgPerPack: input.kgPerPack ?? null,
+    packsPerPallet: pack.packsPerPallet,
     unitWeightKg: unitWeightKg ?? null,
     palletFootprintLengthCm: input.palletFootprintLengthCm ?? null,
     palletFootprintWidthCm: input.palletFootprintWidthCm ?? null,
     replacesStandardPallets: input.replacesStandardPallets ?? 1,
+    familyKey,
+    batchCode: input.batchCode?.trim() || null,
+    productionDate: input.productionDate?.trim() || null,
+    shipmentRef: input.shipmentRef?.trim() || null,
     status: input.status ?? "draft",
     notes: input.notes ?? null,
     updatedAt: now,
@@ -226,6 +266,17 @@ export async function upsertProduct(input: ProductUpsertInput) {
     );
     updates.m2PerPack = mergeNumber(existing.m2PerPack, payload.m2PerPack);
     updates.kgPerPack = mergeNumber(existing.kgPerPack, payload.kgPerPack);
+    updates.packsPerPallet = mergeNumber(
+      existing.packsPerPallet,
+      payload.packsPerPallet
+    );
+    updates.familyKey = mergeText(existing.familyKey, payload.familyKey);
+    updates.batchCode = mergeText(existing.batchCode, payload.batchCode);
+    updates.productionDate = mergeText(
+      existing.productionDate,
+      payload.productionDate
+    );
+    updates.shipmentRef = mergeText(existing.shipmentRef, payload.shipmentRef);
     updates.unitWeightKg = mergeNumber(existing.unitWeightKg, payload.unitWeightKg);
     updates.palletFootprintLengthCm = mergeNumber(
       existing.palletFootprintLengthCm,
@@ -373,16 +424,43 @@ export async function updateProduct(
     height = height ?? inferred.height;
   }
 
-  const derived = derivePalletFields({
+  const derived = derivePackFields({
     tileWidthCm: width,
     tileHeightCm: height,
-    piecesPerPallet: input.piecesPerPallet ?? existing.piecesPerPallet,
-    m2PerPallet: input.m2PerPallet ?? existing.m2PerPallet,
-    kgPerPallet: input.kgPerPallet ?? existing.kgPerPallet,
+    piecesPerPack:
+      input.piecesPerPack !== undefined
+        ? input.piecesPerPack
+        : existing.piecesPerPack,
+    packsPerPallet:
+      input.packsPerPallet !== undefined
+        ? input.packsPerPallet
+        : existing.packsPerPallet,
+    piecesPerPallet:
+      input.piecesPerPallet !== undefined
+        ? input.piecesPerPallet
+        : existing.piecesPerPallet,
+    m2PerPack:
+      input.m2PerPack !== undefined ? input.m2PerPack : existing.m2PerPack,
+    m2PerPallet:
+      input.m2PerPallet !== undefined ? input.m2PerPallet : existing.m2PerPallet,
+    kgPerPack:
+      input.kgPerPack !== undefined ? input.kgPerPack : existing.kgPerPack,
+    kgPerPallet:
+      input.kgPerPallet !== undefined ? input.kgPerPallet : existing.kgPerPallet,
   });
 
   const ean =
     input.ean !== undefined ? normalizeEan(input.ean) : existing.ean;
+
+  const familyKey =
+    input.familyKey !== undefined
+      ? input.familyKey?.trim() || null
+      : existing.familyKey ??
+        buildFamilyKey({
+          productName: name,
+          tileWidthCm: width,
+          tileHeightCm: height,
+        });
 
   await db
     .update(products)
@@ -396,21 +474,14 @@ export async function updateProduct(
         input.tileThicknessCm !== undefined
           ? input.tileThicknessCm
           : existing.tileThicknessCm,
-      piecesPerPallet:
-        input.piecesPerPallet !== undefined
-          ? input.piecesPerPallet
-          : existing.piecesPerPallet,
+      piecesPerPallet: derived.piecesPerPallet ?? existing.piecesPerPallet,
       m2PerPallet: derived.m2PerPallet ?? existing.m2PerPallet,
-      kgPerPallet:
-        input.kgPerPallet !== undefined ? input.kgPerPallet : existing.kgPerPallet,
-      piecesPerPack:
-        input.piecesPerPack !== undefined
-          ? input.piecesPerPack
-          : existing.piecesPerPack,
-      m2PerPack:
-        input.m2PerPack !== undefined ? input.m2PerPack : existing.m2PerPack,
+      kgPerPallet: derived.kgPerPallet ?? existing.kgPerPallet,
+      piecesPerPack: derived.piecesPerPack ?? existing.piecesPerPack,
+      m2PerPack: derived.m2PerPack ?? existing.m2PerPack,
       kgPerPack:
         input.kgPerPack !== undefined ? input.kgPerPack : existing.kgPerPack,
+      packsPerPallet: derived.packsPerPallet ?? existing.packsPerPallet,
       unitWeightKg:
         input.unitWeightKg !== undefined
           ? input.unitWeightKg
@@ -427,6 +498,19 @@ export async function updateProduct(
         input.replacesStandardPallets !== undefined
           ? input.replacesStandardPallets
           : existing.replacesStandardPallets,
+      familyKey,
+      batchCode:
+        input.batchCode !== undefined
+          ? input.batchCode?.trim() || null
+          : existing.batchCode,
+      productionDate:
+        input.productionDate !== undefined
+          ? input.productionDate?.trim() || null
+          : existing.productionDate,
+      shipmentRef:
+        input.shipmentRef !== undefined
+          ? input.shipmentRef?.trim() || null
+          : existing.shipmentRef,
       status: input.status ?? existing.status,
       notes: input.notes !== undefined ? input.notes : existing.notes,
       updatedAt: now,
@@ -478,6 +562,76 @@ export async function resolveOrderItemCatalog(item: {
     });
   }
   return palletSpecFromProduct(resolved);
+}
+
+/**
+ * New shade/batch lot: copy pack specs from an existing product, assign a fresh
+ * autogenerated barcode so stock stays separate from earlier shipments.
+ */
+export async function cloneProductAsNewLot(
+  sourceId: number,
+  overrides?: {
+    ean?: string | null;
+    batchCode?: string | null;
+    productionDate?: string | null;
+    shipmentRef?: string | null;
+    productName?: string | null;
+  }
+): Promise<
+  { ok: true; product: ProductRecord } | { ok: false; error: string }
+> {
+  const source = await getProduct(sourceId);
+  if (!source) {
+    return { ok: false as const, error: "Source product not found" };
+  }
+
+  let ean = normalizeEan(overrides?.ean) ?? generateLotEan();
+  while (await getProductByEan(ean)) {
+    ean = generateLotEan();
+  }
+
+  const familyKey =
+    source.familyKey ??
+    buildFamilyKey({
+      productName: source.productName,
+      tileWidthCm: source.tileWidthCm,
+      tileHeightCm: source.tileHeightCm,
+    });
+
+  const product = await upsertProduct({
+    ean,
+    productName: overrides?.productName ?? source.productName,
+    unit: source.unit,
+    tileWidthCm: source.tileWidthCm,
+    tileHeightCm: source.tileHeightCm,
+    tileThicknessCm: source.tileThicknessCm,
+    piecesPerPallet: source.piecesPerPallet,
+    m2PerPallet: source.m2PerPallet,
+    kgPerPallet: source.kgPerPallet,
+    piecesPerPack: source.piecesPerPack,
+    m2PerPack: source.m2PerPack,
+    kgPerPack: source.kgPerPack,
+    packsPerPallet: source.packsPerPallet,
+    unitWeightKg: source.unitWeightKg,
+    palletFootprintLengthCm: source.palletFootprintLengthCm,
+    palletFootprintWidthCm: source.palletFootprintWidthCm,
+    replacesStandardPallets: source.replacesStandardPallets,
+    familyKey,
+    batchCode: overrides?.batchCode ?? null,
+    productionDate: overrides?.productionDate ?? null,
+    shipmentRef: overrides?.shipmentRef ?? null,
+    source: "manual",
+    status: "draft",
+    asNewLot: true,
+    notes: source.notes
+      ? `Cloned from lot ${source.ean ?? source.id}. ${source.notes}`
+      : `Cloned from lot ${source.ean ?? source.id}`,
+  });
+
+  if (!product) {
+    return { ok: false as const, error: "Could not create new lot" };
+  }
+  return { ok: true as const, product };
 }
 
 export async function deleteProduct(id: number) {

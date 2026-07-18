@@ -780,16 +780,24 @@ async function runMigrations(client: Client) {
     ["pieces_per_pack", "pieces_per_pack INTEGER"],
     ["m2_per_pack", "m2_per_pack REAL"],
     ["kg_per_pack", "kg_per_pack REAL"],
+    ["packs_per_pallet", "packs_per_pallet INTEGER"],
     ["unit_weight_kg", "unit_weight_kg REAL"],
     ["pallet_footprint_length_cm", "pallet_footprint_length_cm REAL"],
     ["pallet_footprint_width_cm", "pallet_footprint_width_cm REAL"],
     ["replaces_standard_pallets", "replaces_standard_pallets REAL DEFAULT 1"],
+    ["family_key", "family_key TEXT"],
+    ["batch_code", "batch_code TEXT"],
+    ["production_date", "production_date TEXT"],
+    ["shipment_ref", "shipment_ref TEXT"],
   ];
   for (const [name, definition] of productColumnMigrations) {
     await addColumnIfMissing(client, "products", name, definition, productCols);
   }
   await client.execute(
     "CREATE INDEX IF NOT EXISTS idx_products_name ON products(product_name)"
+  );
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_products_family ON products(family_key)"
   );
 
   await client.execute(

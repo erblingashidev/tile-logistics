@@ -28,12 +28,17 @@ interface Product {
   piecesPerPallet: number | null;
   kgPerPallet: number | null;
   piecesPerPack: number | null;
+  packsPerPallet: number | null;
   m2PerPack: number | null;
   kgPerPack: number | null;
   unitWeightKg: number | null;
   palletFootprintLengthCm: number | null;
   palletFootprintWidthCm: number | null;
   replacesStandardPallets: number | null;
+  familyKey: string | null;
+  batchCode: string | null;
+  productionDate: string | null;
+  shipmentRef: string | null;
 }
 
 export default function WarehouseProductsPage() {
@@ -159,18 +164,56 @@ export default function WarehouseProductsPage() {
     deleteIds(selectedIds, `${selectedIds.length} selected products`);
   }
 
+  async function cloneLot(sourceId: number) {
+    const batchCode = window.prompt(
+      "Batch / shade code for the new shipment (optional):",
+      ""
+    );
+    if (batchCode === null) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/warehouse/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "clone_lot",
+          sourceId,
+          batchCode: batchCode.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        window.alert(data.error ?? "Clone failed");
+        return;
+      }
+      setEditingId(data.id);
+      setEditForm(productToFormValues(data));
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
-    <AppShell title="Product catalog">
+    <AppShell title="Product lots">
       <Link href="/warehouse" className="mb-4 inline-block text-sm text-zinc-500">
         ← Warehouse
       </Link>
+      <p className="mb-4 max-w-2xl text-sm text-zinc-600">
+        Register each tile lot with its pack profile (tiles/box, boxes/pallet,
+        m²/pallet). When a new shipment of the same type arrives with a
+        different shade/batch, use <strong>New lot</strong> to copy specs and
+        get a fresh barcode — never mix earlier stock with the new lot.
+      </p>
 
       <Card className="mb-6 p-4">
         {!showAdd ? (
-          <Button onClick={() => setShowAdd(true)}>Add product with pallet specs</Button>
+          <Button onClick={() => setShowAdd(true)}>
+            Register product lot
+          </Button>
         ) : (
           <>
-            <h2 className="mb-3 font-semibold">New product</h2>
+            <h2 className="mb-3 font-semibold">New product lot</h2>
             <ProductSpecForm
               form={addForm}
               setForm={setAddForm}
@@ -246,31 +289,37 @@ export default function WarehouseProductsPage() {
                             {p.productName ?? "Unnamed"}
                           </p>
                           <p className="text-sm text-zinc-600">
-                            {p.ean ? `EAN ${p.ean} · ` : ""}
+                            {p.ean ? `Lot ${p.ean} · ` : ""}
                             {ORDER_UNIT_LABELS[normalizeOrderUnit(p.unit)] ?? p.unit}
                             {p.tileWidthCm && p.tileHeightCm
                               ? ` · ${p.tileWidthCm}×${p.tileHeightCm} cm`
                               : ""}
+                            {p.batchCode ? ` · batch ${p.batchCode}` : ""}
                           </p>
                           {p.piecesPerPallet && p.m2PerPallet ? (
                             <p className="mt-1 text-sm text-green-800">
-                              Pallet: {p.piecesPerPallet} pcs ·{" "}
-                              {formatM2(p.m2PerPallet)} m²
+                              {p.piecesPerPack
+                                ? `${p.piecesPerPack} tiles/box · `
+                                : ""}
+                              {p.packsPerPallet
+                                ? `${p.packsPerPallet} boxes/pallet · `
+                                : ""}
+                              {p.piecesPerPallet} tiles/pallet ·{" "}
+                              {formatM2(p.m2PerPallet)} m²/pallet
                               {p.kgPerPallet ? ` · ${p.kgPerPallet} kg` : ""}
-                              {p.palletFootprintLengthCm && p.palletFootprintWidthCm
-                                ? ` · ${p.palletFootprintLengthCm}×${p.palletFootprintWidthCm} cm`
-                                : ""}
-                              {p.replacesStandardPallets != null &&
-                              p.replacesStandardPallets !== 1
-                                ? ` · ${p.replacesStandardPallets} truck slots`
-                                : ""}
                             </p>
                           ) : (
                             <p className="mt-1 text-xs text-amber-700">
-                              No pallet specs — orders will use generic tile standards.
+                              No pack specs yet — add tiles/box + boxes/pallet.
                             </p>
                           )}
-                          <p className="mt-1 text-xs text-zinc-500">source: {p.source}</p>
+                          <p className="mt-1 text-xs text-zinc-500">
+                            {p.shipmentRef ? `shipment ${p.shipmentRef} · ` : ""}
+                            {p.productionDate
+                              ? `prod ${p.productionDate} · `
+                              : ""}
+                            source: {p.source}
+                          </p>
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
@@ -286,6 +335,14 @@ export default function WarehouseProductsPage() {
                           }}
                         >
                           Edit specs
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => cloneLot(p.id)}
+                        >
+                          New lot
                         </Button>
                         {p.status !== "confirmed" && (
                           <Button variant="secondary" size="sm" onClick={() => confirm(p.id)}>
