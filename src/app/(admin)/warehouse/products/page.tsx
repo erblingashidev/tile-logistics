@@ -299,6 +299,9 @@ export default function WarehouseProductsPage() {
                           </p>
                           {p.piecesPerPallet && p.m2PerPallet ? (
                             <p className="mt-1 text-sm text-green-800">
+                              {p.tileWidthCm && p.tileHeightCm
+                                ? `${p.tileWidthCm}×${p.tileHeightCm} · `
+                                : ""}
                               {p.piecesPerPack
                                 ? `${p.piecesPerPack} tiles/box · `
                                 : ""}
@@ -307,11 +310,21 @@ export default function WarehouseProductsPage() {
                                 : ""}
                               {p.piecesPerPallet} tiles/pallet ·{" "}
                               {formatM2(p.m2PerPallet)} m²/pallet
-                              {p.kgPerPallet ? ` · ${p.kgPerPallet} kg` : ""}
+                              {p.unitWeightKg
+                                ? ` · ${p.unitWeightKg} kg/tile`
+                                : ""}
+                              {p.kgPerPack ? ` · ${p.kgPerPack} kg/box` : ""}
+                              {p.kgPerPallet
+                                ? ` · ${p.kgPerPallet} kg/pallet`
+                                : ""}
+                              {!p.kgPerPallet && !p.unitWeightKg
+                                ? " · weight missing"
+                                : ""}
                             </p>
                           ) : (
                             <p className="mt-1 text-xs text-amber-700">
-                              No pack specs yet — add tiles/box + boxes/pallet.
+                              Incomplete for routes — need size, tiles/box,
+                              boxes/pallet, and one weight.
                             </p>
                           )}
                           <p className="mt-1 text-xs text-zinc-500">

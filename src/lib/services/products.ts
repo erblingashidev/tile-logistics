@@ -213,6 +213,7 @@ export async function upsertProduct(input: ProductUpsertInput) {
     m2PerPallet: input.m2PerPallet ?? line?.m2PerPallet,
     kgPerPack: input.kgPerPack,
     kgPerPallet: input.kgPerPallet ?? line?.kgPerPallet,
+    unitWeightKg: unitWeightKg ?? input.unitWeightKg,
   });
 
   const familyKey =
@@ -234,9 +235,9 @@ export async function upsertProduct(input: ProductUpsertInput) {
     kgPerPallet: pack.kgPerPallet,
     piecesPerPack: pack.piecesPerPack,
     m2PerPack: pack.m2PerPack,
-    kgPerPack: input.kgPerPack ?? null,
+    kgPerPack: pack.kgPerPack ?? input.kgPerPack ?? null,
     packsPerPallet: pack.packsPerPallet,
-    unitWeightKg: unitWeightKg ?? null,
+    unitWeightKg: pack.unitWeightKg ?? unitWeightKg ?? null,
     palletFootprintLengthCm: input.palletFootprintLengthCm ?? null,
     palletFootprintWidthCm: input.palletFootprintWidthCm ?? null,
     replacesStandardPallets: input.replacesStandardPallets ?? 1,
@@ -452,6 +453,10 @@ export async function updateProduct(
       input.kgPerPack !== undefined ? input.kgPerPack : existing.kgPerPack,
     kgPerPallet:
       input.kgPerPallet !== undefined ? input.kgPerPallet : existing.kgPerPallet,
+    unitWeightKg:
+      input.unitWeightKg !== undefined
+        ? input.unitWeightKg
+        : existing.unitWeightKg,
   });
 
   const ean =
@@ -484,13 +489,9 @@ export async function updateProduct(
       kgPerPallet: derived.kgPerPallet ?? existing.kgPerPallet,
       piecesPerPack: derived.piecesPerPack ?? existing.piecesPerPack,
       m2PerPack: derived.m2PerPack ?? existing.m2PerPack,
-      kgPerPack:
-        input.kgPerPack !== undefined ? input.kgPerPack : existing.kgPerPack,
+      kgPerPack: derived.kgPerPack ?? existing.kgPerPack,
       packsPerPallet: derived.packsPerPallet ?? existing.packsPerPallet,
-      unitWeightKg:
-        input.unitWeightKg !== undefined
-          ? input.unitWeightKg
-          : existing.unitWeightKg,
+      unitWeightKg: derived.unitWeightKg ?? existing.unitWeightKg,
       palletFootprintLengthCm:
         input.palletFootprintLengthCm !== undefined
           ? input.palletFootprintLengthCm

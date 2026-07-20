@@ -67,7 +67,16 @@ export function derivePalletFields(input: {
   return derivePackFields(input);
 }
 
-/** Pack → pallet auto-calc for tile lots (box, pallet, m²). */
+/**
+ * Pack → pallet auto-calc for tile lots.
+ *
+ * Minimum useful inputs for route math:
+ * - tile width × height
+ * - tiles/box + boxes/pallet  (or tiles/pallet)
+ * - one weight: kg/tile OR kg/box OR kg/pallet
+ *
+ * Everything else is filled when possible.
+ */
 export function derivePackFields(input: {
   tileWidthCm?: number | null;
   tileHeightCm?: number | null;
@@ -78,17 +87,27 @@ export function derivePackFields(input: {
   m2PerPallet?: number | null;
   kgPerPack?: number | null;
   kgPerPallet?: number | null;
+  /** kg per tile / piece */
+  unitWeightKg?: number | null;
 }) {
   const width = input.tileWidthCm ?? 0;
   const height = input.tileHeightCm ?? 0;
   const face = width > 0 && height > 0 ? tileFaceAreaM2(width, height) : 0;
 
-  const piecesPerPack = input.piecesPerPack ?? 0;
-  const packsPerPallet = input.packsPerPallet ?? 0;
-
+  let piecesPerPack = input.piecesPerPack ?? 0;
+  let packsPerPallet = input.packsPerPallet ?? 0;
   let piecesPerPallet = input.piecesPerPallet ?? 0;
+
   if (piecesPerPallet <= 0 && piecesPerPack > 0 && packsPerPallet > 0) {
     piecesPerPallet = piecesPerPack * packsPerPallet;
+  }
+  if (piecesPerPack <= 0 && piecesPerPallet > 0 && packsPerPallet > 0) {
+    const q = piecesPerPallet / packsPerPallet;
+    if (Number.isInteger(q) && q > 0) piecesPerPack = q;
+  }
+  if (packsPerPallet <= 0 && piecesPerPallet > 0 && piecesPerPack > 0) {
+    const q = piecesPerPallet / piecesPerPack;
+    if (Number.isInteger(q) && q > 0) packsPerPallet = q;
   }
 
   let m2PerPack = input.m2PerPack ?? 0;
@@ -103,11 +122,43 @@ export function derivePackFields(input: {
   if (m2PerPallet <= 0 && packsPerPallet > 0 && m2PerPack > 0) {
     m2PerPallet = Math.round(packsPerPallet * m2PerPack * 100) / 100;
   }
+  // Infer pieces/pallet from m²/pallet + face when pack counts missing
+  if (piecesPerPallet <= 0 && m2PerPallet > 0 && face > 0) {
+    piecesPerPallet = Math.round(m2PerPallet / face);
+  }
+  if (m2PerPack <= 0 && packsPerPallet > 0 && m2PerPallet > 0) {
+    m2PerPack = Math.round((m2PerPallet / packsPerPallet) * 10000) / 10000;
+  }
 
+  let kgPerPack = input.kgPerPack ?? 0;
   let kgPerPallet = input.kgPerPallet ?? 0;
-  const kgPerPack = input.kgPerPack ?? 0;
+  let unitWeightKg = input.unitWeightKg ?? 0;
+
+  // Weight chain: piece ↔ box ↔ pallet (any one seeds the others)
+  if (unitWeightKg <= 0 && kgPerPack > 0 && piecesPerPack > 0) {
+    unitWeightKg = Math.round((kgPerPack / piecesPerPack) * 1000) / 1000;
+  }
+  if (unitWeightKg <= 0 && kgPerPallet > 0 && piecesPerPallet > 0) {
+    unitWeightKg = Math.round((kgPerPallet / piecesPerPallet) * 1000) / 1000;
+  }
+  if (kgPerPack <= 0 && unitWeightKg > 0 && piecesPerPack > 0) {
+    kgPerPack = Math.round(unitWeightKg * piecesPerPack * 10) / 10;
+  }
+  if (kgPerPack <= 0 && kgPerPallet > 0 && packsPerPallet > 0) {
+    kgPerPack = Math.round((kgPerPallet / packsPerPallet) * 10) / 10;
+  }
   if (kgPerPallet <= 0 && packsPerPallet > 0 && kgPerPack > 0) {
     kgPerPallet = Math.round(packsPerPallet * kgPerPack * 10) / 10;
+  }
+  if (kgPerPallet <= 0 && unitWeightKg > 0 && piecesPerPallet > 0) {
+    kgPerPallet = Math.round(unitWeightKg * piecesPerPallet * 10) / 10;
+  }
+  // Back-fill piece weight if still missing
+  if (unitWeightKg <= 0 && kgPerPack > 0 && piecesPerPack > 0) {
+    unitWeightKg = Math.round((kgPerPack / piecesPerPack) * 1000) / 1000;
+  }
+  if (unitWeightKg <= 0 && kgPerPallet > 0 && piecesPerPallet > 0) {
+    unitWeightKg = Math.round((kgPerPallet / piecesPerPallet) * 1000) / 1000;
   }
 
   const m2PerPiece =
@@ -116,20 +167,52 @@ export function derivePackFields(input: {
       : face > 0
         ? face
         : 0;
-  const kgPerPieceValue =
-    piecesPerPallet > 0 && kgPerPallet > 0 ? kgPerPallet / piecesPerPallet : 0;
+
+  const routeReady =
+    m2PerPallet > 0 &&
+    piecesPerPallet > 0 &&
+    (kgPerPallet > 0 || unitWeightKg > 0);
 
   return {
+    tileWidthCm: width > 0 ? width : null,
+    tileHeightCm: height > 0 ? height : null,
+    faceAreaM2: face > 0 ? Math.round(face * 10000) / 10000 : null,
     piecesPerPack: piecesPerPack > 0 ? piecesPerPack : null,
     packsPerPallet: packsPerPallet > 0 ? packsPerPallet : null,
     piecesPerPallet: piecesPerPallet > 0 ? piecesPerPallet : null,
     m2PerPack: m2PerPack > 0 ? m2PerPack : null,
     m2PerPallet: m2PerPallet > 0 ? m2PerPallet : null,
+    kgPerPack: kgPerPack > 0 ? kgPerPack : null,
     kgPerPallet: kgPerPallet > 0 ? kgPerPallet : null,
+    unitWeightKg: unitWeightKg > 0 ? unitWeightKg : null,
     kgPerPiece:
-      kgPerPieceValue > 0 ? Math.round(kgPerPieceValue * 1000) / 1000 : null,
+      unitWeightKg > 0 ? Math.round(unitWeightKg * 1000) / 1000 : null,
     m2PerPiece: m2PerPiece > 0 ? Math.round(m2PerPiece * 10000) / 10000 : null,
+    routeReady,
+    missingForRoute: [
+      !(width > 0 && height > 0) ? "tile size (cm)" : null,
+      !(piecesPerPack > 0 || piecesPerPallet > 0)
+        ? "tiles/box or tiles/pallet"
+        : null,
+      !(packsPerPallet > 0 || piecesPerPallet > 0)
+        ? "boxes/pallet or tiles/pallet"
+        : null,
+      !(kgPerPallet > 0 || kgPerPack > 0 || unitWeightKg > 0)
+        ? "weight (kg/tile, kg/box, or kg/pallet)"
+        : null,
+    ].filter(Boolean) as string[],
   };
+}
+
+/** Pull 60x120-style dimensions from a product name when present. */
+export function inferTileSizeFromName(name: string | null | undefined): {
+  width?: number;
+  height?: number;
+} {
+  if (!name?.trim()) return {};
+  const match = name.match(/(\d{2,3})\s*[x×X*]\s*(\d{2,3})/);
+  if (!match) return {};
+  return { width: Number(match[1]), height: Number(match[2]) };
 }
 
 /** Convert pallets / boxes / loose tiles into m² using catalog pack specs. */

@@ -34,6 +34,47 @@ describe("derivePackFields", () => {
     expect(d.piecesPerPallet).toBeNull();
     expect(d.m2PerPallet).toBeNull();
   });
+
+  it("fills all weights from kg per tile", () => {
+    const d = derivePackFields({ ...TILE_60X120, unitWeightKg: 18 });
+    expect(d.unitWeightKg).toBe(18);
+    expect(d.kgPerPack).toBe(36);
+    expect(d.kgPerPallet).toBe(1296);
+    expect(d.routeReady).toBe(true);
+  });
+
+  it("fills piece and pallet weight from kg per box", () => {
+    const d = derivePackFields({ ...TILE_60X120, kgPerPack: 36 });
+    expect(d.unitWeightKg).toBe(18);
+    expect(d.kgPerPallet).toBe(1296);
+  });
+
+  it("fills piece and box weight from kg per pallet", () => {
+    const d = derivePackFields({ ...TILE_60X120, kgPerPallet: 1296 });
+    expect(d.unitWeightKg).toBe(18);
+    expect(d.kgPerPack).toBe(36);
+  });
+
+  it("infers boxes/pallet from tiles/pallet ÷ tiles/box", () => {
+    const d = derivePackFields({
+      tileWidthCm: 60,
+      tileHeightCm: 120,
+      piecesPerPack: 2,
+      piecesPerPallet: 72,
+    });
+    expect(d.packsPerPallet).toBe(36);
+    expect(d.m2PerPallet).toBe(51.84);
+  });
+});
+
+describe("inferTileSizeFromName", () => {
+  it("reads dimensions from product name", async () => {
+    const { inferTileSizeFromName } = await import("@/lib/product-pallet-spec");
+    expect(inferTileSizeFromName("NUANCE AVORIO 80X80")).toEqual({
+      width: 80,
+      height: 80,
+    });
+  });
 });
 
 describe("quantityM2FromPackCounts", () => {
