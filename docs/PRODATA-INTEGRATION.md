@@ -14,16 +14,29 @@ Integrations are typically arranged **directly with Pro-Data** (custom export/im
 
 ## What we built instead (phase 1)
 
-This app learns products and stock **without** Pro-Data initially:
+This app learns products and stock **without** a live Pro-Data API:
 
 | Source | What gets registered |
 |--------|----------------------|
-| AGIMI PDF import | EAN + name + m² + tile size → product catalog |
+| AGIMI PDF/Excel invoice import | EAN + name + m² + tile size → product catalog + orders |
 | New order (manual) | Same, on save |
-| Truck unload (`/portal/wms`) | EAN + m² + warehouse location → stock |
-| Annual inventory | EAN + m² (name optional) → catalog + stock on close |
+| Truck unload (`/warehouse/stock` or `/portal/wms`) | EAN + m² (location optional → STAGING) |
+| Putaway (move between bins) | Same product can hold different m² in different locations |
+| **Pro-Data stock Excel** (every ~2 days) | Snapshot of Barkodi × Lokacioni × Sasia → `stock_balances` |
+| Annual inventory | EAN + m² → catalog + stock on close |
+
+### Pro-Data stock Excel
+
+Export the warehouse stock report from Finance+ (columns: **Shifra**, **Barkodi**, **Emertimi**, **Njesia Matese Baze**, **Lokacioni**, **Sasia**).
+
+Admin: **Warehouse → Stock → Import Pro-Data .xlsx**
+
+- Same barcode in two places (e.g. 51 m² + 39 m²) becomes two balance rows.
+- Only Pro-Data warehouse areas are overwritten; fine bin putaway locations are left alone.
+- Negative book quantities are clamped to 0.
 
 Admin: **Warehouse** in the sidebar — products, stock, inventory sessions.
+
 
 ## Possible Pro-Data paths (when you talk to them)
 

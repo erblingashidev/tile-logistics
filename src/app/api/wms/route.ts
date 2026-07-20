@@ -11,6 +11,7 @@ import {
   startSectorCount,
 } from "@/lib/services/inventory";
 import {
+  ensureStagingLocation,
   listWarehouseLocations,
   receiveStock,
 } from "@/lib/services/stock";
@@ -30,6 +31,8 @@ export async function GET(request: Request) {
 
     const url = new URL(request.url);
     const zone = url.searchParams.get("zone")?.trim();
+
+    await ensureStagingLocation();
 
     const [locations, openSession] = await Promise.all([
       zone
@@ -66,6 +69,11 @@ export async function POST(request: Request) {
     const body = await request.json();
 
     if (body.action === "receive") {
+      const locationRaw = body.locationId;
+      const locationId =
+        locationRaw === "" || locationRaw == null
+          ? null
+          : Number(locationRaw);
       const result = await receiveStock({
         ean: String(body.ean ?? ""),
         quantityM2:
@@ -84,7 +92,8 @@ export async function POST(request: Request) {
           body.loosePieces != null && body.loosePieces !== ""
             ? Number(body.loosePieces)
             : undefined,
-        locationId: Number(body.locationId),
+        locationId:
+          locationId != null && Number.isFinite(locationId) ? locationId : null,
         employeeId: session.employeeId,
         productName: body.productName,
         batchCode: body.batchCode,

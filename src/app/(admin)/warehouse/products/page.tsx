@@ -52,7 +52,8 @@ export default function WarehouseProductsPage() {
 
   const load = useCallback(async () => {
     const res = await fetch("/api/warehouse/products");
-    setProducts(await res.json());
+    const data = await res.json();
+    setProducts(Array.isArray(data) ? data : []);
     setSelected(new Set());
   }, []);
 

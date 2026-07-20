@@ -17,9 +17,16 @@ import { logActivity } from "@/lib/logger";
 import { quantityM2FromPackCounts } from "@/lib/product-pallet-spec";
 import { getProduct, getProductByEan, upsertProduct } from "@/lib/services/products";
 
+/** System bin for truck unload before physical putaway. */
+export const STAGING_LOCATION_CODE = "STAGING";
+
 export interface ReceiveStockInput {
   ean: string;
-  locationId: number;
+  /**
+   * Optional on truck unload — defaults to STAGING so goods can be received
+   * without choosing a bin yet. Putaway later via moveStock.
+   */
+  locationId?: number | null;
   /** Direct m² — optional if pallets/packs/pieces provided. */
   quantityM2?: number;
   fullPallets?: number;
@@ -96,11 +103,15 @@ export async function createWarehouseLocation(input: {
 }) {
   const db = await getDb();
   const now = new Date().toISOString();
+  const code = input.code.trim().toUpperCase();
+  if (!code) {
+    throw new Error("Location code required");
+  }
   const inserted = await dbOne(
     db
       .insert(warehouseLocations)
       .values({
-        code: input.code.trim().toUpperCase(),
+        code,
         zone: input.zone?.trim() || null,
         label: input.label?.trim() || null,
         notes: input.notes?.trim() || null,
@@ -114,6 +125,40 @@ export async function createWarehouseLocation(input: {
       .from(warehouseLocations)
       .where(eq(warehouseLocations.id, inserted!.id))
   );
+}
+
+/** Find by code or create — used for STAGING and Pro-Data warehouse areas. */
+export async function getOrCreateWarehouseLocation(input: {
+  code: string;
+  zone?: string;
+  label?: string;
+  notes?: string;
+}) {
+  const code = input.code.trim().toUpperCase();
+  const db = await getDb();
+  const existing = await dbOne(
+    db
+      .select()
+      .from(warehouseLocations)
+      .where(eq(warehouseLocations.code, code))
+  );
+  if (existing) return existing;
+  return createWarehouseLocation({
+    code,
+    zone: input.zone,
+    label: input.label,
+    notes: input.notes,
+  });
+}
+
+/** Unloaded / not yet put away — always available for optional-location receive. */
+export async function ensureStagingLocation() {
+  return getOrCreateWarehouseLocation({
+    code: STAGING_LOCATION_CODE,
+    zone: "Staging",
+    label: "Unloaded (not put away)",
+    notes: "Truck unload before assigning a bin. Move stock from here to putaway.",
+  });
 }
 
 export async function updateWarehouseLocation(
@@ -258,6 +303,25 @@ export async function receiveStock(input: ReceiveStockInput) {
     };
   }
 
+  let locationId =
+    input.locationId != null && Number.isFinite(Number(input.locationId))
+      ? Number(input.locationId)
+      : null;
+  if (locationId != null && locationId <= 0) locationId = null;
+
+  if (locationId == null) {
+    const staging = await ensureStagingLocation();
+    locationId = staging!.id;
+  } else {
+    const loc = await getWarehouseLocation(locationId);
+    if (!loc) {
+      return {
+        ok: false as const,
+        error: "Location not found. Choose a bin or leave empty for staging.",
+      };
+    }
+  }
+
   let product = await getProductByEan(ean);
   if (!product) {
     product = await upsertProduct({
@@ -339,7 +403,7 @@ export async function receiveStock(input: ReceiveStockInput) {
   const movementType = input.movementType === "opening" ? "opening" : "receive";
   const db = await getDb();
   const now = new Date().toISOString();
-  const balance = await getOrCreateBalance(product.id, input.locationId);
+  const balance = await getOrCreateBalance(product.id, locationId);
 
   await db
     .update(stockBalances)
@@ -353,7 +417,7 @@ export async function receiveStock(input: ReceiveStockInput) {
 
   await db.insert(stockMovements).values({
     productId: product.id,
-    locationId: input.locationId,
+    locationId,
     movementType,
     quantityM2: qty.quantityM2,
     fullPallets,
@@ -364,6 +428,8 @@ export async function receiveStock(input: ReceiveStockInput) {
     notes: input.notes?.trim() || null,
     createdAt: now,
   });
+
+  const location = await getWarehouseLocation(locationId);
 
   await logActivity(
     "create",
@@ -377,7 +443,8 @@ export async function receiveStock(input: ReceiveStockInput) {
         quantityM2: qty.quantityM2,
         fullPallets,
         loosePieces,
-        locationId: input.locationId,
+        locationId,
+        locationCode: location?.code,
         employeeId: input.employeeId,
         movementType,
       },
@@ -388,6 +455,8 @@ export async function receiveStock(input: ReceiveStockInput) {
     ok: true as const,
     product: await getProduct(product.id),
     quantityM2: qty.quantityM2,
+    locationId,
+    locationCode: location?.code ?? STAGING_LOCATION_CODE,
     breakdown,
   };
 }
@@ -403,8 +472,24 @@ export async function moveStock(input: {
   employeeId?: number;
   notes?: string;
 }) {
+  if (
+    !Number.isFinite(input.fromLocationId) ||
+    !Number.isFinite(input.toLocationId) ||
+    input.fromLocationId <= 0 ||
+    input.toLocationId <= 0
+  ) {
+    return { ok: false as const, error: "Choose source and destination bins." };
+  }
   if (input.fromLocationId === input.toLocationId) {
     return { ok: false as const, error: "Choose a different destination bin." };
+  }
+
+  const [fromLoc, toLoc] = await Promise.all([
+    getWarehouseLocation(input.fromLocationId),
+    getWarehouseLocation(input.toLocationId),
+  ]);
+  if (!fromLoc || !toLoc) {
+    return { ok: false as const, error: "Location not found." };
   }
 
   const product = await getProduct(input.productId);
@@ -464,7 +549,7 @@ export async function moveStock(input: {
     employeeId: input.employeeId ?? null,
     notes:
       input.notes?.trim() ||
-      `Moved from location #${input.fromLocationId} → #${input.toLocationId}`,
+      `Moved from ${fromLoc.code} → ${toLoc.code}`,
     createdAt: now,
   });
 
@@ -629,4 +714,58 @@ export async function listStockMovements(limit = 100) {
       .orderBy(desc(stockMovements.createdAt))
       .limit(limit)
   );
+}
+
+/**
+ * Set absolute quantity at a product × location (Pro-Data snapshot sync).
+ * Same product can have different m² in different locations.
+ */
+export async function setStockBalanceAbsolute(input: {
+  productId: number;
+  locationId: number;
+  quantityM2: number;
+  employeeId?: number;
+  notes?: string;
+  referenceType?: string;
+}) {
+  return adjustStockToCount({
+    productId: input.productId,
+    locationId: input.locationId,
+    targetQuantityM2: Math.max(0, input.quantityM2),
+    employeeId: input.employeeId,
+    notes: input.notes,
+    referenceType: input.referenceType ?? "prodata_sync",
+  });
+}
+
+/** Totals per product across all locations (for UI: 51 + 39 = 90). */
+export function groupStockByProduct(
+  rows: Awaited<ReturnType<typeof listStockSummary>>
+) {
+  const map = new Map<
+    number,
+    {
+      productId: number;
+      ean: string | null;
+      productName: string | null;
+      totalM2: number;
+      locations: typeof rows;
+    }
+  >();
+  for (const row of rows) {
+    const existing = map.get(row.productId);
+    if (!existing) {
+      map.set(row.productId, {
+        productId: row.productId,
+        ean: row.ean,
+        productName: row.productName,
+        totalM2: row.quantityM2,
+        locations: [row],
+      });
+    } else {
+      existing.totalM2 += row.quantityM2;
+      existing.locations.push(row);
+    }
+  }
+  return [...map.values()].sort((a, b) => b.totalM2 - a.totalM2);
 }

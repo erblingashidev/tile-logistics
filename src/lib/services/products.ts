@@ -23,7 +23,12 @@ import {
   getLearnedUnitForItem,
 } from "@/lib/services/product-learning";
 
-export type ProductSource = "order" | "receive" | "inventory" | "manual";
+export type ProductSource =
+  | "order"
+  | "receive"
+  | "inventory"
+  | "manual"
+  | "prodata";
 
 export type ProductRecord = typeof products.$inferSelect;
 

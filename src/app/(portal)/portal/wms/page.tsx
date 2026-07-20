@@ -365,11 +365,17 @@ export default function PortalWmsPage() {
             />
           )}
           <Select
-            label={sq.location}
+            label={
+              tab === "receive"
+                ? `${sq.location} (${sq.locationOptional})`
+                : sq.location
+            }
             value={form.locationId}
             onChange={(e) => setForm({ ...form, locationId: e.target.value })}
           >
-            <option value="">{sq.selectLocation}</option>
+            <option value="">
+              {tab === "receive" ? sq.stagingLocation : sq.selectLocation}
+            </option>
             {locations.map((l) => (
               <option key={l.id} value={l.id}>
                 {l.code} {l.label ? `— ${l.label}` : ""}
@@ -380,7 +386,7 @@ export default function PortalWmsPage() {
             className="w-full py-4 text-base font-semibold"
             disabled={
               !form.ean ||
-              !form.locationId ||
+              (tab === "inventory" && !form.locationId) ||
               (tab === "inventory" && !activeSector) ||
               (tab === "inventory" && !form.quantityM2) ||
               (tab === "receive" &&

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import {
@@ -39,8 +39,10 @@ interface StockRow {
 export default function WarehouseStockPage() {
   const [stock, setStock] = useState<StockRow[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
+  const [loadError, setLoadError] = useState("");
   const [form, setForm] = useState({
     ean: "",
+    productName: "",
     fullPallets: "",
     packs: "",
     loosePieces: "",
@@ -62,33 +64,85 @@ export default function WarehouseStockPage() {
     quantityM2: "",
   });
   const [msg, setMsg] = useState("");
+  const [importBusy, setImportBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
-    const [s, l] = await Promise.all([
-      fetch("/api/warehouse/stock"),
-      fetch("/api/warehouse/stock?view=locations"),
-    ]);
-    setStock(await s.json());
-    setLocations(await l.json());
+    setLoadError("");
+    try {
+      const [s, l] = await Promise.all([
+        fetch("/api/warehouse/stock"),
+        fetch("/api/warehouse/stock?view=locations"),
+      ]);
+      const stockJson = await s.json();
+      const locJson = await l.json();
+      if (!s.ok) {
+        setStock([]);
+        setLoadError(stockJson.error ?? "Could not load stock");
+        return;
+      }
+      if (!l.ok) {
+        setLocations([]);
+        setLoadError(locJson.error ?? "Could not load locations");
+        return;
+      }
+      setStock(Array.isArray(stockJson) ? stockJson : []);
+      setLocations(Array.isArray(locJson) ? locJson : []);
+    } catch {
+      setLoadError("Could not load stock — refresh and try again.");
+    }
   }, []);
 
   useEffect(() => {
     load();
   }, [load]);
 
+  const hasQty =
+    Boolean(form.quantityM2) ||
+    Boolean(form.fullPallets) ||
+    Boolean(form.packs) ||
+    Boolean(form.loosePieces);
+
+  const productTotals = useMemo(() => {
+    const map = new Map<
+      number,
+      { ean: string | null; name: string | null; total: number; bins: number }
+    >();
+    for (const row of stock) {
+      const cur = map.get(row.productId);
+      if (!cur) {
+        map.set(row.productId, {
+          ean: row.ean,
+          name: row.productName,
+          total: row.quantityM2,
+          bins: 1,
+        });
+      } else {
+        cur.total += row.quantityM2;
+        cur.bins += 1;
+      }
+    }
+    return [...map.values()].filter((r) => r.bins > 1).slice(0, 8);
+  }, [stock]);
+
   async function receive(e: React.FormEvent) {
     e.preventDefault();
     setMsg("");
+    if (!hasQty) {
+      setMsg("Enter pallets, boxes, loose tiles, or m².");
+      return;
+    }
     const res = await fetch("/api/warehouse/stock", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ean: form.ean,
+        productName: form.productName || undefined,
         fullPallets: form.fullPallets || undefined,
         packs: form.packs || undefined,
         loosePieces: form.loosePieces || undefined,
         quantityM2: form.quantityM2 || undefined,
-        locationId: Number(form.locationId),
+        locationId: form.locationId ? Number(form.locationId) : null,
         batchCode: form.batchCode || undefined,
         shipmentRef: form.shipmentRef || undefined,
         productionDate: form.productionDate || undefined,
@@ -100,12 +154,16 @@ export default function WarehouseStockPage() {
       setMsg(data.error ?? "Failed");
       return;
     }
+    const where = data.locationCode ?? "STAGING";
     setMsg(
-      `${form.movementType === "opening" ? "Opening stock" : "Received"} ${formatM2(data.quantityM2)} m² · ${data.breakdown?.labelSq ?? ""}`
+      `${form.movementType === "opening" ? "Opening stock" : "Received"} ${formatM2(data.quantityM2)} m² at ${where}${
+        data.breakdown?.labelSq ? ` · ${data.breakdown.labelSq}` : ""
+      }`
     );
     setForm((f) => ({
       ...f,
       ean: "",
+      productName: "",
       fullPallets: "",
       packs: "",
       loosePieces: "",
@@ -120,6 +178,10 @@ export default function WarehouseStockPage() {
   async function relocate(e: React.FormEvent) {
     e.preventDefault();
     setMsg("");
+    if (!move.fullPallets && !move.quantityM2) {
+      setMsg("Enter pallets or m² to move.");
+      return;
+    }
     const res = await fetch("/api/warehouse/stock", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -137,7 +199,7 @@ export default function WarehouseStockPage() {
       setMsg(data.error ?? "Move failed");
       return;
     }
-    setMsg(`Moved ${formatM2(data.quantityM2)} m² to new bin`);
+    setMsg(`Moved ${formatM2(data.quantityM2)} m² to new location`);
     setMove({
       productId: "",
       fromLocationId: "",
@@ -150,7 +212,8 @@ export default function WarehouseStockPage() {
 
   async function addLocation(e: React.FormEvent) {
     e.preventDefault();
-    await fetch("/api/warehouse/stock", {
+    setMsg("");
+    const res = await fetch("/api/warehouse/stock", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -160,12 +223,48 @@ export default function WarehouseStockPage() {
         label: form.label,
       }),
     });
+    const data = await res.json();
+    if (!res.ok) {
+      setMsg(data.error ?? "Could not add location");
+      return;
+    }
     setForm((f) => ({ ...f, code: "", zone: "", label: "" }));
     load();
   }
 
+  async function importProData(file: File | null) {
+    if (!file) return;
+    setImportBusy(true);
+    setMsg("");
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      const res = await fetch("/api/warehouse/stock", {
+        method: "POST",
+        body,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMsg(data.error ?? "Import failed");
+        return;
+      }
+      setMsg(
+        `Pro-Data import: ${data.rowsImported} rows · ${data.balancesUpdated} balances · ${data.productsUpserted} products · ${data.locationsTouched} locations` +
+          (data.balancesZeroed
+            ? ` · ${data.balancesZeroed} cleared (missing from file)`
+            : "")
+      );
+      load();
+    } catch {
+      setMsg("Import failed — check the Excel file.");
+    } finally {
+      setImportBusy(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
   return (
-    <AppShell title="Stock">
+    <AppShell title="Stock — receive & putaway">
       <Link href="/warehouse" className="mb-4 inline-block text-sm text-zinc-500">
         ← Warehouse
       </Link>
@@ -182,18 +281,49 @@ export default function WarehouseStockPage() {
         Locations →
       </Link>
 
-      {msg && (
-        <p className="mb-4 rounded border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
-          {msg}
+      {(msg || loadError) && (
+        <p
+          className={`mb-4 rounded border px-3 py-2 text-sm ${
+            loadError
+              ? "border-red-200 bg-red-50 text-red-800"
+              : "border-zinc-200 bg-zinc-50 text-zinc-700"
+          }`}
+        >
+          {loadError || msg}
         </p>
       )}
 
       <Card className="mb-6 p-4">
-        <p className="mb-1 font-medium">Receive / opening stock (putaway)</p>
+        <p className="mb-1 font-medium">Pro-Data stock Excel (every ~2 days)</p>
         <p className="mb-3 text-xs text-zinc-500">
-          Scan the lot barcode, enter how many pallets (or boxes / m²) arrived,
-          and choose the bin. Product pack specs convert pallets → m²
-          automatically. Register the lot under Products first if it is new.
+          Upload the Finance+ stock export (columns Barkodi, Emertimi, Lokacioni,
+          Sasia). Same product can sit in several places with different m² —
+          e.g. 51 m² in one warehouse area and 39 m² in another. Bin putaway
+          locations outside Pro-Data are not overwritten.
+        </p>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          className="hidden"
+          onChange={(e) => void importProData(e.target.files?.[0] ?? null)}
+        />
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={importBusy}
+          onClick={() => fileRef.current?.click()}
+        >
+          {importBusy ? "Importing…" : "Import Pro-Data .xlsx"}
+        </Button>
+      </Card>
+
+      <Card className="mb-6 p-4">
+        <p className="mb-1 font-medium">1. Truck unload / opening stock</p>
+        <p className="mb-3 text-xs text-zinc-500">
+          Location is optional — leave empty to park stock in STAGING, then
+          putaway below. Prefer m² if pack specs are not set yet; or register
+          the lot under Products first and enter pallets.
         </p>
         <form onSubmit={receive} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <Select
@@ -215,13 +345,17 @@ export default function WarehouseStockPage() {
             onChange={(e) => setForm({ ...form, ean: e.target.value })}
             required
           />
+          <Input
+            label="Product name (new lots)"
+            value={form.productName}
+            onChange={(e) => setForm({ ...form, productName: e.target.value })}
+          />
           <Select
-            label="Putaway location"
+            label="Location (optional)"
             value={form.locationId}
             onChange={(e) => setForm({ ...form, locationId: e.target.value })}
-            required
           >
-            <option value="">Select location</option>
+            <option value="">STAGING — put away later</option>
             {locations.map((l) => (
               <option key={l.id} value={l.id}>
                 {l.code}
@@ -230,6 +364,13 @@ export default function WarehouseStockPage() {
               </option>
             ))}
           </Select>
+          <Input
+            label="m² (recommended)"
+            type="number"
+            step="0.01"
+            value={form.quantityM2}
+            onChange={(e) => setForm({ ...form, quantityM2: e.target.value })}
+          />
           <Input
             label="Full pallets"
             type="number"
@@ -252,13 +393,6 @@ export default function WarehouseStockPage() {
             onChange={(e) => setForm({ ...form, loosePieces: e.target.value })}
           />
           <Input
-            label="Or enter m² directly"
-            type="number"
-            step="0.01"
-            value={form.quantityM2}
-            onChange={(e) => setForm({ ...form, quantityM2: e.target.value })}
-          />
-          <Input
             label="Batch / shade"
             value={form.batchCode}
             onChange={(e) => setForm({ ...form, batchCode: e.target.value })}
@@ -277,18 +411,22 @@ export default function WarehouseStockPage() {
             }
           />
           <div className="flex items-end">
-            <Button type="submit" disabled={!form.locationId || !form.ean}>
-              Register at location
+            <Button type="submit" disabled={!form.ean || !hasQty}>
+              Register stock
             </Button>
           </div>
         </form>
       </Card>
 
       <Card className="mb-6 p-4">
-        <p className="mb-3 font-medium">Move between bins</p>
+        <p className="mb-1 font-medium">2. Putaway — move between locations</p>
+        <p className="mb-3 text-xs text-zinc-500">
+          Move from STAGING (or any bin) into another place. The same lot can
+          hold stock in multiple locations with separate m² totals.
+        </p>
         <form onSubmit={relocate} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <Select
-            label="Stock line"
+            label="Stock line (lot × location)"
             value={
               move.productId && move.fromLocationId
                 ? `${move.productId}:${move.fromLocationId}`
@@ -326,17 +464,17 @@ export default function WarehouseStockPage() {
             ))}
           </Select>
           <Input
-            label="Full pallets"
-            type="number"
-            value={move.fullPallets}
-            onChange={(e) => setMove({ ...move, fullPallets: e.target.value })}
-          />
-          <Input
-            label="Or m²"
+            label="m² to move"
             type="number"
             step="0.01"
             value={move.quantityM2}
             onChange={(e) => setMove({ ...move, quantityM2: e.target.value })}
+          />
+          <Input
+            label="Or full pallets"
+            type="number"
+            value={move.fullPallets}
+            onChange={(e) => setMove({ ...move, fullPallets: e.target.value })}
           />
           <div className="flex items-end">
             <Button
@@ -344,14 +482,14 @@ export default function WarehouseStockPage() {
               variant="secondary"
               disabled={!move.productId || !move.toLocationId}
             >
-              Move stock
+              Putaway / move
             </Button>
           </div>
         </form>
       </Card>
 
       <Card className="mb-6 p-4">
-        <p className="mb-3 font-medium">Quick-add location</p>
+        <p className="mb-3 font-medium">Quick-add bin location</p>
         <form onSubmit={addLocation} className="flex flex-wrap gap-2">
           <Input
             placeholder="Code e.g. A-01"
@@ -372,13 +510,32 @@ export default function WarehouseStockPage() {
         </form>
       </Card>
 
+      {productTotals.length > 0 && (
+        <Card className="mb-6 p-4">
+          <p className="mb-2 text-sm font-medium text-zinc-800">
+            Same product in multiple places
+          </p>
+          <ul className="space-y-1 text-sm text-zinc-600">
+            {productTotals.map((p) => (
+              <li key={p.ean ?? p.name ?? String(p.total)}>
+                <span className="font-mono text-xs">{p.ean ?? "—"}</span>
+                {" · "}
+                {p.name ?? "—"}
+                {" — "}
+                <strong>{formatM2(p.total)} m²</strong> across {p.bins} locations
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
       <Card className="overflow-hidden">
         <div className="border-b border-zinc-200 px-4 py-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
-          Stock by lot × location
+          Stock by lot × location (m² per place)
         </div>
         {stock.length === 0 ? (
           <div className="p-6">
-            <EmptyState title="No stock yet — register products, then receive into a bin." />
+            <EmptyState title="No stock yet — unload a truck, import Pro-Data, or register opening stock." />
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -389,7 +546,7 @@ export default function WarehouseStockPage() {
                   <th className="px-2 py-2">Product</th>
                   <th className="px-2 py-2">Batch</th>
                   <th className="px-2 py-2">Location</th>
-                  <th className="px-2 py-2">m²</th>
+                  <th className="px-2 py-2">m² here</th>
                   <th className="px-2 py-2">Pallets</th>
                   <th className="px-2 py-2">Loose</th>
                 </tr>

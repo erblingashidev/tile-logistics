@@ -6,7 +6,10 @@ import { Card } from "@/components/ui";
 
 const links = [
   { href: "/warehouse/products", title: "Product lots & pack specs" },
-  { href: "/warehouse/stock", title: "Stock, receive & putaway" },
+  {
+    href: "/warehouse/stock",
+    title: "Stock — receive, putaway & Pro-Data import",
+  },
   { href: "/warehouse/locations", title: "Locations / bins" },
   { href: "/warehouse/inventory", title: "Annual inventory" },
   { href: "/warehouse/reports", title: "Warehouse reports" },

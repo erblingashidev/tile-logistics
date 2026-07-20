@@ -1,6 +1,6 @@
 /**
- * Pro-Data Finance+ integration placeholder.
- * See docs/PRODATA-INTEGRATION.md — contact Pro-Data for API/export options.
+ * Pro-Data Finance+ integration.
+ * See docs/PRODATA-INTEGRATION.md.
  */
 
 export interface ProDataSyncResult {
@@ -9,16 +9,16 @@ export interface ProDataSyncResult {
   imported?: number;
 }
 
+/** API sync is not available — use Excel stock import on Warehouse → Stock. */
 export async function syncProductsFromProData(): Promise<ProDataSyncResult> {
-  if (!process.env.PRODATA_API_URL) {
-    return {
-      ok: false,
-      message:
-        "Pro-Data not configured. Set PRODATA_API_URL after agreeing integration with Pro-Data.",
-    };
-  }
   return {
     ok: false,
-    message: "Pro-Data sync not implemented yet.",
+    message:
+      "Use Warehouse → Stock → Import Pro-Data .xlsx (stock report export every ~2 days).",
   };
 }
+
+export {
+  importProDataStockExcel,
+  parseProDataStockExcel,
+} from "@/lib/integrations/prodata-stock";
