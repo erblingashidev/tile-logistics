@@ -66,6 +66,7 @@ export default function WarehouseStockPage() {
   const [msg, setMsg] = useState("");
   const [importBusy, setImportBusy] = useState(false);
   const [undoBusy, setUndoBusy] = useState(false);
+  const [clearBusy, setClearBusy] = useState(false);
   const [undoStatus, setUndoStatus] = useState<{
     canUndo: boolean;
     sealedAt: string | null;
@@ -465,6 +466,51 @@ export default function WarehouseStockPage() {
     }
   }
 
+  async function clearAllStock() {
+    if (
+      !window.confirm(
+        "Clear ALL warehouse stock to zero?\n\nThis deletes every stock line (all locations). Product lots stay in the catalog. You can import Pro-Data again afterward.\n\nThis cannot be undone with “Undo last import”."
+      )
+    ) {
+      return;
+    }
+    const typed = window.prompt(
+      'Type CLEAR ALL STOCK to confirm (exactly, uppercase):'
+    );
+    if (typed !== "CLEAR ALL STOCK") {
+      setMsg("Clear cancelled — confirmation text did not match.");
+      return;
+    }
+    setClearBusy(true);
+    setMsg("Clearing all stock…");
+    try {
+      const res = await fetch("/api/warehouse/stock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "clear_all",
+          confirm: "CLEAR ALL STOCK",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMsg(data.error ?? "Clear failed");
+        return;
+      }
+      setMsg(
+        `All stock cleared (${data.balancesRemoved ?? 0} lines removed). You can import Pro-Data now.`
+      );
+      load();
+      loadUndoStatus();
+    } catch (err) {
+      setMsg(
+        err instanceof Error ? `Clear failed: ${err.message}` : "Clear failed"
+      );
+    } finally {
+      setClearBusy(false);
+    }
+  }
+
   return (
     <AppShell title="Stock — receive & putaway">
       <Link href="/warehouse" className="mb-4 inline-block text-sm text-zinc-500">
@@ -514,7 +560,7 @@ export default function WarehouseStockPage() {
           <Button
             type="button"
             variant="secondary"
-            disabled={importBusy || undoBusy}
+            disabled={importBusy || undoBusy || clearBusy}
             onClick={() => fileRef.current?.click()}
           >
             {importBusy ? "Importing…" : "Import Pro-Data .xlsx"}
@@ -523,11 +569,19 @@ export default function WarehouseStockPage() {
             type="button"
             variant="secondary"
             disabled={
-              importBusy || undoBusy || !undoStatus?.canUndo
+              importBusy || undoBusy || clearBusy || !undoStatus?.canUndo
             }
             onClick={() => void undoLastImport()}
           >
             {undoBusy ? "Undoing…" : "Undo last import"}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={importBusy || undoBusy || clearBusy}
+            onClick={() => void clearAllStock()}
+          >
+            {clearBusy ? "Clearing…" : "Clear all stock to 0"}
           </Button>
         </div>
         {undoStatus?.canUndo && undoStatus.sealedAt ? (

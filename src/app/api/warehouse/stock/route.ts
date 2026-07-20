@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import {
+  clearAllStockBalances,
   createWarehouseLocation,
   ensureStagingLocation,
   listStockMovements,
@@ -9,6 +10,7 @@ import {
   moveStock,
   receiveStock,
 } from "@/lib/services/stock";
+import { deleteAppSetting } from "@/lib/services/app-settings";
 
 export const runtime = "nodejs";
 
@@ -62,6 +64,25 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
+
+    if (body.action === "clear_all") {
+      const confirm = String(body.confirm ?? "");
+      if (confirm !== "CLEAR ALL STOCK") {
+        return NextResponse.json(
+          {
+            error:
+              'Type confirm: "CLEAR ALL STOCK" to wipe every stock balance.',
+          },
+          { status: 400 }
+        );
+      }
+      const result = await clearAllStockBalances({
+        notes: "Admin cleared all stock balances to zero for re-import",
+      });
+      // Drop Pro-Data undo snapshot so it cannot restore wiped data
+      await deleteAppSetting("prodata_import_rollback");
+      return NextResponse.json(result);
+    }
 
     if (body.action === "location") {
       try {

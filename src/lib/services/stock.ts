@@ -656,6 +656,34 @@ export async function listStockSummary() {
   return rows;
 }
 
+/** Wipe all warehouse stock balances (quantities → empty). Keeps product catalog. */
+export async function clearAllStockBalances(options?: {
+  notes?: string;
+}) {
+  const db = await getDb();
+  const before = await dbAll(db.select({ id: stockBalances.id }).from(stockBalances));
+  const count = before.length;
+  await db.delete(stockBalances);
+
+  const now = new Date().toISOString();
+  if (count > 0) {
+    // Audit marker — use first product if any exist is awkward; log activity only
+    await logActivity(
+      "delete",
+      "stock",
+      null,
+      options?.notes?.trim() ||
+        `Cleared all stock balances (${count} lines → 0)`,
+      {
+        category: "system",
+        details: { balancesRemoved: count, at: now },
+      }
+    );
+  }
+
+  return { ok: true as const, balancesRemoved: count };
+}
+
 export async function listStockAtLocation(locationId: number) {
   const rows = await listStockSummary();
   return rows.filter((row) => row.locationId === locationId);
