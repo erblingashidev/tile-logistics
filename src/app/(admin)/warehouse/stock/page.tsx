@@ -235,46 +235,119 @@ export default function WarehouseStockPage() {
   async function importProData(file: File | null) {
     if (!file) return;
     setImportBusy(true);
-    setMsg("");
-    try {
-      const body = new FormData();
-      body.append("file", file);
+    setMsg("Reading Excel…");
+
+    async function postJson(payload: Record<string, unknown>) {
       const res = await fetch("/api/warehouse/stock/import", {
         method: "POST",
-        body,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       });
       const text = await res.text();
-      let data: {
-        error?: string;
-        rowsImported?: number;
-        balancesUpdated?: number;
-        productsCreated?: number;
-        productsUpserted?: number;
-        locationsTouched?: number;
-        balancesCleared?: number;
-        elapsedMs?: number;
-        warnings?: string[];
-      } = {};
+      let data: { error?: string; created?: number; written?: number; cleared?: number } =
+        {};
       try {
         data = text ? JSON.parse(text) : {};
       } catch {
+        throw new Error(
+          res.status === 502 || res.status === 504
+            ? `Step timed out (HTTP ${res.status}). Retry — chunks should stay under 10s.`
+            : `Step failed (HTTP ${res.status}).`
+        );
+      }
+      if (!res.ok) {
+        throw new Error(data.error ?? `Step failed (HTTP ${res.status})`);
+      }
+      return data;
+    }
+
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      const prepRes = await fetch("/api/warehouse/stock/import", {
+        method: "POST",
+        body,
+      });
+      const prepText = await prepRes.text();
+      let prep: {
+        error?: string;
+        ok?: boolean;
+        products?: Array<Record<string, unknown>>;
+        balances?: Array<Record<string, unknown>>;
+        locationIds?: number[];
+        productCount?: number;
+        balanceCount?: number;
+        locationCount?: number;
+        negativesClamped?: number;
+        warnings?: string[];
+      } = {};
+      try {
+        prep = prepText ? JSON.parse(prepText) : {};
+      } catch {
         setMsg(
-          res.status === 413 || res.status === 502 || res.status === 504
-            ? "Import timed out or was blocked — the file is large; retry after deploy (bulk import). If it keeps failing, contact support."
-            : `Import failed (HTTP ${res.status}). Server did not return JSON.`
+          prepRes.status === 502 || prepRes.status === 504
+            ? "Prepare timed out. Retry once — parsing should finish under 10s."
+            : `Import failed (HTTP ${prepRes.status}).`
         );
         return;
       }
-      if (!res.ok) {
-        setMsg(data.error ?? `Import failed (HTTP ${res.status})`);
+      if (!prepRes.ok || !prep.ok || !prep.products || !prep.balances) {
+        setMsg(prep.error ?? `Import failed (HTTP ${prepRes.status})`);
         return;
       }
-      const secs =
-        data.elapsedMs != null ? ` in ${(data.elapsedMs / 1000).toFixed(1)}s` : "";
+
+      const products = prep.products;
+      const balances = prep.balances;
+      const locationIds = prep.locationIds ?? [];
+      let productsCreated = 0;
+      const productChunk = 100;
+      for (let i = 0; i < products.length; i += productChunk) {
+        setMsg(
+          `Products ${Math.min(i + productChunk, products.length)}/${products.length}…`
+        );
+        const data = await postJson({
+          action: "products",
+          products: products.slice(i, i + productChunk),
+        });
+        productsCreated += data.created ?? 0;
+      }
+
+      setMsg("Clearing previous Pro-Data stock…");
+      const cleared = await postJson({
+        action: "clear",
+        locationIds,
+      });
+
+      let balancesWritten = 0;
+      const balanceChunk = 150;
+      for (let i = 0; i < balances.length; i += balanceChunk) {
+        setMsg(
+          `Balances ${Math.min(i + balanceChunk, balances.length)}/${balances.length}…`
+        );
+        const data = await postJson({
+          action: "balances",
+          balances: balances.slice(i, i + balanceChunk),
+        });
+        balancesWritten += data.written ?? 0;
+      }
+
+      await postJson({
+        action: "finish",
+        locationIds,
+        productsCreated,
+        balancesWritten,
+        balancesCleared: cleared.cleared ?? 0,
+        balanceCount: prep.balanceCount ?? balances.length,
+        productCount: prep.productCount ?? products.length,
+        negativesClamped: prep.negativesClamped ?? 0,
+        warnings: prep.warnings ?? [],
+        sampleEan: (balances[0] as { ean?: string } | undefined)?.ean,
+      });
+
       setMsg(
-        `Pro-Data import${secs}: ${data.rowsImported ?? 0} rows · ${data.balancesUpdated ?? 0} balances · ${data.productsCreated ?? 0} new products · ${data.locationsTouched ?? 0} locations` +
-          (data.balancesCleared
-            ? ` · replaced ${data.balancesCleared} previous Pro-Data lines`
+        `Pro-Data import complete: ${balancesWritten} balances · ${productsCreated} new products · ${prep.locationCount ?? locationIds.length} locations` +
+          (cleared.cleared
+            ? ` · replaced ${cleared.cleared} previous Pro-Data lines`
             : "")
       );
       load();
@@ -323,10 +396,9 @@ export default function WarehouseStockPage() {
       <Card className="mb-6 p-4">
         <p className="mb-1 font-medium">Pro-Data stock Excel (every ~2 days)</p>
         <p className="mb-3 text-xs text-zinc-500">
-          Upload the Finance+ stock export (columns Barkodi, Emertimi, Lokacioni,
-          Sasia). Large files (~5 000 rows) are OK — import runs as a bulk sync.
-          Same product can sit in several places with different m². Only Pro-Data
-          warehouse areas are replaced; your bin putaways are left alone.
+          Upload the Finance+ stock export (Barkodi, Emertimi, Lokacioni, Sasia).
+          Large files run in short steps so Netlify does not time out — keep this
+          tab open until you see “complete”.
         </p>
         <input
           ref={fileRef}

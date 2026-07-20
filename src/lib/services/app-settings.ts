@@ -42,6 +42,11 @@ export async function setAppSetting(key: string, value: string): Promise<void> {
   await db.insert(appSettings).values({ key, value: trimmed, updatedAt });
 }
 
+export async function deleteAppSetting(key: string): Promise<void> {
+  const db = await getDb();
+  await db.delete(appSettings).where(eq(appSettings.key, key));
+}
+
 /** Invoice watch folder — set INVOICE_WATCH_DIR where the import service runs. */
 export async function getInvoiceWatchRoot(): Promise<string | null> {
   const fromEnv = process.env.INVOICE_WATCH_DIR?.trim();
