@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { getDatabasePath } from "../src/lib/config/env";
+import { getDatabasePath, getTursoConfig } from "../src/lib/config/env";
 import { loadEnvLocal, stripTursoEnv } from "./load-env-local";
 
 /** Same rules as the Next.js app (`getTursoConfig` + `createDbClient`). */
@@ -13,19 +13,22 @@ export function configureScriptDatabase() {
     process.env.SEED_TARGET === "local" ||
     (process.env.USE_LOCAL_DATABASE === "true" && !forceTurso);
 
-  if (forceLocal) {
+  if (forceTurso) {
+    // .env.local often has USE_LOCAL_DATABASE=true for local dev — clear it
+    // so getTursoConfig() actually connects to Turso.
+    delete process.env.USE_LOCAL_DATABASE;
+  } else if (forceLocal) {
     stripTursoEnv();
   }
 }
 
 export function describeScriptDatabaseTarget(): string {
-  if (process.env.TURSO_DATABASE_URL?.trim()) {
-    const host = process.env.TURSO_DATABASE_URL.replace(/^libsql:\/\//, "").split(
-      "/"
-    )[0];
-    return `Turso (${host}) — same as npm run dev`;
+  const turso = getTursoConfig();
+  if (turso) {
+    const host = turso.url.replace(/^libsql:\/\//, "").split("/")[0];
+    return `Turso (${host})`;
   }
-  return `local SQLite (${getDatabasePath()}) — same as npm run dev`;
+  return `local SQLite (${getDatabasePath()})`;
 }
 
 export function envLocalUsesTurso(): boolean {
