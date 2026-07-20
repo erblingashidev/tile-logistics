@@ -164,6 +164,105 @@ async function ensureVehicleSchemaPatches(client: Client) {
   );
 }
 
+/**
+ * Warehouse / WMS tables + product pack columns.
+ * Always runs (including Netlify+Turso) so stock queries do not fail when
+ * full runtime migrations are skipped in production.
+ */
+async function ensureWarehouseSchemaPatches(client: Client) {
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS products (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ean TEXT UNIQUE,
+      product_name TEXT,
+      unit TEXT NOT NULL DEFAULT 'm2',
+      tile_width_cm REAL,
+      tile_height_cm REAL,
+      tile_thickness_cm REAL,
+      pieces_per_pallet INTEGER,
+      m2_per_pallet REAL,
+      kg_per_pallet REAL,
+      status TEXT NOT NULL DEFAULT 'draft',
+      source TEXT NOT NULL DEFAULT 'manual',
+      notes TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS warehouse_locations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      code TEXT NOT NULL UNIQUE,
+      zone TEXT,
+      label TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS stock_balances (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+      location_id INTEGER NOT NULL REFERENCES warehouse_locations(id) ON DELETE CASCADE,
+      quantity_m2 REAL NOT NULL DEFAULT 0,
+      full_pallets INTEGER NOT NULL DEFAULT 0,
+      loose_pieces INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL,
+      UNIQUE(product_id, location_id)
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS stock_movements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+      location_id INTEGER REFERENCES warehouse_locations(id) ON DELETE SET NULL,
+      movement_type TEXT NOT NULL,
+      quantity_m2 REAL NOT NULL DEFAULT 0,
+      full_pallets INTEGER NOT NULL DEFAULT 0,
+      loose_pieces INTEGER NOT NULL DEFAULT 0,
+      reference_type TEXT,
+      reference_id INTEGER,
+      employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+      notes TEXT,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  const productCols = await tableColumns(client, "products");
+  const productColumnMigrations: Array<[string, string]> = [
+    ["unit", "unit TEXT NOT NULL DEFAULT 'm2'"],
+    ["kg_per_pallet", "kg_per_pallet REAL"],
+    ["pieces_per_pack", "pieces_per_pack INTEGER"],
+    ["m2_per_pack", "m2_per_pack REAL"],
+    ["kg_per_pack", "kg_per_pack REAL"],
+    ["packs_per_pallet", "packs_per_pallet INTEGER"],
+    ["unit_weight_kg", "unit_weight_kg REAL"],
+    ["pallet_footprint_length_cm", "pallet_footprint_length_cm REAL"],
+    ["pallet_footprint_width_cm", "pallet_footprint_width_cm REAL"],
+    ["replaces_standard_pallets", "replaces_standard_pallets REAL DEFAULT 1"],
+    ["family_key", "family_key TEXT"],
+    ["batch_code", "batch_code TEXT"],
+    ["production_date", "production_date TEXT"],
+    ["shipment_ref", "shipment_ref TEXT"],
+  ];
+  for (const [name, definition] of productColumnMigrations) {
+    await addColumnIfMissing(client, "products", name, definition, productCols);
+  }
+
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_products_ean ON products(ean)"
+  );
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_products_family ON products(family_key)"
+  );
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_stock_balances_product ON stock_balances(product_id)"
+  );
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_stock_movements_product ON stock_movements(product_id)"
+  );
+}
+
 async function ensureAdminsTable(client: Client) {
   await client.execute(`
     CREATE TABLE IF NOT EXISTS admins (
@@ -856,6 +955,7 @@ export async function getDb() {
         await ensureOrderDeliveryLinksTable(clientInstance);
         await ensureOrderSchemaPatches(clientInstance);
         await ensureVehicleSchemaPatches(clientInstance);
+        await ensureWarehouseSchemaPatches(clientInstance);
         await ensureInvoiceImportTables(clientInstance);
         dbInstance = drizzle(clientInstance, { schema });
         const { backfillAdminEmployeeLinks } = await import(

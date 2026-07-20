@@ -21,6 +21,10 @@ const REQUIRED_TABLES = [
   "orders",
   "employees",
   "admins",
+  "products",
+  "warehouse_locations",
+  "stock_balances",
+  "stock_movements",
 ];
 
 function applyCliDatabaseTarget() {

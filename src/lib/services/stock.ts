@@ -635,8 +635,6 @@ export async function listStockSummary() {
         batchCode: products.batchCode,
         shipmentRef: products.shipmentRef,
         m2PerPallet: products.m2PerPallet,
-        piecesPerPallet: products.piecesPerPallet,
-        packsPerPallet: products.packsPerPallet,
         status: products.status,
         locationId: warehouseLocations.id,
         locationCode: warehouseLocations.code,

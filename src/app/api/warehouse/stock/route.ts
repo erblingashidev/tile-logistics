@@ -32,9 +32,18 @@ export async function GET(request: Request) {
     }
     return NextResponse.json(await listStockSummary());
   } catch (err) {
+    console.error("[warehouse/stock GET]", err);
     const msg = errorMessage(err, "Unauthorized");
     const status = /unauthorized|forbidden|session/i.test(msg) ? 401 : 500;
-    return NextResponse.json({ error: msg }, { status });
+    return NextResponse.json(
+      {
+        error:
+          status === 500
+            ? "Stock query failed. Apply warehouse schema (npm run turso:apply-schema) if columns are missing."
+            : msg,
+      },
+      { status }
+    );
   }
 }
 
