@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
-import { importProDataStockExcel } from "@/lib/integrations/prodata-stock";
 import {
   createWarehouseLocation,
   ensureStagingLocation,
@@ -53,20 +52,13 @@ export async function POST(request: Request) {
     const contentType = request.headers.get("content-type") ?? "";
 
     if (contentType.includes("multipart/form-data")) {
-      const form = await request.formData();
-      const file = form.get("file");
-      if (!(file instanceof File)) {
-        return NextResponse.json(
-          { error: "Upload a Pro-Data Excel (.xlsx) file." },
-          { status: 400 }
-        );
-      }
-      const buffer = Buffer.from(await file.arrayBuffer());
-      const result = await importProDataStockExcel(buffer);
-      if (!result.ok) {
-        return NextResponse.json({ error: result.error }, { status: 400 });
-      }
-      return NextResponse.json(result);
+      return NextResponse.json(
+        {
+          error:
+            "Use /api/warehouse/stock/import for Pro-Data Excel uploads.",
+        },
+        { status: 400 }
+      );
     }
 
     const body = await request.json();

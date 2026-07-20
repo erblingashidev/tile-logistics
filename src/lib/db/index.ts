@@ -986,4 +986,13 @@ export async function getDb() {
   return initPromise;
 }
 
+/** Raw libsql client for bulk batch writes (Pro-Data stock import). */
+export async function getLibsqlClient(): Promise<Client> {
+  await getDb();
+  if (!clientInstance) {
+    throw new Error("Database client not initialized");
+  }
+  return clientInstance;
+}
+
 export { schema };

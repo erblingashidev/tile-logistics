@@ -239,24 +239,51 @@ export default function WarehouseStockPage() {
     try {
       const body = new FormData();
       body.append("file", file);
-      const res = await fetch("/api/warehouse/stock", {
+      const res = await fetch("/api/warehouse/stock/import", {
         method: "POST",
         body,
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setMsg(data.error ?? "Import failed");
+      const text = await res.text();
+      let data: {
+        error?: string;
+        rowsImported?: number;
+        balancesUpdated?: number;
+        productsCreated?: number;
+        productsUpserted?: number;
+        locationsTouched?: number;
+        balancesCleared?: number;
+        elapsedMs?: number;
+        warnings?: string[];
+      } = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        setMsg(
+          res.status === 413 || res.status === 502 || res.status === 504
+            ? "Import timed out or was blocked — the file is large; retry after deploy (bulk import). If it keeps failing, contact support."
+            : `Import failed (HTTP ${res.status}). Server did not return JSON.`
+        );
         return;
       }
+      if (!res.ok) {
+        setMsg(data.error ?? `Import failed (HTTP ${res.status})`);
+        return;
+      }
+      const secs =
+        data.elapsedMs != null ? ` in ${(data.elapsedMs / 1000).toFixed(1)}s` : "";
       setMsg(
-        `Pro-Data import: ${data.rowsImported} rows · ${data.balancesUpdated} balances · ${data.productsUpserted} products · ${data.locationsTouched} locations` +
-          (data.balancesZeroed
-            ? ` · ${data.balancesZeroed} cleared (missing from file)`
+        `Pro-Data import${secs}: ${data.rowsImported ?? 0} rows · ${data.balancesUpdated ?? 0} balances · ${data.productsCreated ?? 0} new products · ${data.locationsTouched ?? 0} locations` +
+          (data.balancesCleared
+            ? ` · replaced ${data.balancesCleared} previous Pro-Data lines`
             : "")
       );
       load();
-    } catch {
-      setMsg("Import failed — check the Excel file.");
+    } catch (err) {
+      setMsg(
+        err instanceof Error
+          ? `Import failed: ${err.message}`
+          : "Import failed — network error. Check connection and try again."
+      );
     } finally {
       setImportBusy(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -297,9 +324,9 @@ export default function WarehouseStockPage() {
         <p className="mb-1 font-medium">Pro-Data stock Excel (every ~2 days)</p>
         <p className="mb-3 text-xs text-zinc-500">
           Upload the Finance+ stock export (columns Barkodi, Emertimi, Lokacioni,
-          Sasia). Same product can sit in several places with different m² —
-          e.g. 51 m² in one warehouse area and 39 m² in another. Bin putaway
-          locations outside Pro-Data are not overwritten.
+          Sasia). Large files (~5 000 rows) are OK — import runs as a bulk sync.
+          Same product can sit in several places with different m². Only Pro-Data
+          warehouse areas are replaced; your bin putaways are left alone.
         </p>
         <input
           ref={fileRef}

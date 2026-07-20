@@ -1,19 +1,18 @@
 /**
  * Pro-Data Finance+ stock report import (Excel export every ~2 days).
  * Expected columns: Shifra, Barkodi, Emertimi, Njesia Matese Baze, Lokacioni, Sasia
+ *
+ * Uses bulk SQL batches — row-by-row upserts time out on Netlify (~4k products).
  */
 import * as XLSX from "xlsx";
 import { inArray } from "drizzle-orm";
-import { getDb } from "@/lib/db";
+import { getDb, getLibsqlClient } from "@/lib/db";
 import { dbAll } from "@/lib/db/query";
-import { stockBalances } from "@/lib/db/schema";
-import { normalizeOrderUnit } from "@/lib/constants";
+import { products, stockBalances } from "@/lib/db/schema";
+import { normalizeOrderUnit, type OrderUnit } from "@/lib/constants";
 import { logActivity } from "@/lib/logger";
-import { upsertProduct } from "@/lib/services/products";
-import {
-  getOrCreateWarehouseLocation,
-  setStockBalanceAbsolute,
-} from "@/lib/services/stock";
+import { buildFamilyKey } from "@/lib/product-pallet-spec";
+import { getOrCreateWarehouseLocation } from "@/lib/services/stock";
 
 /** Known Pro-Data warehouse area names → stable location codes. */
 export const PRODATA_LOCATION_CODES: Record<
@@ -88,8 +87,25 @@ export function resolveProDataLocation(name: string) {
   };
 }
 
+function inferDims(name: string | null): { width?: number; height?: number } {
+  if (!name) return {};
+  const match = name.match(/(\d{2,3})\s*[x×X*]\s*(\d{2,3})/);
+  if (!match) return {};
+  return { width: Number(match[1]), height: Number(match[2]) };
+}
+
+function unitFromRow(unitRaw: string | null, productName: string | null): OrderUnit {
+  const u = (unitRaw ?? "").trim();
+  if (/^(m2|m²)$/i.test(u)) return "m2";
+  if (u) return normalizeOrderUnit(u);
+  if (productName && /\d{2,3}\s*[x×X*]\s*\d{2,3}/.test(productName)) return "m2";
+  return normalizeOrderUnit(u || "m2");
+}
+
 /** Pure parser — no DB. Aggregates duplicate barcode × location rows. */
-export function parseProDataStockExcel(buffer: Buffer | ArrayBuffer): ParsedProDataStock {
+export function parseProDataStockExcel(
+  buffer: Buffer | ArrayBuffer
+): ParsedProDataStock {
   const workbook = XLSX.read(buffer, { type: "buffer", cellDates: false });
   const sheetName = workbook.SheetNames[0];
   const warnings: string[] = [];
@@ -171,24 +187,38 @@ export function parseProDataStockExcel(buffer: Buffer | ArrayBuffer): ParsedProD
 export interface ProDataStockImportResult {
   ok: true;
   productsUpserted: number;
+  productsCreated: number;
   balancesUpdated: number;
-  balancesZeroed: number;
+  balancesCleared: number;
   locationsTouched: number;
   rowsImported: number;
   negativesClamped: number;
   warnings: string[];
+  elapsedMs: number;
+}
+
+const BATCH = 80;
+
+async function runBatches(
+  statements: Array<{ sql: string; args: Array<string | number | null> }>
+) {
+  const client = await getLibsqlClient();
+  for (let i = 0; i < statements.length; i += BATCH) {
+    const chunk = statements.slice(i, i + BATCH);
+    await client.batch(chunk, "write");
+  }
 }
 
 /**
- * Snapshot-sync Pro-Data stock into warehouse balances.
- * - Same barcode can have different m² at different Pro-Data locations.
- * - Only touches Pro-Data-mapped locations (bin putaway locations are left alone).
- * - Missing products at a touched Pro-Data location are zeroed.
+ * Snapshot-sync Pro-Data stock into warehouse balances (bulk).
+ * Same barcode can have different m² at different Pro-Data locations.
+ * Only replaces balances on Pro-Data-mapped locations — bin putaways stay.
  */
 export async function importProDataStockExcel(
   buffer: Buffer | ArrayBuffer,
   options?: { employeeId?: number }
 ): Promise<ProDataStockImportResult | { ok: false; error: string }> {
+  const started = Date.now();
   const parsed = parseProDataStockExcel(buffer);
   if (parsed.rows.length === 0) {
     return {
@@ -209,117 +239,218 @@ export async function importProDataStockExcel(
     locationIds.set(name, loc!.id);
   }
 
-  let productsUpserted = 0;
-  let balancesUpdated = 0;
-  let negativesClamped = 0;
+  const uniqueByBarcode = new Map<string, ProDataStockRow>();
+  for (const row of parsed.rows) {
+    if (!uniqueByBarcode.has(row.barcode)) {
+      uniqueByBarcode.set(row.barcode, row);
+    }
+  }
+
+  const db = await getDb();
   const productByBarcode = new Map<string, number>();
-  const importedKeys = new Set<string>();
+
+  // Chunked lookup avoids huge IN (...) lists on Turso
+  const barcodes = [...uniqueByBarcode.keys()];
+  for (let i = 0; i < barcodes.length; i += 400) {
+    const chunk = barcodes.slice(i, i + 400);
+    const found = await dbAll(
+      db
+        .select({ id: products.id, ean: products.ean })
+        .from(products)
+        .where(inArray(products.ean, chunk))
+    );
+    for (const p of found) {
+      if (p.ean) productByBarcode.set(p.ean, p.id);
+    }
+  }
+
+  const now = new Date().toISOString();
+  const toInsert: ProDataStockRow[] = [];
+  for (const [barcode, row] of uniqueByBarcode) {
+    if (!productByBarcode.has(barcode)) toInsert.push(row);
+  }
+
+  let productsCreated = 0;
+  if (toInsert.length > 0) {
+    const insertStmts = toInsert.map((row) => {
+      const dims = inferDims(row.productName);
+      const unit = unitFromRow(row.unit, row.productName);
+      const familyKey = buildFamilyKey({
+        productName: row.productName,
+        tileWidthCm: dims.width,
+        tileHeightCm: dims.height,
+      });
+      return {
+        sql: `INSERT INTO products (
+          ean, product_name, unit, tile_width_cm, tile_height_cm,
+          family_key, status, source, notes, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 'confirmed', 'prodata', ?, ?, ?)
+        ON CONFLICT(ean) DO UPDATE SET
+          product_name = COALESCE(excluded.product_name, products.product_name),
+          unit = excluded.unit,
+          updated_at = excluded.updated_at,
+          source = CASE WHEN products.source = 'manual' THEN products.source ELSE 'prodata' END`,
+        args: [
+          row.barcode,
+          row.productName,
+          unit,
+          dims.width ?? null,
+          dims.height ?? null,
+          familyKey,
+          row.articleCode
+            ? `Pro-Data shifra ${row.articleCode}`
+            : "Imported from Pro-Data stock export",
+          now,
+          now,
+        ] as Array<string | number | null>,
+      };
+    });
+    await runBatches(insertStmts);
+    productsCreated = toInsert.length;
+
+    // Refresh ids for barcodes we just inserted
+    for (let i = 0; i < toInsert.length; i += 400) {
+      const chunk = toInsert.slice(i, i + 400).map((r) => r.barcode);
+      const found = await dbAll(
+        db
+          .select({ id: products.id, ean: products.ean })
+          .from(products)
+          .where(inArray(products.ean, chunk))
+      );
+      for (const p of found) {
+        if (p.ean) productByBarcode.set(p.ean, p.id);
+      }
+    }
+  }
+
+  // Update names on existing products that we already knew (lightweight batch)
+  const updateNameStmts: Array<{
+    sql: string;
+    args: Array<string | number | null>;
+  }> = [];
+  for (const [barcode, row] of uniqueByBarcode) {
+    if (!toInsert.some((r) => r.barcode === barcode) && row.productName) {
+      const id = productByBarcode.get(barcode);
+      if (id != null) {
+        updateNameStmts.push({
+          sql: `UPDATE products SET product_name = COALESCE(?, product_name), updated_at = ? WHERE id = ? AND (product_name IS NULL OR product_name = '')`,
+          args: [row.productName, now, id],
+        });
+      }
+    }
+  }
+  if (updateNameStmts.length > 0) {
+    await runBatches(updateNameStmts);
+  }
+
+  let negativesClamped = 0;
+  const balanceRows: Array<{
+    productId: number;
+    locationId: number;
+    quantityM2: number;
+  }> = [];
 
   for (const row of parsed.rows) {
     const locationId = locationIds.get(row.locationName);
-    if (locationId == null) continue;
-
-    let productId = productByBarcode.get(row.barcode);
-    if (productId == null) {
-      const unitRaw = (row.unit ?? "").trim();
-      const unit = normalizeOrderUnit(
-        /^(m2|m²)$/i.test(unitRaw) ? "m2" : unitRaw || "m2"
-      );
-      const product = await upsertProduct({
-        ean: row.barcode,
-        productName: row.productName,
-        unit,
-        source: "prodata",
-        status: "confirmed",
-        notes: row.articleCode
-          ? `Pro-Data shifra ${row.articleCode}`
-          : "Imported from Pro-Data stock export",
-        asNewLot: true,
-      });
-      if (!product) continue;
-      productId = product.id;
-      productByBarcode.set(row.barcode, productId);
-      productsUpserted += 1;
-    }
-
+    const productId = productByBarcode.get(row.barcode);
+    if (locationId == null || productId == null) continue;
     let qty = row.quantity;
     if (qty < 0) {
       negativesClamped += 1;
       qty = 0;
     }
-
-    await setStockBalanceAbsolute({
+    balanceRows.push({
       productId,
       locationId,
       quantityM2: Math.round(qty * 100) / 100,
-      employeeId: options?.employeeId,
-      notes: `Pro-Data sync · ${row.locationName}`,
-      referenceType: "prodata_sync",
     });
-    balancesUpdated += 1;
-    importedKeys.add(`${productId}:${locationId}`);
   }
 
-  // Zero balances at touched Pro-Data locations that are no longer in the file
   const touchedLocationIds = [...new Set(locationIds.values())];
-  const db = await getDb();
-  const existingAtTouched =
-    touchedLocationIds.length > 0
-      ? await dbAll(
-          db
-            .select({
-              id: stockBalances.id,
-              productId: stockBalances.productId,
-              locationId: stockBalances.locationId,
-              quantityM2: stockBalances.quantityM2,
-            })
-            .from(stockBalances)
-            .where(inArray(stockBalances.locationId, touchedLocationIds))
-        )
-      : [];
+  const client = await getLibsqlClient();
 
-  let balancesZeroed = 0;
-  for (const bal of existingAtTouched) {
-    const key = `${bal.productId}:${bal.locationId}`;
-    if (importedKeys.has(key)) continue;
-    if ((bal.quantityM2 ?? 0) === 0) continue;
-    await setStockBalanceAbsolute({
-      productId: bal.productId,
-      locationId: bal.locationId,
-      quantityM2: 0,
-      employeeId: options?.employeeId,
-      notes: "Pro-Data sync — missing from export (zeroed)",
-      referenceType: "prodata_sync",
+  // Snapshot replace on Pro-Data locations only
+  let balancesCleared = 0;
+  if (touchedLocationIds.length > 0) {
+    const before = await dbAll(
+      db
+        .select({ id: stockBalances.id })
+        .from(stockBalances)
+        .where(inArray(stockBalances.locationId, touchedLocationIds))
+    );
+    balancesCleared = before.length;
+    const placeholders = touchedLocationIds.map(() => "?").join(",");
+    await client.execute({
+      sql: `DELETE FROM stock_balances WHERE location_id IN (${placeholders})`,
+      args: touchedLocationIds,
     });
-    balancesZeroed += 1;
   }
 
+  const balanceStmts = balanceRows.map((row) => ({
+    sql: `INSERT INTO stock_balances (
+      product_id, location_id, quantity_m2, full_pallets, loose_pieces, updated_at
+    ) VALUES (?, ?, ?, 0, 0, ?)
+    ON CONFLICT(product_id, location_id) DO UPDATE SET
+      quantity_m2 = excluded.quantity_m2,
+      full_pallets = 0,
+      loose_pieces = 0,
+      updated_at = excluded.updated_at`,
+    args: [row.productId, row.locationId, row.quantityM2, now] as Array<
+      string | number | null
+    >,
+  }));
+  await runBatches(balanceStmts);
+
+  const sampleProductId = balanceRows[0]?.productId;
+  const sampleLocationId = touchedLocationIds[0];
+  if (sampleProductId != null && sampleLocationId != null) {
+    await client.execute({
+      sql: `INSERT INTO stock_movements (
+        product_id, location_id, movement_type, quantity_m2, full_pallets, loose_pieces,
+        reference_type, reference_id, employee_id, notes, created_at
+      ) VALUES (?, ?, 'prodata_sync', ?, 0, 0, 'prodata_sync', NULL, ?, ?, ?)`,
+      args: [
+        sampleProductId,
+        sampleLocationId,
+        Math.round(
+          balanceRows.reduce((s, r) => s + r.quantityM2, 0) * 100
+        ) / 100,
+        options?.employeeId ?? null,
+        `Pro-Data Excel sync: ${balanceRows.length} balances across ${touchedLocationIds.length} locations`,
+        now,
+      ],
+    });
+  }
   await logActivity(
     "create",
     "stock",
     null,
-    `Pro-Data stock import: ${balancesUpdated} balances, ${productsUpserted} products`,
+    `Pro-Data stock import: ${balanceRows.length} balances, ${productsCreated} new products`,
     {
       category: "system",
       details: {
-        productsUpserted,
-        balancesUpdated,
-        balancesZeroed,
+        productsCreated,
+        productsUpserted: uniqueByBarcode.size,
+        balancesUpdated: balanceRows.length,
+        balancesCleared,
         locationsTouched: touchedLocationIds.length,
         rowsImported: parsed.rows.length,
         negativesClamped,
+        elapsedMs: Date.now() - started,
       },
     }
   );
 
   return {
     ok: true,
-    productsUpserted,
-    balancesUpdated,
-    balancesZeroed,
+    productsUpserted: uniqueByBarcode.size,
+    productsCreated,
+    balancesUpdated: balanceRows.length,
+    balancesCleared,
     locationsTouched: touchedLocationIds.length,
     rowsImported: parsed.rows.length,
     negativesClamped,
     warnings: parsed.warnings,
+    elapsedMs: Date.now() - started,
   };
 }
