@@ -675,18 +675,22 @@ export async function deleteProducts(ids: number[]) {
 
   await db.delete(products).where(inArray(products.id, unique));
 
-  for (const product of existing) {
-    await logActivity(
-      "delete",
-      "product",
-      product.id,
-      `Deleted product: ${product.ean ?? product.productName ?? product.id}`,
-      {
-        category: "system",
-        details: { ean: product.ean, productName: product.productName },
-      }
-    );
-  }
+  // One summary log — per-row inserts time out on Turso/Netlify when deleting hundreds.
+  await logActivity(
+    "delete",
+    "product",
+    existing.length === 1 ? existing[0].id : null,
+    existing.length === 1
+      ? `Deleted product: ${existing[0].ean ?? existing[0].productName ?? existing[0].id}`
+      : `Deleted ${existing.length} products from catalog`,
+    {
+      category: "system",
+      details: {
+        deleted: existing.length,
+        ids: existing.map((p) => p.id).slice(0, 50),
+      },
+    }
+  );
 
   return { ok: true as const, deleted: existing.length };
 }

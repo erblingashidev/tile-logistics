@@ -51,7 +51,7 @@ export default function WarehouseProductsPage() {
   const [editForm, setEditForm] = useState<ProductFormValues>(emptyProductForm());
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/warehouse/products");
+    const res = await fetch("/api/warehouse/products?limit=500");
     const data = await res.json();
     setProducts(Array.isArray(data) ? data : []);
     setSelected(new Set());
@@ -140,15 +140,36 @@ export default function WarehouseProductsPage() {
 
     setBusy(true);
     try {
-      const res = await fetch("/api/warehouse/products", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(ids.length === 1 ? { id: ids[0] } : { ids }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        window.alert(data.error ?? "Delete failed");
-        return;
+      // Chunk so each request stays under Netlify's ~10s limit (Turso latency).
+      const CHUNK = 100;
+      let deleted = 0;
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const chunk = ids.slice(i, i + CHUNK);
+        const res = await fetch("/api/warehouse/products", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            chunk.length === 1 ? { id: chunk[0] } : { ids: chunk }
+          ),
+        });
+        let data: { error?: string; deleted?: number } = {};
+        try {
+          data = await res.json();
+        } catch {
+          /* non-JSON (e.g. gateway timeout HTML) */
+        }
+        if (!res.ok) {
+          const hint =
+            res.status === 502 || res.status === 504
+              ? ` Timed out after deleting ${deleted} of ${ids.length}. Try again for the rest.`
+              : "";
+          window.alert(
+            (data.error ?? `Delete failed (HTTP ${res.status})`) + hint
+          );
+          await load();
+          return;
+        }
+        deleted += data.deleted ?? chunk.length;
       }
       await load();
     } finally {

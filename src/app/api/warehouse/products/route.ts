@@ -12,6 +12,13 @@ import {
 } from "@/lib/services/products";
 
 export const runtime = "nodejs";
+/** Bulk delete must stay under Netlify's ~10s hard limit. */
+export const maxDuration = 26;
+
+function errorMessage(err: unknown, fallback: string) {
+  if (err instanceof Error && err.message) return err.message;
+  return fallback;
+}
 
 export async function GET(request: Request) {
   try {
@@ -170,7 +177,10 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: result.error }, { status: 400 });
     }
     return NextResponse.json(result);
-  } catch {
-    return NextResponse.json({ error: "Bad request" }, { status: 400 });
+  } catch (err) {
+    return NextResponse.json(
+      { error: errorMessage(err, "Delete failed") },
+      { status: 500 }
+    );
   }
 }
