@@ -12,6 +12,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "seed": "esbuild scripts/seed.ts --bundle --platform=node --format=cjs --outfile=.tmp/seed.cjs --external:@libsql/client --external:fs --external:path --external:crypto && DB_TARGET=turso node .tmp/seed.cjs",
     "seed:local": "esbuild scripts/seed.ts --bundle --platform=node --format=cjs --outfile=.tmp/seed.cjs --external:@libsql/client --external:fs --external:path --external:crypto && DB_TARGET=local node .tmp/seed.cjs",
     "reset": "npm run reset:turso",
@@ -55,6 +57,7 @@
     "eslint-config-next": "16.2.9",
     "tailwindcss": "^4",
     "tsx": "^4.19.2",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.7"
   }
 }
