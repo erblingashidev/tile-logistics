@@ -58,7 +58,9 @@ function PasswordTitle({
     );
   }
   return (
-    <PortalSectionTitle className={`normal-case tracking-normal text-zinc-700 ${className}`}>
+    <PortalSectionTitle
+      className={`normal-case tracking-normal text-zinc-700 ${className}`}
+    >
       {children}
     </PortalSectionTitle>
   );
@@ -74,7 +76,8 @@ export function ChangePasswordCard({
   defaultOpen?: boolean;
 }) {
   const copy = { ...defaultLabels, ...labels };
-  const [open, setOpen] = useState(defaultOpen || variant === "admin");
+  const alwaysOpen = defaultOpen || variant === "admin";
+  const [open, setOpen] = useState(alwaysOpen);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -111,7 +114,11 @@ export function ChangePasswordCard({
 
   return (
     <PasswordSurface variant={variant}>
-      {variant === "portal" ? (
+      {alwaysOpen ? (
+        <PasswordTitle variant={variant} className="mb-4">
+          {copy.title}
+        </PasswordTitle>
+      ) : (
         <button
           type="button"
           onClick={() => setOpen((value) => !value)}
@@ -122,16 +129,12 @@ export function ChangePasswordCard({
             {open ? "−" : "+"}
           </span>
         </button>
-      ) : (
-        <PasswordTitle variant={variant} className="mb-4">
-          {copy.title}
-        </PasswordTitle>
       )}
 
-      {open && (
+      {(open || alwaysOpen) && (
         <form
           onSubmit={submit}
-          className={`space-y-3 ${variant === "portal" ? "mt-4" : ""}`}
+          className={`space-y-3 ${!alwaysOpen ? "mt-4" : ""}`}
           autoComplete="off"
         >
           {error && <Alert tone="error">{error}</Alert>}

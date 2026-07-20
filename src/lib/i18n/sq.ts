@@ -242,6 +242,13 @@ export const sq = {
   passwordUpdated: "Fjalëkalimi u përditësua",
   showPassword: "Shfaq",
   hidePassword: "Fshih",
+
+  profileLink: "Profili",
+  profileTitle: "Profili im",
+  profileLoading: "Duke ngarkuar profilin…",
+  profileAccount: "Llogaria",
+  profileStatus: "Statusi",
+  profileRoles: "Rolet",
 } as const;
 
 export function statusLabelSq(status: string): string {

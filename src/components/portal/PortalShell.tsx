@@ -3,9 +3,8 @@
 import Link from "next/link";
 import { BRAND } from "@/lib/brand";
 import { sq } from "@/lib/i18n/sq";
-import { ChangePasswordCard } from "@/components/portal/ChangePasswordCard";
 
-type PortalNav = "orders" | "wms" | "reports";
+type PortalNav = "orders" | "wms" | "reports" | "profile";
 
 interface PortalShellProps {
   title: string;
@@ -14,7 +13,6 @@ interface PortalShellProps {
   showOrders?: boolean;
   showWms?: boolean;
   showReports?: boolean;
-  showChangePassword?: boolean;
   onLogout: () => void;
   onRefresh?: () => void | Promise<void>;
   refreshing?: boolean;
@@ -43,7 +41,6 @@ export function PortalShell({
   showOrders = true,
   showWms = false,
   showReports = false,
-  showChangePassword = true,
   onLogout,
   onRefresh,
   refreshing = false,
@@ -56,6 +53,11 @@ export function PortalShell({
       id: "reports" as const,
       href: "/portal/reports",
       label: sq.reportsLink,
+    },
+    {
+      id: "profile" as const,
+      href: "/portal/profile",
+      label: sq.profileLink,
     },
   ].filter(Boolean) as Array<{ id: PortalNav; href: string; label: string }>;
 
@@ -90,20 +92,6 @@ export function PortalShell({
 
       <main className="safe-bottom mx-auto max-w-lg space-y-4 px-4 py-5 pb-24">
         {children}
-        {showChangePassword && (
-          <ChangePasswordCard
-            labels={{
-              title: sq.changePasswordTitle,
-              currentPassword: sq.currentPassword,
-              newPassword: sq.newPassword,
-              confirmPassword: sq.confirmPassword,
-              save: sq.updatePassword,
-              success: sq.passwordUpdated,
-              toggleShow: sq.showPassword,
-              toggleHide: sq.hidePassword,
-            }}
-          />
-        )}
       </main>
 
       {(navItems.length > 1 || onRefresh) && (

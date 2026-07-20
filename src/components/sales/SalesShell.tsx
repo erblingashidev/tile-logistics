@@ -3,9 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BRAND } from "@/lib/brand";
-import { ChangePasswordCard } from "@/components/portal/ChangePasswordCard";
 
-type SalesNav = "orders" | "stock";
+type SalesNav = "orders" | "stock" | "profile";
 
 export function SalesShell({
   userName,
@@ -19,18 +18,22 @@ export function SalesShell({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const activeNav: SalesNav = pathname.startsWith("/sales/stock")
-    ? "stock"
-    : "orders";
+  const activeNav: SalesNav = pathname.startsWith("/sales/profile")
+    ? "profile"
+    : pathname.startsWith("/sales/stock")
+      ? "stock"
+      : "orders";
 
   const title =
-    activeNav === "stock"
-      ? isAdmin
-        ? "Warehouse stock"
-        : "Stock levels"
-      : isAdmin
-        ? "All orders"
-        : "My orders";
+    activeNav === "profile"
+      ? "Profile"
+      : activeNav === "stock"
+        ? isAdmin
+          ? "Warehouse stock"
+          : "Stock levels"
+        : isAdmin
+          ? "All orders"
+          : "My orders";
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-100 via-slate-50 to-zinc-100">
@@ -59,7 +62,6 @@ export function SalesShell({
 
       <main className="safe-bottom mx-auto max-w-3xl space-y-4 px-4 py-5 pb-24">
         {children}
-        <ChangePasswordCard />
       </main>
 
       <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-zinc-200/80 bg-white/95 px-3 py-2 backdrop-blur-md">
@@ -83,6 +85,16 @@ export function SalesShell({
             }`}
           >
             Stock
+          </Link>
+          <Link
+            href="/sales/profile"
+            className={`flex-1 rounded-xl px-2 py-2.5 text-center text-xs font-semibold transition ${
+              activeNav === "profile"
+                ? "bg-zinc-900 text-white shadow-sm"
+                : "text-zinc-600 hover:bg-zinc-50"
+            }`}
+          >
+            Profile
           </Link>
         </div>
       </nav>
