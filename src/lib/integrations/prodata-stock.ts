@@ -5,15 +5,22 @@
  * Netlify ~10s limit → browser prepares once, then posts small product/balance chunks.
  */
 import * as XLSX from "xlsx";
-import { inArray } from "drizzle-orm";
+import { inArray, eq } from "drizzle-orm";
 import { getDb, getLibsqlClient } from "@/lib/db";
 import { dbAll } from "@/lib/db/query";
 import { products, stockBalances } from "@/lib/db/schema";
 import { normalizeOrderUnit, type OrderUnit } from "@/lib/constants";
 import { logActivity } from "@/lib/logger";
 import { buildFamilyKey } from "@/lib/product-pallet-spec";
+import {
+  deleteAppSetting,
+  getAppSetting,
+  setAppSetting,
+} from "@/lib/services/app-settings";
 import { getOrCreateWarehouseLocation } from "@/lib/services/stock";
 
+const ROLLBACK_KEY = "prodata_import_rollback";
+const SQL_BATCH = 50;
 /** Known Pro-Data warehouse area names → stable location codes. */
 export const PRODATA_LOCATION_CODES: Record<
   string,
@@ -74,7 +81,32 @@ export interface ProDataImportPayload {
   warnings: string[];
 }
 
-const SQL_BATCH = 50;
+/** Snapshot taken before an import so admin can undo. */
+export interface ProDataImportRollback {
+  savedAt: string;
+  sealedAt: string | null;
+  locationIds: number[];
+  balances: Array<{
+    productId: number;
+    locationId: number;
+    quantityM2: number;
+    fullPallets: number;
+    loosePieces: number;
+  }>;
+  createdEans: string[];
+  importSummary: {
+    balancesWritten: number;
+    productsCreated: number;
+    balancesCleared: number;
+  } | null;
+  /** Undo progress (while stepping). */
+  undoCleared?: boolean;
+  undoClearedCount?: number;
+  undoOffset?: number;
+  undoEanOffset?: number;
+  undoDeletedProducts?: number;
+  undoProductsDone?: boolean;
+}
 
 function cellStr(value: unknown): string | null {
   if (value == null) return null;
@@ -139,6 +171,98 @@ async function runBatches(
     const chunk = statements.slice(i, i + SQL_BATCH);
     await client.batch(chunk, "write");
   }
+}
+
+async function readRollback(): Promise<ProDataImportRollback | null> {
+  const raw = await getAppSetting(ROLLBACK_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as ProDataImportRollback;
+  } catch {
+    return null;
+  }
+}
+
+async function writeRollback(rollback: ProDataImportRollback) {
+  await setAppSetting(ROLLBACK_KEY, JSON.stringify(rollback));
+}
+
+export async function getProDataImportUndoStatus(): Promise<{
+  canUndo: boolean;
+  savedAt: string | null;
+  sealedAt: string | null;
+  balanceLines: number;
+  createdProducts: number;
+  importSummary: ProDataImportRollback["importSummary"];
+}> {
+  const rollback = await readRollback();
+  if (!rollback?.sealedAt) {
+    return {
+      canUndo: false,
+      savedAt: rollback?.savedAt ?? null,
+      sealedAt: null,
+      balanceLines: 0,
+      createdProducts: 0,
+      importSummary: null,
+    };
+  }
+  return {
+    canUndo: true,
+    savedAt: rollback.savedAt,
+    sealedAt: rollback.sealedAt,
+    balanceLines: rollback.balances.length,
+    createdProducts: rollback.createdEans.length,
+    importSummary: rollback.importSummary,
+  };
+}
+
+/** Capture Pro-Data location balances before replace (call once per import). */
+export async function snapshotProDataBalancesForUndo(
+  locationIds: number[]
+): Promise<{ ok: true; balanceLines: number } | { ok: false; error: string }> {
+  if (!Array.isArray(locationIds) || locationIds.length === 0) {
+    return { ok: false, error: "No Pro-Data locations to snapshot." };
+  }
+  const db = await getDb();
+  const rows = await dbAll(
+    db
+      .select({
+        productId: stockBalances.productId,
+        locationId: stockBalances.locationId,
+        quantityM2: stockBalances.quantityM2,
+        fullPallets: stockBalances.fullPallets,
+        loosePieces: stockBalances.loosePieces,
+      })
+      .from(stockBalances)
+      .where(inArray(stockBalances.locationId, locationIds))
+  );
+
+  const rollback: ProDataImportRollback = {
+    savedAt: new Date().toISOString(),
+    sealedAt: null,
+    locationIds: [...new Set(locationIds)],
+    balances: rows.map((r) => ({
+      productId: r.productId,
+      locationId: r.locationId,
+      quantityM2: r.quantityM2 ?? 0,
+      fullPallets: r.fullPallets ?? 0,
+      loosePieces: r.loosePieces ?? 0,
+    })),
+    createdEans: [],
+    importSummary: null,
+  };
+  await writeRollback(rollback);
+  return { ok: true, balanceLines: rollback.balances.length };
+}
+
+async function appendCreatedEans(eans: string[]) {
+  if (eans.length === 0) return;
+  const rollback = await readRollback();
+  if (!rollback) return;
+  const set = new Set(rollback.createdEans);
+  for (const ean of eans) set.add(ean);
+  rollback.createdEans = [...set];
+  await writeRollback(rollback);
 }
 
 async function resolveProductIds(
@@ -327,9 +451,11 @@ export async function prepareProDataImport(
 
 export async function importProDataProductsChunk(
   rows: ImportProductRow[]
-): Promise<{ ok: true; created: number } | { ok: false; error: string }> {
+): Promise<
+  { ok: true; created: number; createdEans: string[] } | { ok: false; error: string }
+> {
   if (!Array.isArray(rows) || rows.length === 0) {
-    return { ok: true, created: 0 };
+    return { ok: true, created: 0, createdEans: [] };
   }
   if (rows.length > 200) {
     return { ok: false, error: "Product chunk too large (max 200)." };
@@ -338,7 +464,7 @@ export async function importProDataProductsChunk(
   const now = new Date().toISOString();
   const existing = await resolveProductIds(rows.map((r) => r.ean));
   const toInsert = rows.filter((r) => r.ean && !existing.has(r.ean));
-  if (toInsert.length === 0) return { ok: true, created: 0 };
+  if (toInsert.length === 0) return { ok: true, created: 0, createdEans: [] };
 
   const stmts = toInsert.map((row) => {
     const familyKey = buildFamilyKey({
@@ -370,15 +496,24 @@ export async function importProDataProductsChunk(
     };
   });
   await runBatches(stmts);
-  return { ok: true, created: toInsert.length };
+  const createdEans = toInsert.map((r) => r.ean);
+  await appendCreatedEans(createdEans);
+  return { ok: true, created: toInsert.length, createdEans };
 }
 
 export async function clearProDataBalances(
-  locationIds: number[]
+  locationIds: number[],
+  options?: { skipSnapshot?: boolean }
 ): Promise<{ ok: true; cleared: number } | { ok: false; error: string }> {
   if (!Array.isArray(locationIds) || locationIds.length === 0) {
     return { ok: true, cleared: 0 };
   }
+
+  if (!options?.skipSnapshot) {
+    const snap = await snapshotProDataBalancesForUndo(locationIds);
+    if (!snap.ok) return snap;
+  }
+
   const db = await getDb();
   const client = await getLibsqlClient();
   const before = await dbAll(
@@ -493,7 +628,214 @@ export async function finishProDataImport(input: {
       },
     }
   );
+
+  const rollback = await readRollback();
+  if (rollback) {
+    rollback.sealedAt = now;
+    rollback.importSummary = {
+      balancesWritten: input.balancesWritten,
+      productsCreated: input.productsCreated,
+      balancesCleared: input.balancesCleared,
+    };
+    await writeRollback(rollback);
+  }
+
   return { ok: true };
+}
+
+/**
+ * Restore stock at Pro-Data locations to the snapshot from before the last import.
+ * Runs in short steps (Netlify ~10s) — call until done=true.
+ */
+export async function undoLastProDataImportStep(): Promise<
+  | {
+      ok: true;
+      done: boolean;
+      phase: "clear" | "restore" | "cleanup" | "done";
+      restoredBalances: number;
+      totalBalances: number;
+      deletedProducts: number;
+      clearedCurrent: number;
+      message: string;
+    }
+  | { ok: false; error: string }
+> {
+  const rollback = await readRollback();
+  if (!rollback?.sealedAt) {
+    return { ok: false, error: "No Pro-Data import available to undo." };
+  }
+
+  const client = await getLibsqlClient();
+  const db = await getDb();
+  const now = new Date().toISOString();
+  const locationIds = rollback.locationIds;
+  const UNDO_CHUNK = 200;
+
+  // Progress stored on the rollback object itself
+  const progress = rollback;
+
+  if (!progress.undoCleared) {
+    let clearedCurrent = 0;
+    if (locationIds.length > 0) {
+      const before = await dbAll(
+        db
+          .select({ id: stockBalances.id })
+          .from(stockBalances)
+          .where(inArray(stockBalances.locationId, locationIds))
+      );
+      clearedCurrent = before.length;
+      const placeholders = locationIds.map(() => "?").join(",");
+      await client.execute({
+        sql: `DELETE FROM stock_balances WHERE location_id IN (${placeholders})`,
+        args: locationIds,
+      });
+    }
+    progress.undoCleared = true;
+    progress.undoClearedCount = clearedCurrent;
+    progress.undoOffset = 0;
+    progress.undoDeletedProducts = 0;
+    progress.undoEanOffset = 0;
+    await writeRollback(progress);
+    return {
+      ok: true,
+      done: false,
+      phase: "clear",
+      restoredBalances: 0,
+      totalBalances: rollback.balances.length,
+      deletedProducts: 0,
+      clearedCurrent,
+      message: `Cleared ${clearedCurrent} current Pro-Data lines — restoring snapshot…`,
+    };
+  }
+
+  const offset = progress.undoOffset ?? 0;
+  if (offset < rollback.balances.length) {
+    const slice = rollback.balances.slice(offset, offset + UNDO_CHUNK);
+    const stmts = slice.map((row) => ({
+      sql: `INSERT INTO stock_balances (
+        product_id, location_id, quantity_m2, full_pallets, loose_pieces, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(product_id, location_id) DO UPDATE SET
+        quantity_m2 = excluded.quantity_m2,
+        full_pallets = excluded.full_pallets,
+        loose_pieces = excluded.loose_pieces,
+        updated_at = excluded.updated_at`,
+      args: [
+        row.productId,
+        row.locationId,
+        row.quantityM2,
+        row.fullPallets,
+        row.loosePieces,
+        now,
+      ] as Array<string | number | null>,
+    }));
+    await runBatches(stmts);
+    progress.undoOffset = offset + slice.length;
+    await writeRollback(progress);
+    const restored = progress.undoOffset;
+    return {
+      ok: true,
+      done: false,
+      phase: "restore",
+      restoredBalances: restored,
+      totalBalances: rollback.balances.length,
+      deletedProducts: progress.undoDeletedProducts ?? 0,
+      clearedCurrent: progress.undoClearedCount ?? 0,
+      message: `Restored ${restored}/${rollback.balances.length} balances…`,
+    };
+  }
+
+  // Cleanup: remove products created by that import with no remaining stock
+  let deletedProducts = progress.undoDeletedProducts ?? 0;
+
+  if (rollback.createdEans.length > 0 && !progress.undoProductsDone) {
+    const start = progress.undoEanOffset ?? 0;
+    const chunk = rollback.createdEans.slice(start, start + 80);
+    for (const ean of chunk) {
+      const found = await dbAll(
+        db
+          .select({ id: products.id })
+          .from(products)
+          .where(eq(products.ean, ean))
+      );
+      const p = found[0];
+      if (!p) continue;
+      const stock = await dbAll(
+        db
+          .select({ id: stockBalances.id })
+          .from(stockBalances)
+          .where(eq(stockBalances.productId, p.id))
+      );
+      if (stock.length > 0) continue;
+      await client.execute({
+        sql: `DELETE FROM products WHERE id = ? AND source = 'prodata'`,
+        args: [p.id],
+      });
+      deletedProducts += 1;
+    }
+    const next = start + chunk.length;
+    progress.undoEanOffset = next;
+    progress.undoDeletedProducts = deletedProducts;
+    if (next < rollback.createdEans.length) {
+      await writeRollback(progress);
+      return {
+        ok: true,
+        done: false,
+        phase: "cleanup",
+        restoredBalances: rollback.balances.length,
+        totalBalances: rollback.balances.length,
+        deletedProducts,
+        clearedCurrent: progress.undoClearedCount ?? 0,
+        message: `Cleaning new products ${next}/${rollback.createdEans.length}…`,
+      };
+    }
+    progress.undoProductsDone = true;
+  }
+
+  await deleteAppSetting(ROLLBACK_KEY);
+
+  await logActivity(
+    "delete",
+    "stock",
+    null,
+    `Undid last Pro-Data import — restored ${rollback.balances.length} balances, removed ${deletedProducts} new products`,
+    {
+      category: "system",
+      details: {
+        restoredBalances: rollback.balances.length,
+        deletedProducts,
+        clearedCurrent: progress.undoClearedCount ?? 0,
+        previousImport: rollback.importSummary,
+        sealedAt: rollback.sealedAt,
+      },
+    }
+  );
+
+  return {
+    ok: true,
+    done: true,
+    phase: "done",
+    restoredBalances: rollback.balances.length,
+    totalBalances: rollback.balances.length,
+    deletedProducts,
+    clearedCurrent: progress.undoClearedCount ?? 0,
+    message: "Undo complete",
+  };
+}
+
+/** Convenience for scripts — loops steps until done. */
+export async function undoLastProDataImport() {
+  let last = await undoLastProDataImportStep();
+  while (last.ok && !last.done) {
+    last = await undoLastProDataImportStep();
+  }
+  if (!last.ok) return last;
+  return {
+    ok: true as const,
+    restoredBalances: last.restoredBalances,
+    deletedProducts: last.deletedProducts,
+    clearedCurrent: last.clearedCurrent,
+  };
 }
 
 /** Full import for scripts/tests. */
@@ -519,6 +861,9 @@ export async function importProDataStockExcel(
   if (!prepared.ok) return prepared;
 
   let productsCreated = 0;
+  const snap = await snapshotProDataBalancesForUndo(prepared.locationIds);
+  if (!snap.ok) return snap;
+
   for (let i = 0; i < prepared.products.length; i += 120) {
     const chunk = prepared.products.slice(i, i + 120);
     const r = await importProDataProductsChunk(chunk);
@@ -526,7 +871,9 @@ export async function importProDataStockExcel(
     productsCreated += r.created;
   }
 
-  const cleared = await clearProDataBalances(prepared.locationIds);
+  const cleared = await clearProDataBalances(prepared.locationIds, {
+    skipSnapshot: true,
+  });
   if (!cleared.ok) return cleared;
 
   let balancesWritten = 0;

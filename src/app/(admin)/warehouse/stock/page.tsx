@@ -65,7 +65,36 @@ export default function WarehouseStockPage() {
   });
   const [msg, setMsg] = useState("");
   const [importBusy, setImportBusy] = useState(false);
+  const [undoBusy, setUndoBusy] = useState(false);
+  const [undoStatus, setUndoStatus] = useState<{
+    canUndo: boolean;
+    sealedAt: string | null;
+    balanceLines: number;
+    createdProducts: number;
+    importSummary: {
+      balancesWritten: number;
+      productsCreated: number;
+      balancesCleared: number;
+    } | null;
+  } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const loadUndoStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/warehouse/stock/import");
+      if (!res.ok) return;
+      const data = await res.json();
+      setUndoStatus({
+        canUndo: Boolean(data.canUndo),
+        sealedAt: data.sealedAt ?? null,
+        balanceLines: data.balanceLines ?? 0,
+        createdProducts: data.createdProducts ?? 0,
+        importSummary: data.importSummary ?? null,
+      });
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setLoadError("");
@@ -95,7 +124,8 @@ export default function WarehouseStockPage() {
 
   useEffect(() => {
     load();
-  }, [load]);
+    loadUndoStatus();
+  }, [load, loadUndoStatus]);
 
   const hasQty =
     Boolean(form.quantityM2) ||
@@ -299,6 +329,10 @@ export default function WarehouseStockPage() {
       const products = prep.products;
       const balances = prep.balances;
       const locationIds = prep.locationIds ?? [];
+
+      setMsg("Saving undo snapshot…");
+      await postJson({ action: "snapshot", locationIds });
+
       let productsCreated = 0;
       const productChunk = 100;
       for (let i = 0; i < products.length; i += productChunk) {
@@ -348,9 +382,11 @@ export default function WarehouseStockPage() {
         `Pro-Data import complete: ${balancesWritten} balances · ${productsCreated} new products · ${prep.locationCount ?? locationIds.length} locations` +
           (cleared.cleared
             ? ` · replaced ${cleared.cleared} previous Pro-Data lines`
-            : "")
+            : "") +
+          " · Undo is available if this looks wrong"
       );
       load();
+      loadUndoStatus();
     } catch (err) {
       setMsg(
         err instanceof Error
@@ -360,6 +396,72 @@ export default function WarehouseStockPage() {
     } finally {
       setImportBusy(false);
       if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  async function undoLastImport() {
+    if (!undoStatus?.canUndo) return;
+    const when = undoStatus.sealedAt
+      ? new Date(undoStatus.sealedAt).toLocaleString()
+      : "the last import";
+    if (
+      !window.confirm(
+        `Undo Pro-Data import from ${when}?\n\nThis restores the previous Pro-Data stock snapshot and removes products created only by that import.`
+      )
+    ) {
+      return;
+    }
+    setUndoBusy(true);
+    setMsg("Undoing last import…");
+    try {
+      let done = false;
+      let guard = 0;
+      let last: {
+        restoredBalances?: number;
+        deletedProducts?: number;
+        message?: string;
+        done?: boolean;
+        error?: string;
+      } = {};
+      while (!done && guard < 500) {
+        guard += 1;
+        const res = await fetch("/api/warehouse/stock/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "undo" }),
+        });
+        const text = await res.text();
+        try {
+          last = text ? JSON.parse(text) : {};
+        } catch {
+          setMsg(`Undo failed (HTTP ${res.status}).`);
+          return;
+        }
+        if (!res.ok) {
+          setMsg(last.error ?? `Undo failed (HTTP ${res.status})`);
+          return;
+        }
+        if (last.message) setMsg(last.message);
+        done = Boolean(last.done);
+      }
+      if (!done) {
+        setMsg("Undo stopped early — try again.");
+        return;
+      }
+      setMsg(
+        `Undid last import: restored ${last.restoredBalances ?? 0} balances` +
+          (last.deletedProducts
+            ? ` · removed ${last.deletedProducts} new products`
+            : "")
+      );
+      load();
+      loadUndoStatus();
+    } catch (err) {
+      setMsg(
+        err instanceof Error ? `Undo failed: ${err.message}` : "Undo failed"
+      );
+    } finally {
+      setUndoBusy(false);
     }
   }
 
@@ -398,7 +500,8 @@ export default function WarehouseStockPage() {
         <p className="mb-3 text-xs text-zinc-500">
           Upload the Finance+ stock export (Barkodi, Emertimi, Lokacioni, Sasia).
           Large files run in short steps so Netlify does not time out — keep this
-          tab open until you see “complete”.
+          tab open until you see “complete”. A snapshot is saved so you can undo
+          the last import if something looks wrong.
         </p>
         <input
           ref={fileRef}
@@ -407,14 +510,43 @@ export default function WarehouseStockPage() {
           className="hidden"
           onChange={(e) => void importProData(e.target.files?.[0] ?? null)}
         />
-        <Button
-          type="button"
-          variant="secondary"
-          disabled={importBusy}
-          onClick={() => fileRef.current?.click()}
-        >
-          {importBusy ? "Importing…" : "Import Pro-Data .xlsx"}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={importBusy || undoBusy}
+            onClick={() => fileRef.current?.click()}
+          >
+            {importBusy ? "Importing…" : "Import Pro-Data .xlsx"}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={
+              importBusy || undoBusy || !undoStatus?.canUndo
+            }
+            onClick={() => void undoLastImport()}
+          >
+            {undoBusy ? "Undoing…" : "Undo last import"}
+          </Button>
+        </div>
+        {undoStatus?.canUndo && undoStatus.sealedAt ? (
+          <p className="mt-2 text-xs text-zinc-500">
+            Last import{" "}
+            {new Date(undoStatus.sealedAt).toLocaleString()}
+            {undoStatus.importSummary
+              ? ` · ${undoStatus.importSummary.balancesWritten} balances`
+              : ""}
+            {undoStatus.createdProducts
+              ? ` · ${undoStatus.createdProducts} new products`
+              : ""}
+            . Undo restores the previous Pro-Data stock.
+          </p>
+        ) : (
+          <p className="mt-2 text-xs text-zinc-500">
+            No undo available yet — complete an import first.
+          </p>
+        )}
       </Card>
 
       <Card className="mb-6 p-4">

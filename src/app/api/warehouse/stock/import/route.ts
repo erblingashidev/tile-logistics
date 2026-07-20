@@ -3,9 +3,12 @@ import { requireAdmin } from "@/lib/auth";
 import {
   clearProDataBalances,
   finishProDataImport,
+  getProDataImportUndoStatus,
   importProDataBalancesChunk,
   importProDataProductsChunk,
   prepareProDataImport,
+  snapshotProDataBalancesForUndo,
+  undoLastProDataImportStep,
 } from "@/lib/integrations/prodata-stock";
 
 export const runtime = "nodejs";
@@ -15,6 +18,17 @@ export const maxDuration = 26;
 function errorMessage(err: unknown, fallback: string) {
   if (err instanceof Error && err.message) return err.message;
   return fallback;
+}
+
+export async function GET() {
+  try {
+    await requireAdmin();
+    return NextResponse.json(await getProDataImportUndoStatus());
+  } catch (err) {
+    const msg = errorMessage(err, "Unauthorized");
+    const status = /unauthorized|forbidden|session/i.test(msg) ? 401 : 500;
+    return NextResponse.json({ error: msg }, { status });
+  }
 }
 
 export async function POST(request: Request) {
@@ -49,6 +63,16 @@ export async function POST(request: Request) {
     const body = await request.json();
     const action = String(body.action ?? "");
 
+    if (action === "snapshot") {
+      const result = await snapshotProDataBalancesForUndo(
+        body.locationIds ?? []
+      );
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error }, { status: 400 });
+      }
+      return NextResponse.json(result);
+    }
+
     if (action === "products") {
       const result = await importProDataProductsChunk(body.products ?? []);
       if (!result.ok) {
@@ -58,7 +82,9 @@ export async function POST(request: Request) {
     }
 
     if (action === "clear") {
-      const result = await clearProDataBalances(body.locationIds ?? []);
+      const result = await clearProDataBalances(body.locationIds ?? [], {
+        skipSnapshot: true,
+      });
       if (!result.ok) {
         return NextResponse.json({ error: result.error }, { status: 400 });
       }
@@ -88,10 +114,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true });
     }
 
+    if (action === "undo") {
+      const result = await undoLastProDataImportStep();
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error }, { status: 400 });
+      }
+      return NextResponse.json(result);
+    }
+
     return NextResponse.json(
       {
         error:
-          'Upload .xlsx, or POST JSON action: products | clear | balances | finish.',
+          'Upload .xlsx, or POST JSON action: snapshot | products | clear | balances | finish | undo.',
       },
       { status: 400 }
     );
