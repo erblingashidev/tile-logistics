@@ -810,6 +810,27 @@ export async function createOrder(
 
   await registerProductsFromOrder(orderId);
 
+  try {
+    const {
+      isProDataOrderStockIssueEnabled,
+      isProDataPushOrdersEnabled,
+    } = await import("@/lib/config/prodata-env");
+    if (isProDataOrderStockIssueEnabled()) {
+      const { issueStockForOrder } = await import(
+        "@/lib/integrations/prodata-order-stock"
+      );
+      await issueStockForOrder(orderId);
+    }
+    if (isProDataPushOrdersEnabled()) {
+      const { pushOrderToProData } = await import(
+        "@/lib/integrations/prodata-order-push"
+      );
+      await pushOrderToProData(orderId);
+    }
+  } catch (err) {
+    console.error("[createOrder] Pro-Data stock/order hook failed:", err);
+  }
+
   await logActivity(
     "create",
     "order",

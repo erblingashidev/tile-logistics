@@ -65,6 +65,12 @@ export default function WarehouseStockPage() {
   });
   const [msg, setMsg] = useState("");
   const [importBusy, setImportBusy] = useState(false);
+  const [syncApiBusy, setSyncApiBusy] = useState(false);
+  const [apiStatus, setApiStatus] = useState<{
+    enabled: boolean;
+    ok?: boolean;
+    message?: string;
+  } | null>(null);
   const [undoBusy, setUndoBusy] = useState(false);
   const [clearBusy, setClearBusy] = useState(false);
   const [undoStatus, setUndoStatus] = useState<{
@@ -97,6 +103,20 @@ export default function WarehouseStockPage() {
     }
   }, []);
 
+  const loadApiStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/warehouse/stock/sync");
+      const data = await res.json();
+      setApiStatus({
+        enabled: Boolean(data.enabled ?? true),
+        ok: data.ok,
+        message: data.message ?? data.error,
+      });
+    } catch {
+      setApiStatus({ enabled: false, message: "Could not reach sync API." });
+    }
+  }, []);
+
   const load = useCallback(async () => {
     setLoadError("");
     try {
@@ -126,7 +146,8 @@ export default function WarehouseStockPage() {
   useEffect(() => {
     load();
     loadUndoStatus();
-  }, [load, loadUndoStatus]);
+    loadApiStatus();
+  }, [load, loadUndoStatus, loadApiStatus]);
 
   const hasQty =
     Boolean(form.quantityM2) ||
@@ -263,34 +284,111 @@ export default function WarehouseStockPage() {
     load();
   }
 
+  async function postImportJson(payload: Record<string, unknown>) {
+    const res = await fetch("/api/warehouse/stock/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const text = await res.text();
+    let data: {
+      error?: string;
+      created?: number;
+      written?: number;
+      cleared?: number;
+    } = {};
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch {
+      throw new Error(
+        res.status === 502 || res.status === 504
+          ? `Step timed out (HTTP ${res.status}). Retry — chunks should stay under 10s.`
+          : `Step failed (HTTP ${res.status}).`
+      );
+    }
+    if (!res.ok) {
+      throw new Error(data.error ?? `Step failed (HTTP ${res.status})`);
+    }
+    return data;
+  }
+
+  async function applyProDataImportPayload(prep: {
+    products: Array<Record<string, unknown>>;
+    balances: Array<Record<string, unknown>>;
+    locationIds?: number[];
+    productCount?: number;
+    balanceCount?: number;
+    locationCount?: number;
+    negativesClamped?: number;
+    warnings?: string[];
+  }) {
+    const products = prep.products;
+    const balances = prep.balances;
+    const locationIds = prep.locationIds ?? [];
+
+    setMsg("Saving undo snapshot…");
+    await postImportJson({ action: "snapshot", locationIds });
+
+    let productsCreated = 0;
+    const productChunk = 100;
+    for (let i = 0; i < products.length; i += productChunk) {
+      setMsg(
+        `Products ${Math.min(i + productChunk, products.length)}/${products.length}…`
+      );
+      const data = await postImportJson({
+        action: "products",
+        products: products.slice(i, i + productChunk),
+      });
+      productsCreated += data.created ?? 0;
+    }
+
+    setMsg("Clearing previous Pro-Data stock…");
+    const cleared = await postImportJson({
+      action: "clear",
+      locationIds,
+    });
+
+    let balancesWritten = 0;
+    const balanceChunk = 150;
+    for (let i = 0; i < balances.length; i += balanceChunk) {
+      setMsg(
+        `Balances ${Math.min(i + balanceChunk, balances.length)}/${balances.length}…`
+      );
+      const data = await postImportJson({
+        action: "balances",
+        balances: balances.slice(i, i + balanceChunk),
+      });
+      balancesWritten += data.written ?? 0;
+    }
+
+    await postImportJson({
+      action: "finish",
+      locationIds,
+      productsCreated,
+      balancesWritten,
+      balancesCleared: cleared.cleared ?? 0,
+      balanceCount: prep.balanceCount ?? balances.length,
+      productCount: prep.productCount ?? products.length,
+      negativesClamped: prep.negativesClamped ?? 0,
+      warnings: prep.warnings ?? [],
+      sampleEan: (balances[0] as { ean?: string } | undefined)?.ean,
+    });
+
+    setMsg(
+      `Pro-Data import complete: ${balancesWritten} balances · ${productsCreated} new products · ${prep.locationCount ?? locationIds.length} locations` +
+        (cleared.cleared
+          ? ` · replaced ${cleared.cleared} previous Pro-Data lines`
+          : "") +
+        " · Undo is available if this looks wrong"
+    );
+    load();
+    loadUndoStatus();
+  }
+
   async function importProData(file: File | null) {
     if (!file) return;
     setImportBusy(true);
     setMsg("Reading Excel…");
-
-    async function postJson(payload: Record<string, unknown>) {
-      const res = await fetch("/api/warehouse/stock/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const text = await res.text();
-      let data: { error?: string; created?: number; written?: number; cleared?: number } =
-        {};
-      try {
-        data = text ? JSON.parse(text) : {};
-      } catch {
-        throw new Error(
-          res.status === 502 || res.status === 504
-            ? `Step timed out (HTTP ${res.status}). Retry — chunks should stay under 10s.`
-            : `Step failed (HTTP ${res.status}).`
-        );
-      }
-      if (!res.ok) {
-        throw new Error(data.error ?? `Step failed (HTTP ${res.status})`);
-      }
-      return data;
-    }
 
     try {
       const body = new FormData();
@@ -327,67 +425,7 @@ export default function WarehouseStockPage() {
         return;
       }
 
-      const products = prep.products;
-      const balances = prep.balances;
-      const locationIds = prep.locationIds ?? [];
-
-      setMsg("Saving undo snapshot…");
-      await postJson({ action: "snapshot", locationIds });
-
-      let productsCreated = 0;
-      const productChunk = 100;
-      for (let i = 0; i < products.length; i += productChunk) {
-        setMsg(
-          `Products ${Math.min(i + productChunk, products.length)}/${products.length}…`
-        );
-        const data = await postJson({
-          action: "products",
-          products: products.slice(i, i + productChunk),
-        });
-        productsCreated += data.created ?? 0;
-      }
-
-      setMsg("Clearing previous Pro-Data stock…");
-      const cleared = await postJson({
-        action: "clear",
-        locationIds,
-      });
-
-      let balancesWritten = 0;
-      const balanceChunk = 150;
-      for (let i = 0; i < balances.length; i += balanceChunk) {
-        setMsg(
-          `Balances ${Math.min(i + balanceChunk, balances.length)}/${balances.length}…`
-        );
-        const data = await postJson({
-          action: "balances",
-          balances: balances.slice(i, i + balanceChunk),
-        });
-        balancesWritten += data.written ?? 0;
-      }
-
-      await postJson({
-        action: "finish",
-        locationIds,
-        productsCreated,
-        balancesWritten,
-        balancesCleared: cleared.cleared ?? 0,
-        balanceCount: prep.balanceCount ?? balances.length,
-        productCount: prep.productCount ?? products.length,
-        negativesClamped: prep.negativesClamped ?? 0,
-        warnings: prep.warnings ?? [],
-        sampleEan: (balances[0] as { ean?: string } | undefined)?.ean,
-      });
-
-      setMsg(
-        `Pro-Data import complete: ${balancesWritten} balances · ${productsCreated} new products · ${prep.locationCount ?? locationIds.length} locations` +
-          (cleared.cleared
-            ? ` · replaced ${cleared.cleared} previous Pro-Data lines`
-            : "") +
-          " · Undo is available if this looks wrong"
-      );
-      load();
-      loadUndoStatus();
+      await applyProDataImportPayload(prep);
     } catch (err) {
       setMsg(
         err instanceof Error
@@ -397,6 +435,55 @@ export default function WarehouseStockPage() {
     } finally {
       setImportBusy(false);
       if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  async function syncFromProDataApi() {
+    if (
+      !window.confirm(
+        "Pull stock from Pro-Data API into this app?\n\nOnly Pro-Data warehouse locations are replaced. Putaway bins (STAGING, A-01, etc.) are not touched.\n\nYou can undo after import completes."
+      )
+    ) {
+      return;
+    }
+    setSyncApiBusy(true);
+    setMsg("Connecting to Pro-Data API…");
+    try {
+      const prepRes = await fetch("/api/warehouse/stock/sync", { method: "POST" });
+      const prepText = await prepRes.text();
+      let prep: {
+        error?: string;
+        ok?: boolean;
+        products?: Array<Record<string, unknown>>;
+        balances?: Array<Record<string, unknown>>;
+        locationIds?: number[];
+        productCount?: number;
+        balanceCount?: number;
+        locationCount?: number;
+        negativesClamped?: number;
+        warnings?: string[];
+      } = {};
+      try {
+        prep = prepText ? JSON.parse(prepText) : {};
+      } catch {
+        setMsg(`Sync prepare failed (HTTP ${prepRes.status}).`);
+        return;
+      }
+      if (!prepRes.ok || !prep.ok || !prep.products || !prep.balances) {
+        setMsg(prep.error ?? `Sync failed (HTTP ${prepRes.status})`);
+        return;
+      }
+
+      await applyProDataImportPayload(prep);
+      loadApiStatus();
+    } catch (err) {
+      setMsg(
+        err instanceof Error
+          ? `Sync failed: ${err.message}`
+          : "Sync failed — network error."
+      );
+    } finally {
+      setSyncApiBusy(false);
     }
   }
 
@@ -542,13 +629,23 @@ export default function WarehouseStockPage() {
       )}
 
       <Card className="mb-6 p-4">
-        <p className="mb-1 font-medium">Pro-Data stock Excel (every ~2 days)</p>
+        <p className="mb-1 font-medium">Pro-Data stock sync</p>
         <p className="mb-3 text-xs text-zinc-500">
-          Upload the Finance+ stock export (Barkodi, Emertimi, Lokacioni, Sasia).
-          Large files run in short steps so Netlify does not time out — keep this
-          tab open until you see “complete”. A snapshot is saved so you can undo
-          the last import if something looks wrong.
+          Excel import (Finance+ export every ~2 days) or live API sync when{" "}
+          <code className="rounded bg-zinc-100 px-1">PRODATA_SYNC_ENABLED=true</code>.
+          Only Pro-Data warehouse areas are replaced; STAGING and bin putaway are
+          unchanged. Undo restores the previous Pro-Data snapshot.
         </p>
+        {apiStatus ? (
+          <p className="mb-3 text-xs text-zinc-600">
+            API:{" "}
+            {apiStatus.enabled
+              ? apiStatus.ok
+                ? apiStatus.message ?? "Connected"
+                : apiStatus.message ?? "Not connected"
+              : "Disabled — set PRODATA_SYNC_ENABLED=true in .env.local"}
+          </p>
+        ) : null}
         <input
           ref={fileRef}
           type="file"
@@ -560,7 +657,7 @@ export default function WarehouseStockPage() {
           <Button
             type="button"
             variant="secondary"
-            disabled={importBusy || undoBusy || clearBusy}
+            disabled={importBusy || syncApiBusy || undoBusy || clearBusy}
             onClick={() => fileRef.current?.click()}
           >
             {importBusy ? "Importing…" : "Import Pro-Data .xlsx"}
@@ -569,7 +666,21 @@ export default function WarehouseStockPage() {
             type="button"
             variant="secondary"
             disabled={
-              importBusy || undoBusy || clearBusy || !undoStatus?.canUndo
+              importBusy ||
+              syncApiBusy ||
+              undoBusy ||
+              clearBusy ||
+              apiStatus?.enabled === false
+            }
+            onClick={() => void syncFromProDataApi()}
+          >
+            {syncApiBusy ? "Syncing…" : "Sync from Pro-Data API"}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={
+              importBusy || syncApiBusy || undoBusy || clearBusy || !undoStatus?.canUndo
             }
             onClick={() => void undoLastImport()}
           >
@@ -578,7 +689,7 @@ export default function WarehouseStockPage() {
           <Button
             type="button"
             variant="secondary"
-            disabled={importBusy || undoBusy || clearBusy}
+            disabled={importBusy || syncApiBusy || undoBusy || clearBusy}
             onClick={() => void clearAllStock()}
           >
             {clearBusy ? "Clearing…" : "Clear all stock to 0"}

@@ -26,7 +26,8 @@
     "turso:apply-schema:local": "esbuild scripts/apply-turso-schema.ts --bundle --platform=node --format=cjs --outfile=.tmp/apply-schema.cjs --external:@libsql/client --external:fs --external:path --external:crypto && node .tmp/apply-schema.cjs --local",
     "sync:locations": "esbuild scripts/sync-warehouse-locations.ts --bundle --platform=node --format=cjs --outfile=.tmp/sync-locations.cjs --external:better-sqlite3 --external:@libsql/client --external:fs --external:path && node .tmp/sync-locations.cjs",
     "watch:invoices": "esbuild scripts/watch-invoice-folder.ts --bundle --platform=node --format=cjs --outfile=.tmp/watch-invoices.cjs --external:@libsql/client --external:fs --external:path --external:os --external:crypto && node .tmp/watch-invoices.cjs --local",
-    "watch:invoices:turso": "esbuild scripts/watch-invoice-folder.ts --bundle --platform=node --format=cjs --outfile=.tmp/watch-invoices.cjs --external:@libsql/client --external:fs --external:path --external:os --external:crypto && node .tmp/watch-invoices.cjs --turso"
+    "watch:invoices:turso": "esbuild scripts/watch-invoice-folder.ts --bundle --platform=node --format=cjs --outfile=.tmp/watch-invoices.cjs --external:@libsql/client --external:fs --external:path --external:os --external:crypto && node .tmp/watch-invoices.cjs --turso",
+    "test:prodata-api": "tsx scripts/test-prodata-api.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",

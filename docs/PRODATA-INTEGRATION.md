@@ -56,14 +56,33 @@ Ask Pro-Data which of these they support for your Finance+ license:
 | Unit / m² | used for validation |
 | Warehouse qty | `stock_balances.quantity_m2` |
 
-## Environment variables (future)
+## Pro-Data REST API (phase 2)
 
-When an integration exists, add to Netlify / `.env.local`:
+Pro-Data exposes a JWT REST API. Integration is **opt-in** via env vars (see `.env.example`).
+
+| Feature | Source | Notes |
+|---------|--------|-------|
+| Stock sync | `GET /ItemsStoku` | Replaces Excel import; same chunked pipeline + undo |
+| Product catalog | `GET /Items` | Optional enrichment |
+| Push order | `POST /B2BPostBulkOrder` | When `PRODATA_PUSH_ORDERS=true` — Pro-Data decrements **their** stock |
+| Local order issue | `issueStockForOrder` | When `PRODATA_ISSUE_STOCK_ON_ORDER=true` — decrements **your** `PRODATA-MAIN` |
+| Putaway (STAGING → bins) | Internal only | Pro-Data API has no bin-level endpoints |
+
+Code: `src/lib/integrations/prodata-client.ts`, `prodata-api.ts`, `prodata-stock.ts`.
+
+Admin UI: **Warehouse → Stock → Sync from Pro-Data API** (requires `PRODATA_SYNC_ENABLED=true`).
+
+Smoke test: `npm run test:prodata-api` (read-only; add `--push-order` to test order → stock on Pro-Data side).
+
+## Environment variables
 
 ```env
-PRODATA_API_URL=
-PRODATA_API_KEY=
-PRODATA_SYNC_CRON=0 2 * * *
+PRODATA_SYNC_ENABLED=false
+PRODATA_API_URL=http://office2.prodata-ks.com:8080/RestAPI
+PRODATA_API_USERNAME=
+PRODATA_API_PASSWORD=
+PRODATA_ISSUE_STOCK_ON_ORDER=false
+PRODATA_PUSH_ORDERS=false
 ```
 
-Code hook: `src/lib/integrations/prodata.ts` (placeholder — implement after Pro-Data confirms format).
+Code hook: `src/lib/integrations/prodata.ts`.

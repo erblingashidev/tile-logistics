@@ -256,7 +256,7 @@ export async function deleteWarehouseLocation(id: number) {
   return { ok: true as const, removedStockLines: stock.length };
 }
 
-async function getOrCreateBalance(productId: number, locationId: number) {
+export async function getOrCreateBalance(productId: number, locationId: number) {
   const db = await getDb();
   const existing = await dbOne(
     db

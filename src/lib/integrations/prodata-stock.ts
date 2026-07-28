@@ -26,6 +26,12 @@ export const PRODATA_LOCATION_CODES: Record<
   string,
   { code: string; zone: string; label: string }
 > = {
+  /** API test DB uses this shorter name; production Excel may use Shkabaj. */
+  "Depoja Kryesore": {
+    code: "PRODATA-MAIN",
+    zone: "Pro-Data",
+    label: "Depoja Kryesore Shkabaj",
+  },
   "Depoja Kryesore Shkabaj": {
     code: "PRODATA-MAIN",
     zone: "Pro-Data",
@@ -367,9 +373,9 @@ export function parseProDataStockExcel(
   return { rows, warnings, locationNames };
 }
 
-/** Parse + ensure locations. Returns payload for the browser to apply in chunks. */
-export async function prepareProDataImport(
-  buffer: Buffer | ArrayBuffer
+/** Build chunked import payload from parsed stock rows (Excel or API). */
+export async function buildProDataImportPayload(
+  parsed: ParsedProDataStock
 ): Promise<
   | ({ ok: true } & ProDataImportPayload & {
       productCount: number;
@@ -378,11 +384,10 @@ export async function prepareProDataImport(
     })
   | { ok: false; error: string }
 > {
-  const parsed = parseProDataStockExcel(buffer);
   if (parsed.rows.length === 0) {
     return {
       ok: false,
-      error: parsed.warnings[0] ?? "No stock rows found in Excel.",
+      error: parsed.warnings[0] ?? "No stock rows found.",
     };
   }
 
@@ -447,6 +452,47 @@ export async function prepareProDataImport(
     balanceCount: balanceRows.length,
     locationCount: ids.length,
   };
+}
+
+/** Parse + ensure locations. Returns payload for the browser to apply in chunks. */
+export async function prepareProDataImport(
+  buffer: Buffer | ArrayBuffer
+): Promise<
+  | ({ ok: true } & ProDataImportPayload & {
+      productCount: number;
+      balanceCount: number;
+      locationCount: number;
+    })
+  | { ok: false; error: string }
+> {
+  const parsed = parseProDataStockExcel(buffer);
+  if (parsed.rows.length === 0) {
+    return {
+      ok: false,
+      error: parsed.warnings[0] ?? "No stock rows found in Excel.",
+    };
+  }
+  return buildProDataImportPayload(parsed);
+}
+
+/** Fetch stock from Pro-Data REST API → same chunked import payload as Excel. */
+export async function prepareProDataImportFromApi(): Promise<
+  | ({ ok: true } & ProDataImportPayload & {
+      productCount: number;
+      balanceCount: number;
+      locationCount: number;
+      source: "api";
+    })
+  | { ok: false; error: string }
+> {
+  const { fetchProDataItemsStoku, parseProDataItemsStoku } = await import(
+    "@/lib/integrations/prodata-api"
+  );
+  const items = await fetchProDataItemsStoku();
+  const parsed = parseProDataItemsStoku(items);
+  const built = await buildProDataImportPayload(parsed);
+  if (!built.ok) return built;
+  return { ...built, source: "api" as const };
 }
 
 export async function importProDataProductsChunk(
