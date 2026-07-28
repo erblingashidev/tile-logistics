@@ -39,9 +39,8 @@ export async function pushOrderToProData(
   const lines = await dbAll(
     db
       .select({
-        ean: orderItems.ean,
+        ean: orderItems.productEan,
         quantityM2: orderItems.quantityM2,
-        price: orderItems.price,
       })
       .from(orderItems)
       .where(eq(orderItems.orderId, orderId))
@@ -52,13 +51,12 @@ export async function pushOrderToProData(
     const code = line.ean?.trim();
     const qty = line.quantityM2 ?? 0;
     if (!code || qty <= 0) continue;
-    const price = line.price ?? 0;
     items.push({
       ItemCode: code,
       Quantity: qty,
-      Price: price,
+      Price: 0,
       Discount: 0,
-      PriceAfterDiscount: price,
+      PriceAfterDiscount: 0,
       VariantCode1: "",
       VariantCode2: "",
     });
@@ -82,7 +80,7 @@ export async function pushOrderToProData(
     orderId,
     `Pushed order ${order.invoiceNumber ?? orderId} to Pro-Data`,
     {
-      category: "integrations",
+      category: "system",
       details: {
         returnData: result.returnData,
         returnText: result.returnText,

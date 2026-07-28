@@ -75,7 +75,7 @@ export async function issueStockForOrder(
   const lines = await dbAll(
     db
       .select({
-        ean: orderItems.ean,
+        ean: orderItems.productEan,
         quantityM2: orderItems.quantityM2,
       })
       .from(orderItems)
@@ -153,7 +153,7 @@ export async function issueStockForOrder(
       orderId,
       `Order stock issue: ${issuedLines} line(s) from ${MAIN_WAREHOUSE_CODE}`,
       {
-        category: "warehouse",
+        category: "orders",
         details: { issuedLines, skippedLines, shortfalls },
       }
     );

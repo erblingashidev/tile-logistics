@@ -36,6 +36,46 @@ interface StockRow {
   loosePieces: number;
 }
 
+interface ProDataImportPrepPayload {
+  products: Array<Record<string, unknown>>;
+  balances: Array<Record<string, unknown>>;
+  locationIds?: number[];
+  productCount?: number;
+  balanceCount?: number;
+  locationCount?: number;
+  negativesClamped?: number;
+  warnings?: string[];
+}
+
+interface ProDataImportPrepResponse {
+  error?: string;
+  ok?: boolean;
+  products?: Array<Record<string, unknown>>;
+  balances?: Array<Record<string, unknown>>;
+  locationIds?: number[];
+  productCount?: number;
+  balanceCount?: number;
+  locationCount?: number;
+  negativesClamped?: number;
+  warnings?: string[];
+}
+
+function readyImportPrep(
+  prep: ProDataImportPrepResponse
+): ProDataImportPrepPayload | null {
+  if (!prep.ok || !prep.products || !prep.balances) return null;
+  return {
+    products: prep.products,
+    balances: prep.balances,
+    locationIds: prep.locationIds,
+    productCount: prep.productCount,
+    balanceCount: prep.balanceCount,
+    locationCount: prep.locationCount,
+    negativesClamped: prep.negativesClamped,
+    warnings: prep.warnings,
+  };
+}
+
 export default function WarehouseStockPage() {
   const [stock, setStock] = useState<StockRow[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
@@ -312,16 +352,7 @@ export default function WarehouseStockPage() {
     return data;
   }
 
-  async function applyProDataImportPayload(prep: {
-    products: Array<Record<string, unknown>>;
-    balances: Array<Record<string, unknown>>;
-    locationIds?: number[];
-    productCount?: number;
-    balanceCount?: number;
-    locationCount?: number;
-    negativesClamped?: number;
-    warnings?: string[];
-  }) {
+  async function applyProDataImportPayload(prep: ProDataImportPrepPayload) {
     const products = prep.products;
     const balances = prep.balances;
     const locationIds = prep.locationIds ?? [];
@@ -398,18 +429,7 @@ export default function WarehouseStockPage() {
         body,
       });
       const prepText = await prepRes.text();
-      let prep: {
-        error?: string;
-        ok?: boolean;
-        products?: Array<Record<string, unknown>>;
-        balances?: Array<Record<string, unknown>>;
-        locationIds?: number[];
-        productCount?: number;
-        balanceCount?: number;
-        locationCount?: number;
-        negativesClamped?: number;
-        warnings?: string[];
-      } = {};
+      let prep: ProDataImportPrepResponse = {};
       try {
         prep = prepText ? JSON.parse(prepText) : {};
       } catch {
@@ -420,12 +440,13 @@ export default function WarehouseStockPage() {
         );
         return;
       }
-      if (!prepRes.ok || !prep.ok || !prep.products || !prep.balances) {
+      const payload = readyImportPrep(prep);
+      if (!prepRes.ok || !payload) {
         setMsg(prep.error ?? `Import failed (HTTP ${prepRes.status})`);
         return;
       }
 
-      await applyProDataImportPayload(prep);
+      await applyProDataImportPayload(payload);
     } catch (err) {
       setMsg(
         err instanceof Error
@@ -451,30 +472,20 @@ export default function WarehouseStockPage() {
     try {
       const prepRes = await fetch("/api/warehouse/stock/sync", { method: "POST" });
       const prepText = await prepRes.text();
-      let prep: {
-        error?: string;
-        ok?: boolean;
-        products?: Array<Record<string, unknown>>;
-        balances?: Array<Record<string, unknown>>;
-        locationIds?: number[];
-        productCount?: number;
-        balanceCount?: number;
-        locationCount?: number;
-        negativesClamped?: number;
-        warnings?: string[];
-      } = {};
+      let prep: ProDataImportPrepResponse = {};
       try {
         prep = prepText ? JSON.parse(prepText) : {};
       } catch {
         setMsg(`Sync prepare failed (HTTP ${prepRes.status}).`);
         return;
       }
-      if (!prepRes.ok || !prep.ok || !prep.products || !prep.balances) {
+      const payload = readyImportPrep(prep);
+      if (!prepRes.ok || !payload) {
         setMsg(prep.error ?? `Sync failed (HTTP ${prepRes.status})`);
         return;
       }
 
-      await applyProDataImportPayload(prep);
+      await applyProDataImportPayload(payload);
       loadApiStatus();
     } catch (err) {
       setMsg(
