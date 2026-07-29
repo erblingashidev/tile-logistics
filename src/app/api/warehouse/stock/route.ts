@@ -6,11 +6,13 @@ import {
   ensureStagingLocation,
   listStockMovements,
   listStockSummary,
+  listStockLocationsForProduct,
   listWarehouseLocations,
   moveStock,
   receiveStock,
 } from "@/lib/services/stock";
 import { deleteAppSetting } from "@/lib/services/app-settings";
+import { getProduct, searchProducts } from "@/lib/services/products";
 
 export const runtime = "nodejs";
 
@@ -25,11 +27,27 @@ export async function GET(request: Request) {
     await ensureStagingLocation();
     const url = new URL(request.url);
     const view = url.searchParams.get("view");
+    const productSearch = url.searchParams.get("productSearch")?.trim();
+    if (productSearch) {
+      const products = await searchProducts(productSearch, 12);
+      return NextResponse.json(
+        products.map((p) => ({
+          id: p.id,
+          ean: p.ean,
+          productName: p.productName,
+        }))
+      );
+    }
     if (view === "movements") {
       return NextResponse.json(await listStockMovements());
     }
     if (view === "locations") {
       return NextResponse.json(await listWarehouseLocations());
+    }
+    const productIdRaw = url.searchParams.get("productId");
+    const productId = productIdRaw ? Number(productIdRaw) : NaN;
+    if (Number.isFinite(productId) && productId > 0) {
+      return NextResponse.json(await listStockLocationsForProduct(productId));
     }
     return NextResponse.json(await listStockSummary());
   } catch (err) {
@@ -99,6 +117,31 @@ export async function POST(request: Request) {
           { status: 400 }
         );
       }
+    }
+
+    if (body.action === "putaway") {
+      const productId = Number(body.productId);
+      const locationId = Number(body.locationId);
+      const quantityM2 = Number(body.quantityM2);
+      if (!Number.isFinite(productId) || productId <= 0) {
+        return NextResponse.json({ error: "Select a product." }, { status: 400 });
+      }
+      const product = await getProduct(productId);
+      if (!product?.ean) {
+        return NextResponse.json({ error: "Product has no barcode." }, { status: 400 });
+      }
+      const result = await receiveStock({
+        ean: product.ean,
+        productName: product.productName ?? undefined,
+        locationId,
+        quantityM2,
+        movementType: "receive",
+        notes: "Outdoor putaway",
+      });
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error }, { status: 400 });
+      }
+      return NextResponse.json(result);
     }
 
     if (body.action === "move") {

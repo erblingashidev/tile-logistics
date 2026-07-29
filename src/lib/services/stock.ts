@@ -795,3 +795,99 @@ export function groupStockByProduct(
   }
   return [...map.values()].sort((a, b) => b.totalM2 - a.totalM2);
 }
+
+/** Outdoor rows / sectors where a product has stock (for putaway pick lists). */
+export async function listStockLocationsForProduct(productId: number) {
+  if (!Number.isFinite(productId) || productId <= 0) return [];
+  const db = await getDb();
+  const rows = await dbAll(
+    db
+      .select({
+        locationId: warehouseLocations.id,
+        locationCode: warehouseLocations.code,
+        locationLabel: warehouseLocations.label,
+        locationZone: warehouseLocations.zone,
+        quantityM2: stockBalances.quantityM2,
+        productId: products.id,
+        ean: products.ean,
+        productName: products.productName,
+      })
+      .from(stockBalances)
+      .innerJoin(products, eq(stockBalances.productId, products.id))
+      .innerJoin(
+        warehouseLocations,
+        eq(stockBalances.locationId, warehouseLocations.id)
+      )
+      .where(eq(stockBalances.productId, productId))
+      .orderBy(warehouseLocations.code)
+  );
+  return rows.filter((r) => (r.quantityM2 ?? 0) > 0.0001);
+}
+
+/** Decrement stock at a specific outdoor row when preparing an order. */
+export async function pickStockFromLocation(input: {
+  productId: number;
+  locationId: number;
+  quantityM2: number;
+  orderId: number;
+  orderItemId?: number | null;
+  employeeId?: number;
+  notes?: string;
+}) {
+  const qty = input.quantityM2;
+  if (!Number.isFinite(qty) || qty <= 0) {
+    return { ok: false as const, error: "Quantity must be greater than 0." };
+  }
+
+  const product = await getProduct(input.productId);
+  if (!product) {
+    return { ok: false as const, error: "Product not found." };
+  }
+
+  const loc = await getWarehouseLocation(input.locationId);
+  if (!loc) {
+    return { ok: false as const, error: "Location not found." };
+  }
+
+  const balance = await getOrCreateBalance(input.productId, input.locationId);
+  const available = balance?.quantityM2 ?? 0;
+  if (available + 0.0001 < qty) {
+    return {
+      ok: false as const,
+      error: `Only ${formatM2(available)} m² at ${loc.code}.`,
+    };
+  }
+
+  const db = await getDb();
+  const now = new Date().toISOString();
+
+  await db
+    .update(stockBalances)
+    .set({
+      quantityM2: Math.max(0, available - qty),
+      updatedAt: now,
+    })
+    .where(eq(stockBalances.id, balance!.id));
+
+  await db.insert(stockMovements).values({
+    productId: input.productId,
+    locationId: input.locationId,
+    movementType: "pick",
+    quantityM2: qty,
+    fullPallets: 0,
+    loosePieces: 0,
+    referenceType: "order",
+    referenceId: input.orderId,
+    employeeId: input.employeeId ?? null,
+    notes:
+      input.notes?.trim() ||
+      `Pick for order #${input.orderId} from ${loc.code}`,
+    createdAt: now,
+  });
+
+  return {
+    ok: true as const,
+    quantityM2: qty,
+    locationCode: loc.code,
+  };
+}

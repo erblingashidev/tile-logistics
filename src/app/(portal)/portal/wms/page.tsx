@@ -8,6 +8,8 @@ import {
   PortalTabs,
 } from "@/components/portal/PortalShell";
 import { Badge, Button, Input, Select, Alert } from "@/components/ui";
+import { OutdoorPutawayForm } from "@/components/wms/OutdoorPutawayForm";
+import { formatLocationOption } from "@/lib/warehouse-location-code";
 import { sq } from "@/lib/i18n/sq";
 import type { EmployeeRole } from "@/lib/constants";
 import { WAREHOUSE_REPORT_ROLES } from "@/lib/employee-categories";
@@ -36,7 +38,7 @@ export default function PortalWmsPage() {
   const [openSession, setOpenSession] = useState<{ id: number; name: string } | null>(
     null
   );
-  const [tab, setTab] = useState<"receive" | "inventory">("receive");
+  const [tab, setTab] = useState<"receive" | "putaway" | "inventory">("receive");
   const [activeSector, setActiveSector] = useState<{
     id: number;
     zone: string;
@@ -230,9 +232,42 @@ export default function PortalWmsPage() {
         onChange={setTab}
         tabs={[
           { id: "receive", label: sq.wmsReceive },
+          { id: "putaway", label: sq.wmsPutaway },
           { id: "inventory", label: sq.wmsInventory, disabled: !openSession },
         ]}
       />
+
+      {tab === "putaway" && (
+        <PortalCard className="space-y-4">
+          <p className="text-sm text-zinc-600">
+            Kërko produktin, zgjidh rreshtin (p.sh. D3-K1M = Depo 3, Kolona 1
+            Majtas) dhe shkruaj m².
+          </p>
+          <OutdoorPutawayForm
+            locations={locations.filter(
+              (l) =>
+                l.code !== "STAGING" && !l.code.startsWith("PRODATA-")
+            )}
+            submitLabel="Ruaj vendosjen"
+            onSubmit={async ({ productId, locationId, quantityM2 }) => {
+              const res = await fetch("/api/wms", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  action: "putaway",
+                  productId,
+                  locationId,
+                  quantityM2,
+                }),
+              });
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.error ?? sq.errors.generic);
+              setSuccess(sq.putawaySuccess ?? "Vendosja u ruajt.");
+              setTimeout(() => setSuccess(""), 3000);
+            }}
+          />
+        </PortalCard>
+      )}
 
       {tab === "inventory" && (
         <PortalCard className="space-y-4">
@@ -314,47 +349,17 @@ export default function PortalWmsPage() {
             className="rounded-xl py-3 text-base"
           />
           {tab === "receive" ? (
-            <>
-              <Input
-                type="number"
-                min={0}
-                placeholder={sq.fullPallets}
-                value={form.fullPallets}
-                onChange={(e) =>
-                  setForm({ ...form, fullPallets: e.target.value })
-                }
-                className="rounded-xl py-3 text-base"
-              />
-              <Input
-                type="number"
-                min={0}
-                placeholder={sq.extraBoxes}
-                value={form.packs}
-                onChange={(e) => setForm({ ...form, packs: e.target.value })}
-                className="rounded-xl py-3 text-base"
-              />
-              <Input
-                type="number"
-                min={0}
-                placeholder={sq.looseTiles}
-                value={form.loosePieces}
-                onChange={(e) =>
-                  setForm({ ...form, loosePieces: e.target.value })
-                }
-                className="rounded-xl py-3 text-base"
-              />
-              <Input
-                type="number"
-                step="0.01"
-                placeholder={sq.quantityM2Optional}
-                value={form.quantityM2}
-                onChange={(e) =>
-                  setForm({ ...form, quantityM2: e.target.value })
-                }
-                className="rounded-xl py-3 text-base"
-              />
-            </>
-          ) : (
+            <Input
+              type="number"
+              step="0.01"
+              placeholder={sq.quantityM2}
+              value={form.quantityM2}
+              onChange={(e) =>
+                setForm({ ...form, quantityM2: e.target.value })
+              }
+              className="rounded-xl py-3 text-base"
+            />
+          ) : tab === "inventory" ? (
             <Input
               type="number"
               step="0.01"
@@ -363,7 +368,8 @@ export default function PortalWmsPage() {
               onChange={(e) => setForm({ ...form, quantityM2: e.target.value })}
               className="rounded-xl py-3 text-base"
             />
-          )}
+          ) : null}
+          <>
           <Select
             label={
               tab === "receive"
@@ -378,7 +384,7 @@ export default function PortalWmsPage() {
             </option>
             {locations.map((l) => (
               <option key={l.id} value={l.id}>
-                {l.code} {l.label ? `— ${l.label}` : ""}
+                {formatLocationOption(l.code, l.zone)}
               </option>
             ))}
           </Select>
@@ -389,16 +395,13 @@ export default function PortalWmsPage() {
               (tab === "inventory" && !form.locationId) ||
               (tab === "inventory" && !activeSector) ||
               (tab === "inventory" && !form.quantityM2) ||
-              (tab === "receive" &&
-                !form.quantityM2 &&
-                !form.fullPallets &&
-                !form.packs &&
-                !form.loosePieces)
+              (tab === "receive" && !form.quantityM2)
             }
             onClick={() => submit(tab === "receive" ? "receive" : "inventory")}
           >
             {sq.save}
           </Button>
+          </>
         </PortalCard>
       )}
     </PortalShell>

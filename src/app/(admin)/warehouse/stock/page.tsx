@@ -12,6 +12,8 @@ import {
   tableClass,
 } from "@/components/ui";
 import { formatM2 } from "@/lib/calculations";
+import { OutdoorPutawayForm } from "@/components/wms/OutdoorPutawayForm";
+import { formatLocationOption } from "@/lib/warehouse-location-code";
 
 interface Location {
   id: number;
@@ -83,25 +85,11 @@ export default function WarehouseStockPage() {
   const [form, setForm] = useState({
     ean: "",
     productName: "",
-    fullPallets: "",
-    packs: "",
-    loosePieces: "",
     quantityM2: "",
-    locationId: "",
-    batchCode: "",
-    shipmentRef: "",
-    productionDate: "",
     movementType: "receive" as "receive" | "opening",
     code: "",
     zone: "",
     label: "",
-  });
-  const [move, setMove] = useState({
-    productId: "",
-    fromLocationId: "",
-    toLocationId: "",
-    fullPallets: "",
-    quantityM2: "",
   });
   const [msg, setMsg] = useState("");
   const [importBusy, setImportBusy] = useState(false);
@@ -189,16 +177,20 @@ export default function WarehouseStockPage() {
     loadApiStatus();
   }, [load, loadUndoStatus, loadApiStatus]);
 
-  const hasQty =
-    Boolean(form.quantityM2) ||
-    Boolean(form.fullPallets) ||
-    Boolean(form.packs) ||
-    Boolean(form.loosePieces);
+  const hasQty = Boolean(form.quantityM2);
+
+  const outdoorLocations = useMemo(
+    () =>
+      locations.filter(
+        (l) => l.code !== "STAGING" && !l.code.startsWith("PRODATA-")
+      ),
+    [locations]
+  );
 
   const productTotals = useMemo(() => {
     const map = new Map<
       number,
-      { ean: string | null; name: string | null; total: number; bins: number }
+      { ean: string | null; name: string | null; total: number; rows: number }
     >();
     for (const row of stock) {
       const cur = map.get(row.productId);
@@ -207,21 +199,21 @@ export default function WarehouseStockPage() {
           ean: row.ean,
           name: row.productName,
           total: row.quantityM2,
-          bins: 1,
+          rows: 1,
         });
       } else {
         cur.total += row.quantityM2;
-        cur.bins += 1;
+        cur.rows += 1;
       }
     }
-    return [...map.values()].filter((r) => r.bins > 1).slice(0, 8);
+    return [...map.values()].filter((r) => r.rows > 1).slice(0, 8);
   }, [stock]);
 
   async function receive(e: React.FormEvent) {
     e.preventDefault();
     setMsg("");
     if (!hasQty) {
-      setMsg("Enter pallets, boxes, loose tiles, or m².");
+      setMsg("Enter m².");
       return;
     }
     const res = await fetch("/api/warehouse/stock", {
@@ -230,14 +222,7 @@ export default function WarehouseStockPage() {
       body: JSON.stringify({
         ean: form.ean,
         productName: form.productName || undefined,
-        fullPallets: form.fullPallets || undefined,
-        packs: form.packs || undefined,
-        loosePieces: form.loosePieces || undefined,
         quantityM2: form.quantityM2 || undefined,
-        locationId: form.locationId ? Number(form.locationId) : null,
-        batchCode: form.batchCode || undefined,
-        shipmentRef: form.shipmentRef || undefined,
-        productionDate: form.productionDate || undefined,
         movementType: form.movementType,
       }),
     });
@@ -256,49 +241,8 @@ export default function WarehouseStockPage() {
       ...f,
       ean: "",
       productName: "",
-      fullPallets: "",
-      packs: "",
-      loosePieces: "",
       quantityM2: "",
-      batchCode: "",
-      shipmentRef: "",
-      productionDate: "",
     }));
-    load();
-  }
-
-  async function relocate(e: React.FormEvent) {
-    e.preventDefault();
-    setMsg("");
-    if (!move.fullPallets && !move.quantityM2) {
-      setMsg("Enter pallets or m² to move.");
-      return;
-    }
-    const res = await fetch("/api/warehouse/stock", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "move",
-        productId: Number(move.productId),
-        fromLocationId: Number(move.fromLocationId),
-        toLocationId: Number(move.toLocationId),
-        fullPallets: move.fullPallets || undefined,
-        quantityM2: move.quantityM2 || undefined,
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setMsg(data.error ?? "Move failed");
-      return;
-    }
-    setMsg(`Moved ${formatM2(data.quantityM2)} m² to new location`);
-    setMove({
-      productId: "",
-      fromLocationId: "",
-      toLocationId: "",
-      fullPallets: "",
-      quantityM2: "",
-    });
     load();
   }
 
@@ -726,11 +670,10 @@ export default function WarehouseStockPage() {
       </Card>
 
       <Card className="mb-6 p-4">
-        <p className="mb-1 font-medium">1. Truck unload / opening stock</p>
+        <p className="mb-1 font-medium">1. Truck unload → STAGING</p>
         <p className="mb-3 text-xs text-zinc-500">
-          Location is optional — leave empty to park stock in STAGING, then
-          putaway below. Prefer m² if pack specs are not set yet; or register
-          the lot under Products first and enter pallets.
+          Scan the lot barcode and enter m². Stock lands in STAGING until put
+          away to an outdoor row (e.g. D3-K1M = Depo 3, Kolona 1 Majtas).
         </p>
         <form onSubmit={receive} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <Select
@@ -757,159 +700,67 @@ export default function WarehouseStockPage() {
             value={form.productName}
             onChange={(e) => setForm({ ...form, productName: e.target.value })}
           />
-          <Select
-            label="Location (optional)"
-            value={form.locationId}
-            onChange={(e) => setForm({ ...form, locationId: e.target.value })}
-          >
-            <option value="">STAGING — put away later</option>
-            {locations.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.code}
-                {l.zone ? ` · ${l.zone}` : ""}
-                {l.label ? ` — ${l.label}` : ""}
-              </option>
-            ))}
-          </Select>
           <Input
-            label="m² (recommended)"
+            label="m²"
             type="number"
             step="0.01"
             value={form.quantityM2}
             onChange={(e) => setForm({ ...form, quantityM2: e.target.value })}
-          />
-          <Input
-            label="Full pallets"
-            type="number"
-            min={0}
-            value={form.fullPallets}
-            onChange={(e) => setForm({ ...form, fullPallets: e.target.value })}
-          />
-          <Input
-            label="Extra boxes"
-            type="number"
-            min={0}
-            value={form.packs}
-            onChange={(e) => setForm({ ...form, packs: e.target.value })}
-          />
-          <Input
-            label="Loose tiles"
-            type="number"
-            min={0}
-            value={form.loosePieces}
-            onChange={(e) => setForm({ ...form, loosePieces: e.target.value })}
-          />
-          <Input
-            label="Batch / shade"
-            value={form.batchCode}
-            onChange={(e) => setForm({ ...form, batchCode: e.target.value })}
-          />
-          <Input
-            label="Shipment ref"
-            value={form.shipmentRef}
-            onChange={(e) => setForm({ ...form, shipmentRef: e.target.value })}
-          />
-          <Input
-            label="Production date"
-            type="date"
-            value={form.productionDate}
-            onChange={(e) =>
-              setForm({ ...form, productionDate: e.target.value })
-            }
+            required
           />
           <div className="flex items-end">
             <Button type="submit" disabled={!form.ean || !hasQty}>
-              Register stock
+              Register at STAGING
             </Button>
           </div>
         </form>
       </Card>
 
       <Card className="mb-6 p-4">
-        <p className="mb-1 font-medium">2. Putaway — move between locations</p>
+        <p className="mb-1 font-medium">2. Putaway — outdoor row</p>
         <p className="mb-3 text-xs text-zinc-500">
-          Move from STAGING (or any bin) into another place. The same lot can
-          hold stock in multiple locations with separate m² totals.
+          Search product, pick sector/row, enter m² placed there.
         </p>
-        <form onSubmit={relocate} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Select
-            label="Stock line (lot × location)"
-            value={
-              move.productId && move.fromLocationId
-                ? `${move.productId}:${move.fromLocationId}`
-                : ""
-            }
-            onChange={(e) => {
-              const [productId, fromLocationId] = e.target.value.split(":");
-              setMove({ ...move, productId, fromLocationId });
-            }}
-          >
-            <option value="">Select stock to move</option>
-            {stock.map((row) => (
-              <option
-                key={row.balanceId}
-                value={`${row.productId}:${row.locationId}`}
-              >
-                {row.ean ?? "—"} · {row.locationCode} ·{" "}
-                {formatM2(row.quantityM2)} m²
-              </option>
-            ))}
-          </Select>
-          <Select
-            label="To location"
-            value={move.toLocationId}
-            onChange={(e) =>
-              setMove({ ...move, toLocationId: e.target.value })
-            }
-          >
-            <option value="">Select destination</option>
-            {locations.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.code}
-                {l.zone ? ` · ${l.zone}` : ""}
-              </option>
-            ))}
-          </Select>
-          <Input
-            label="m² to move"
-            type="number"
-            step="0.01"
-            value={move.quantityM2}
-            onChange={(e) => setMove({ ...move, quantityM2: e.target.value })}
-          />
-          <Input
-            label="Or full pallets"
-            type="number"
-            value={move.fullPallets}
-            onChange={(e) => setMove({ ...move, fullPallets: e.target.value })}
-          />
-          <div className="flex items-end">
-            <Button
-              type="submit"
-              variant="secondary"
-              disabled={!move.productId || !move.toLocationId}
-            >
-              Putaway / move
-            </Button>
-          </div>
-        </form>
+        <OutdoorPutawayForm
+          apiBase="/api/warehouse/stock"
+          locations={outdoorLocations}
+          submitLabel="Save putaway"
+          onSubmit={async ({ productId, locationId, quantityM2 }) => {
+            const res = await fetch("/api/warehouse/stock", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: "putaway",
+                productId,
+                locationId,
+                quantityM2,
+              }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Putaway failed");
+            setMsg(
+              `Putaway ${formatM2(data.quantityM2)} m² at ${data.locationCode ?? "row"}`
+            );
+            load();
+          }}
+        />
       </Card>
 
       <Card className="mb-6 p-4">
-        <p className="mb-3 font-medium">Quick-add bin location</p>
+        <p className="mb-3 font-medium">Add outdoor row location</p>
         <form onSubmit={addLocation} className="flex flex-wrap gap-2">
           <Input
-            placeholder="Code e.g. A-01"
+            placeholder="Code e.g. D3-K1M"
             value={form.code}
             onChange={(e) => setForm({ ...form, code: e.target.value })}
           />
           <Input
-            placeholder="Zone"
+            placeholder="Sector e.g. Depo 3"
             value={form.zone}
             onChange={(e) => setForm({ ...form, zone: e.target.value })}
           />
           <Input
-            placeholder="Label"
+            placeholder="Label (optional)"
             value={form.label}
             onChange={(e) => setForm({ ...form, label: e.target.value })}
           />
@@ -929,7 +780,7 @@ export default function WarehouseStockPage() {
                 {" · "}
                 {p.name ?? "—"}
                 {" — "}
-                <strong>{formatM2(p.total)} m²</strong> across {p.bins} locations
+                <strong>{formatM2(p.total)} m²</strong> across {p.rows} rows
               </li>
             ))}
           </ul>

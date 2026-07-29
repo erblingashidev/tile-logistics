@@ -137,7 +137,9 @@ export const sq = {
   },
 
   wmsTitle: "Depo — regjistrim",
-  wmsReceive: "Shkarkim nga kamioni",
+  wmsReceive: "Regjistrim (kamion → STAGING)",
+  wmsPutaway: "Vendosje në rresht",
+  putawaySuccess: "Vendosja u ruajt.",
   wmsInventory: "Inventari vjetor",
   ordersLink: "Porositë",
   ean: "Kodi i lotit / barkod",

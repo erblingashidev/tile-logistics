@@ -1,29 +1,35 @@
 /**
  * Live Pro-Data API smoke test (read-only unless --push-order is passed).
  *
+ * Loads `.env.local` automatically. Required vars:
+ *   PRODATA_SYNC_ENABLED=true
+ *   PRODATA_API_URL=http://office2.prodata-ks.com:8080/RestAPI
+ *   PRODATA_API_USERNAME=prodata
+ *   PRODATA_API_PASSWORD=...
+ *
  * Usage:
- *   PRODATA_SYNC_ENABLED=true \
- *   PRODATA_API_URL=http://office2.prodata-ks.com:8080/RestAPI \
- *   PRODATA_API_USERNAME=prodata \
- *   PRODATA_API_PASSWORD=... \
  *   npm run test:prodata-api
  *
  * Optional flags:
- *   --stock-only     Only test ItemsStoku (default)
  *   --push-order     POST a tiny test order and compare stock before/after
  */
-import {
-  fetchProDataItemsStoku,
-  parseProDataItemsStoku,
-  postProDataBulkOrder,
-  testProDataConnection,
-} from "../src/lib/integrations/prodata-api";
+import { loadEnvLocal } from "./load-env-local";
+
+loadEnvLocal();
 
 async function main() {
+  const {
+    fetchProDataItemsStoku,
+    parseProDataItemsStoku,
+    postProDataBulkOrder,
+    testProDataConnection,
+  } = await import("../src/lib/integrations/prodata-api");
+
   const args = new Set(process.argv.slice(2));
   const pushOrder = args.has("--push-order");
 
   console.log("=== Pro-Data API connection ===");
+  console.log("PRODATA_SYNC_ENABLED =", process.env.PRODATA_SYNC_ENABLED ?? "(unset)");
   const conn = await testProDataConnection();
   console.log(conn);
 

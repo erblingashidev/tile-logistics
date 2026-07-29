@@ -7,6 +7,8 @@ export interface ProDataApiConfig {
   baseUrl: string;
   username: string;
   password: string;
+  token?: string;
+  uniqueIdent?: string;
 }
 
 export function getProDataApiConfig(): ProDataApiConfig | null {
@@ -15,14 +17,22 @@ export function getProDataApiConfig(): ProDataApiConfig | null {
   const baseUrl = process.env.PRODATA_API_URL?.trim().replace(/\/$/, "");
   const username = process.env.PRODATA_API_USERNAME?.trim();
   const password = process.env.PRODATA_API_PASSWORD?.trim();
+  const token = process.env.PRODATA_API_TOKEN?.trim();
+  const uniqueIdent = process.env.PRODATA_API_UNIQUE_IDENT?.trim();
 
-  if (!baseUrl || !username || !password) {
+  if (!baseUrl || !username) {
     throw new Error(
-      "Pro-Data sync is enabled but PRODATA_API_URL, PRODATA_API_USERNAME, or PRODATA_API_PASSWORD is missing."
+      "Pro-Data sync is enabled but PRODATA_API_URL or PRODATA_API_USERNAME is missing."
     );
   }
 
-  return { baseUrl, username, password };
+  if (!token && !password) {
+    throw new Error(
+      "Pro-Data credentials missing. Run: npm run prodata:login -- YOUR_PASSWORD (or set PRODATA_API_PASSWORD / PRODATA_API_TOKEN in .env.local)."
+    );
+  }
+
+  return { baseUrl, username, password: password ?? "", token, uniqueIdent };
 }
 
 /** Must be explicitly true — prevents accidental sync against test/production API. */

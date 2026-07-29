@@ -228,6 +228,19 @@ async function ensureWarehouseSchemaPatches(client: Client) {
     )
   `);
 
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS order_pick_lines (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      order_item_id INTEGER REFERENCES order_items(id) ON DELETE SET NULL,
+      product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+      location_id INTEGER NOT NULL REFERENCES warehouse_locations(id) ON DELETE CASCADE,
+      quantity_m2 REAL NOT NULL,
+      employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL
+    )
+  `);
+
   const productCols = await tableColumns(client, "products");
   const productColumnMigrations: Array<[string, string]> = [
     ["unit", "unit TEXT NOT NULL DEFAULT 'm2'"],
@@ -768,6 +781,18 @@ async function runMigrations(client: Client) {
       reference_id INTEGER,
       employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
       notes TEXT,
+      created_at TEXT NOT NULL
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS order_pick_lines (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      order_item_id INTEGER REFERENCES order_items(id) ON DELETE SET NULL,
+      product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+      location_id INTEGER NOT NULL REFERENCES warehouse_locations(id) ON DELETE CASCADE,
+      quantity_m2 REAL NOT NULL,
+      employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
       created_at TEXT NOT NULL
     )
   `);

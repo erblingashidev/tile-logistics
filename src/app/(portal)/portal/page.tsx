@@ -8,6 +8,7 @@ import {
   EmptyState,
   Alert,
 } from "@/components/ui";
+import { OrderPrepareModal } from "@/components/wms/OrderPrepareModal";
 import {
   PortalCard,
   PortalSectionTitle,
@@ -170,6 +171,10 @@ export default function PortalPage() {
   const [partialLoadPallets, setPartialLoadPallets] = useState<
     Record<number, string>
   >({});
+  const [prepareOrder, setPrepareOrder] = useState<{
+    id: number;
+    invoiceNumber: string;
+  } | null>(null);
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const load = useCallback(async () => {
@@ -696,7 +701,12 @@ export default function PortalPage() {
                           <Button
                             className="w-full py-3 text-base"
                             disabled={busyOrderId === order.id}
-                            onClick={() => submitProof(order.id, "prepared")}
+                            onClick={() =>
+                              setPrepareOrder({
+                                id: order.id,
+                                invoiceNumber: order.invoiceNumber,
+                              })
+                            }
                           >
                             {sq.markPrepared}
                           </Button>
@@ -1064,6 +1074,20 @@ export default function PortalPage() {
             </div>
           )}
         </section>
+      {prepareOrder && (
+        <OrderPrepareModal
+          orderId={prepareOrder.id}
+          invoiceNumber={prepareOrder.invoiceNumber}
+          open
+          onClose={() => setPrepareOrder(null)}
+          onSuccess={() => {
+            setPrepareOrder(null);
+            setSuccess(sq.proof.prepared);
+            setTimeout(() => setSuccess(""), 3000);
+            load();
+          }}
+        />
+      )}
     </PortalShell>
   );
 }

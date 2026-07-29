@@ -27,32 +27,59 @@ function apiPath(config: ProDataApiConfig, segment: string): string {
   return `${base}/RestAPI${path}`;
 }
 
-export async function proDataLogin(
-  config: ProDataApiConfig = getProDataApiConfig()!
+async function parseLoginResponse(
+  res: Response,
+  fallbackLabel: string
 ): Promise<string> {
-  const url = new URL(apiPath(config, "/ProDataRestAPI/B2BLoginAdmin"));
-  url.searchParams.set("username", config.username);
-  url.searchParams.set("password", config.password);
-
-  const res = await fetch(url, { method: "POST" });
   const text = await res.text();
   let data: ProDataLoginResponse;
   try {
     data = text ? JSON.parse(text) : {};
   } catch {
-    throw new Error(`Pro-Data login returned invalid JSON (HTTP ${res.status}).`);
+    throw new Error(`${fallbackLabel} returned invalid JSON (HTTP ${res.status}).`);
   }
 
   if (!res.ok || !data.token) {
     const msg =
       data.user?.errorMsg ||
       data.message ||
-      `Pro-Data login failed (HTTP ${res.status}).`;
+      `${fallbackLabel} failed (HTTP ${res.status}).`;
     throw new Error(msg);
   }
 
   cachedToken = { value: data.token, fetchedAt: Date.now() };
   return data.token;
+}
+
+/** Test DB uses GET /B2BLogUser with Uniqueident; admin POST is fallback. */
+export async function proDataLogin(
+  config: ProDataApiConfig = getProDataApiConfig()!
+): Promise<string> {
+  if (!config.password?.trim()) {
+    throw new Error("Pro-Data password is required to log in.");
+  }
+
+  const uniqueIdent = config.uniqueIdent?.trim() || "1234567";
+  const userUrl = new URL(apiPath(config, "/ProDataRestAPI/B2BLogUser"));
+  userUrl.searchParams.set("username", config.username);
+  userUrl.searchParams.set("password", config.password);
+  userUrl.searchParams.set("Uniqueident", uniqueIdent);
+
+  const userRes = await fetch(userUrl, { method: "GET" });
+  if (userRes.ok) {
+    try {
+      return await parseLoginResponse(userRes, "Pro-Data B2BLogUser login");
+    } catch {
+      /* try admin login next */
+    }
+  }
+
+  const adminUrl = new URL(apiPath(config, "/ProDataRestAPI/B2BLoginAdmin"));
+  adminUrl.searchParams.set("username", config.username);
+  adminUrl.searchParams.set("password", config.password);
+
+  const adminRes = await fetch(adminUrl, { method: "POST" });
+  return parseLoginResponse(adminRes, "Pro-Data B2BLoginAdmin login");
 }
 
 async function getToken(config: ProDataApiConfig): Promise<string> {
@@ -62,7 +89,13 @@ async function getToken(config: ProDataApiConfig): Promise<string> {
   ) {
     return cachedToken.value;
   }
-  return proDataLogin(config);
+  if (config.token?.trim()) {
+    return config.token.trim();
+  }
+  if (config.password?.trim()) {
+    return proDataLogin(config);
+  }
+  throw new Error("Pro-Data credentials missing.");
 }
 
 export function clearProDataTokenCache() {
@@ -99,12 +132,17 @@ export async function proDataFetch<T = unknown>(
 
   if (res.status === 401 && options.retryOn401 !== false) {
     clearProDataTokenCache();
-    const fresh = await getToken(config);
-    const retry = await fetch(url, {
-      method: options.method ?? "GET",
-      headers: { Authorization: `Bearer ${fresh}` },
-    });
-    return parseProDataResponse<T>(retry);
+    if (config.password?.trim()) {
+      const fresh = await proDataLogin(config);
+      const retry = await fetch(url, {
+        method: options.method ?? "GET",
+        headers: { Authorization: `Bearer ${fresh}` },
+      });
+      return parseProDataResponse<T>(retry);
+    }
+    throw new Error(
+      "Pro-Data API token expired. Log in via Swagger and update PRODATA_API_TOKEN, or set PRODATA_API_PASSWORD in .env.local."
+    );
   }
 
   return parseProDataResponse<T>(res);

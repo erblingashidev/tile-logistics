@@ -12,9 +12,12 @@ import {
 } from "@/lib/services/inventory";
 import {
   ensureStagingLocation,
+  listStockLocationsForProduct,
   listWarehouseLocations,
   receiveStock,
+  moveStock,
 } from "@/lib/services/stock";
+import { getProduct, searchProducts } from "@/lib/services/products";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { dbAll } from "@/lib/db/query";
@@ -31,8 +34,26 @@ export async function GET(request: Request) {
 
     const url = new URL(request.url);
     const zone = url.searchParams.get("zone")?.trim();
+    const productIdRaw = url.searchParams.get("productId");
+    const productSearch = url.searchParams.get("productSearch")?.trim();
 
     await ensureStagingLocation();
+
+    if (productSearch) {
+      const products = await searchProducts(productSearch, 12);
+      return NextResponse.json(
+        products.map((p) => ({
+          id: p.id,
+          ean: p.ean,
+          productName: p.productName,
+        }))
+      );
+    }
+
+    const productId = productIdRaw ? Number(productIdRaw) : NaN;
+    if (Number.isFinite(productId) && productId > 0) {
+      return NextResponse.json(await listStockLocationsForProduct(productId));
+    }
 
     const [locations, openSession] = await Promise.all([
       zone
@@ -99,6 +120,51 @@ export async function POST(request: Request) {
         batchCode: body.batchCode,
         shipmentRef: body.shipmentRef,
         notes: body.notes,
+      });
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error }, { status: 400 });
+      }
+      return NextResponse.json(result);
+    }
+
+    if (body.action === "putaway") {
+      const productId = Number(body.productId);
+      const locationId = Number(body.locationId);
+      const quantityM2 = Number(body.quantityM2);
+      if (!Number.isFinite(productId) || productId <= 0) {
+        return NextResponse.json({ error: "Zgjidhni produktin." }, { status: 400 });
+      }
+      const product = await getProduct(productId);
+      if (!product?.ean) {
+        return NextResponse.json({ error: "Produkti nuk ka barkod." }, { status: 400 });
+      }
+      const result = await receiveStock({
+        ean: product.ean,
+        productName: product.productName ?? undefined,
+        locationId,
+        quantityM2,
+        employeeId: session.employeeId,
+        movementType: "receive",
+        notes: `Putaway at outdoor row`,
+      });
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error }, { status: 400 });
+      }
+      return NextResponse.json(result);
+    }
+
+    if (body.action === "move_from_staging") {
+      const productId = Number(body.productId);
+      const toLocationId = Number(body.toLocationId);
+      const quantityM2 = Number(body.quantityM2);
+      const staging = await ensureStagingLocation();
+      const result = await moveStock({
+        productId,
+        fromLocationId: staging!.id,
+        toLocationId,
+        quantityM2,
+        employeeId: session.employeeId,
+        notes: "Putaway from staging",
       });
       if (!result.ok) {
         return NextResponse.json({ error: result.error }, { status: 400 });

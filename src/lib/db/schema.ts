@@ -325,6 +325,28 @@ export const stockMovements = sqliteTable("stock_movements", {
   createdAt: text("created_at").notNull(),
 });
 
+/** Picker took stock from an outdoor row when preparing an order. */
+export const orderPickLines = sqliteTable("order_pick_lines", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  orderId: integer("order_id")
+    .notNull()
+    .references(() => orders.id, { onDelete: "cascade" }),
+  orderItemId: integer("order_item_id").references(() => orderItems.id, {
+    onDelete: "set null",
+  }),
+  productId: integer("product_id")
+    .notNull()
+    .references(() => products.id, { onDelete: "cascade" }),
+  locationId: integer("location_id")
+    .notNull()
+    .references(() => warehouseLocations.id, { onDelete: "cascade" }),
+  quantityM2: real("quantity_m2").notNull(),
+  employeeId: integer("employee_id").references(() => employees.id, {
+    onDelete: "set null",
+  }),
+  createdAt: text("created_at").notNull(),
+});
+
 export const inventorySessions = sqliteTable("inventory_sessions", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
