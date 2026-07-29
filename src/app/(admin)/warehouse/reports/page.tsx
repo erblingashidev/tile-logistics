@@ -13,6 +13,7 @@ import {
   Select,
   tableClass,
 } from "@/components/ui";
+import { WarehouseNav } from "@/components/warehouse/WarehouseNav";
 import {
   WAREHOUSE_INCIDENT_CATEGORIES,
   WAREHOUSE_INCIDENT_CATEGORY_LABELS,
@@ -200,10 +201,8 @@ export default function WarehouseReportsAdminPage() {
   }
 
   return (
-    <AppShell title="Warehouse reports">
-      <Link href="/warehouse" className="mb-4 inline-block text-sm text-zinc-500">
-        ← Warehouse
-      </Link>
+    <AppShell title="Warehouse reports" description="Incidents and weekly sector reports">
+      <WarehouseNav />
 
       {editingReport && (
         <Card className="mb-6 space-y-3 p-4">

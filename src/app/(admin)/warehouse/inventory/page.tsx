@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { Badge, Button, Card, EmptyState, Input, Select } from "@/components/ui";
+import { WarehouseNav } from "@/components/warehouse/WarehouseNav";
 import { formatM2 } from "@/lib/calculations";
 
 interface Session {
@@ -638,10 +639,11 @@ export default function WarehouseInventoryPage() {
   const pastSessions = sessions.filter((s) => s.status !== "open");
 
   return (
-    <AppShell title="Annual inventory">
-      <Link href="/warehouse" className="mb-4 inline-block text-sm text-zinc-500">
-        ← Warehouse
-      </Link>
+    <AppShell
+      title="Annual inventory"
+      description="Sector-by-sector stock count sessions"
+    >
+      <WarehouseNav />
 
       {!open ? (
         <Card className="mb-6 p-4">

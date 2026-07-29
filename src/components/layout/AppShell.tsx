@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { BRAND } from "@/lib/brand";
 import { Button } from "@/components/ui";
+import { WAREHOUSE_SIDEBAR_LINKS } from "@/components/warehouse/WarehouseNav";
 
 const navGroups = [
   {
@@ -31,9 +32,12 @@ const navGroups = [
     ],
   },
   {
+    label: "Warehouse",
+    items: WAREHOUSE_SIDEBAR_LINKS,
+  },
+  {
     label: "System",
     items: [
-      { href: "/warehouse", label: "Warehouse" },
       { href: "/reports", label: "Reports" },
       { href: "/logs", label: "Logs" },
       { href: "/settings", label: "Profile" },
@@ -44,6 +48,7 @@ const navGroups = [
 function isActive(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
   if (href === "/vehicles") return pathname === "/vehicles";
+  if (href === "/warehouse") return pathname === "/warehouse";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 

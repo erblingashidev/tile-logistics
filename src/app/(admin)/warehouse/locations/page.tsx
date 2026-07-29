@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button, Card, EmptyState, Input, Select, StatCard, tableClass } from "@/components/ui";
+import { WarehouseNav } from "@/components/warehouse/WarehouseNav";
 import { formatM2 } from "@/lib/calculations";
 
 interface LocationRow {
@@ -215,25 +216,26 @@ export default function WarehouseLocationsPage() {
   );
 
   return (
-    <AppShell title="Warehouse locations">
-      <Link href="/warehouse" className="mb-4 inline-block text-sm text-zinc-500">
-        ← Warehouse
-      </Link>
+    <AppShell
+      title="Rows & sectors"
+      description="Outdoor row codes (D3-K1M) and sector leaders"
+    >
+      <WarehouseNav />
 
       <Card className="mb-6 p-4">
         <p className="mb-3 font-medium">
-          {editingId ? "Edit location" : "New location"}
+          {editingId ? "Edit row" : "New outdoor row"}
         </p>
         <form onSubmit={saveLocation} className="space-y-3">
           <div className="flex flex-wrap gap-2">
             <Input
-              placeholder="Code e.g. A-01"
+              placeholder="Code e.g. D3-K1M"
               value={form.code}
               onChange={(e) => setForm({ ...form, code: e.target.value })}
               required
             />
             <Input
-              placeholder="Zone"
+              placeholder="Sector e.g. Depo 3"
               value={form.zone}
               onChange={(e) => setForm({ ...form, zone: e.target.value })}
             />

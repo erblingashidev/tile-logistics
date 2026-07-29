@@ -11,6 +11,7 @@ import {
   type ProductFormValues,
 } from "@/components/ProductSpecForm";
 import { Badge, Button, Card, EmptyState } from "@/components/ui";
+import { WarehouseNav } from "@/components/warehouse/WarehouseNav";
 import { formatM2 } from "@/lib/calculations";
 import { ORDER_UNIT_LABELS, normalizeOrderUnit } from "@/lib/constants";
 
@@ -217,10 +218,11 @@ export default function WarehouseProductsPage() {
   }
 
   return (
-    <AppShell title="Product lots">
-      <Link href="/warehouse" className="mb-4 inline-block text-sm text-zinc-500">
-        ← Warehouse
-      </Link>
+    <AppShell
+      title="Product lots"
+      description="Lot barcodes and pack specs for logistics"
+    >
+      <WarehouseNav />
       <p className="mb-4 max-w-2xl text-sm text-zinc-600">
         Register each tile lot with its pack profile (tiles/box, boxes/pallet,
         m²/pallet). When a new shipment of the same type arrives with a

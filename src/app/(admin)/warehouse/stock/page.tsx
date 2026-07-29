@@ -1,26 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import {
   Button,
   Card,
   EmptyState,
-  Input,
-  Select,
   tableClass,
 } from "@/components/ui";
 import { formatM2 } from "@/lib/calculations";
-import { OutdoorPutawayForm } from "@/components/wms/OutdoorPutawayForm";
-import { formatLocationOption } from "@/lib/warehouse-location-code";
-
-interface Location {
-  id: number;
-  code: string;
-  label: string | null;
-  zone: string | null;
-}
+import { WarehouseNav } from "@/components/warehouse/WarehouseNav";
 
 interface StockRow {
   balanceId: number;
@@ -80,17 +69,7 @@ function readyImportPrep(
 
 export default function WarehouseStockPage() {
   const [stock, setStock] = useState<StockRow[]>([]);
-  const [locations, setLocations] = useState<Location[]>([]);
   const [loadError, setLoadError] = useState("");
-  const [form, setForm] = useState({
-    ean: "",
-    productName: "",
-    quantityM2: "",
-    movementType: "receive" as "receive" | "opening",
-    code: "",
-    zone: "",
-    label: "",
-  });
   const [msg, setMsg] = useState("");
   const [importBusy, setImportBusy] = useState(false);
   const [syncApiBusy, setSyncApiBusy] = useState(false);
@@ -148,24 +127,14 @@ export default function WarehouseStockPage() {
   const load = useCallback(async () => {
     setLoadError("");
     try {
-      const [s, l] = await Promise.all([
-        fetch("/api/warehouse/stock"),
-        fetch("/api/warehouse/stock?view=locations"),
-      ]);
+      const [s] = await Promise.all([fetch("/api/warehouse/stock")]);
       const stockJson = await s.json();
-      const locJson = await l.json();
       if (!s.ok) {
         setStock([]);
         setLoadError(stockJson.error ?? "Could not load stock");
         return;
       }
-      if (!l.ok) {
-        setLocations([]);
-        setLoadError(locJson.error ?? "Could not load locations");
-        return;
-      }
       setStock(Array.isArray(stockJson) ? stockJson : []);
-      setLocations(Array.isArray(locJson) ? locJson : []);
     } catch {
       setLoadError("Could not load stock — refresh and try again.");
     }
@@ -176,16 +145,6 @@ export default function WarehouseStockPage() {
     loadUndoStatus();
     loadApiStatus();
   }, [load, loadUndoStatus, loadApiStatus]);
-
-  const hasQty = Boolean(form.quantityM2);
-
-  const outdoorLocations = useMemo(
-    () =>
-      locations.filter(
-        (l) => l.code !== "STAGING" && !l.code.startsWith("PRODATA-")
-      ),
-    [locations]
-  );
 
   const productTotals = useMemo(() => {
     const map = new Map<
@@ -208,65 +167,6 @@ export default function WarehouseStockPage() {
     }
     return [...map.values()].filter((r) => r.rows > 1).slice(0, 8);
   }, [stock]);
-
-  async function receive(e: React.FormEvent) {
-    e.preventDefault();
-    setMsg("");
-    if (!hasQty) {
-      setMsg("Enter m².");
-      return;
-    }
-    const res = await fetch("/api/warehouse/stock", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ean: form.ean,
-        productName: form.productName || undefined,
-        quantityM2: form.quantityM2 || undefined,
-        movementType: form.movementType,
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setMsg(data.error ?? "Failed");
-      return;
-    }
-    const where = data.locationCode ?? "STAGING";
-    setMsg(
-      `${form.movementType === "opening" ? "Opening stock" : "Received"} ${formatM2(data.quantityM2)} m² at ${where}${
-        data.breakdown?.labelSq ? ` · ${data.breakdown.labelSq}` : ""
-      }`
-    );
-    setForm((f) => ({
-      ...f,
-      ean: "",
-      productName: "",
-      quantityM2: "",
-    }));
-    load();
-  }
-
-  async function addLocation(e: React.FormEvent) {
-    e.preventDefault();
-    setMsg("");
-    const res = await fetch("/api/warehouse/stock", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "location",
-        code: form.code,
-        zone: form.zone,
-        label: form.label,
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setMsg(data.error ?? "Could not add location");
-      return;
-    }
-    setForm((f) => ({ ...f, code: "", zone: "", label: "" }));
-    load();
-  }
 
   async function postImportJson(payload: Record<string, unknown>) {
     const res = await fetch("/api/warehouse/stock/import", {
@@ -554,22 +454,11 @@ export default function WarehouseStockPage() {
   }
 
   return (
-    <AppShell title="Stock — receive & putaway">
-      <Link href="/warehouse" className="mb-4 inline-block text-sm text-zinc-500">
-        ← Warehouse
-      </Link>
-      <Link
-        href="/warehouse/products"
-        className="mb-4 ml-4 inline-block text-sm text-zinc-500"
-      >
-        Product lots →
-      </Link>
-      <Link
-        href="/warehouse/locations"
-        className="mb-4 ml-4 inline-block text-sm text-zinc-500"
-      >
-        Locations →
-      </Link>
+    <AppShell
+      title="Stock levels"
+      description="m² by lot and row · Pro-Data sync"
+    >
+      <WarehouseNav />
 
       {(msg || loadError) && (
         <p
@@ -588,8 +477,9 @@ export default function WarehouseStockPage() {
         <p className="mb-3 text-xs text-zinc-500">
           Excel import (Finance+ export every ~2 days) or live API sync when{" "}
           <code className="rounded bg-zinc-100 px-1">PRODATA_SYNC_ENABLED=true</code>.
-          Only Pro-Data warehouse areas are replaced; STAGING and bin putaway are
-          unchanged. Undo restores the previous Pro-Data snapshot.
+          Only Pro-Data warehouse areas are replaced; STAGING and outdoor rows are
+          unchanged. Undo restores the previous Pro-Data snapshot. Day-to-day
+          unload and mapping are on their own pages.
         </p>
         {apiStatus ? (
           <p className="mb-3 text-xs text-zinc-600">
@@ -667,105 +557,6 @@ export default function WarehouseStockPage() {
             No undo available yet — complete an import first.
           </p>
         )}
-      </Card>
-
-      <Card className="mb-6 p-4">
-        <p className="mb-1 font-medium">1. Truck unload → STAGING</p>
-        <p className="mb-3 text-xs text-zinc-500">
-          Scan the lot barcode and enter m². Stock lands in STAGING until put
-          away to an outdoor row (e.g. D3-K1M = Depo 3, Kolona 1 Majtas).
-        </p>
-        <form onSubmit={receive} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Select
-            label="Type"
-            value={form.movementType}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                movementType: e.target.value as "receive" | "opening",
-              })
-            }
-          >
-            <option value="receive">Truck unload</option>
-            <option value="opening">Opening stock (first registration)</option>
-          </Select>
-          <Input
-            label="Lot barcode / EAN"
-            value={form.ean}
-            onChange={(e) => setForm({ ...form, ean: e.target.value })}
-            required
-          />
-          <Input
-            label="Product name (new lots)"
-            value={form.productName}
-            onChange={(e) => setForm({ ...form, productName: e.target.value })}
-          />
-          <Input
-            label="m²"
-            type="number"
-            step="0.01"
-            value={form.quantityM2}
-            onChange={(e) => setForm({ ...form, quantityM2: e.target.value })}
-            required
-          />
-          <div className="flex items-end">
-            <Button type="submit" disabled={!form.ean || !hasQty}>
-              Register at STAGING
-            </Button>
-          </div>
-        </form>
-      </Card>
-
-      <Card className="mb-6 p-4">
-        <p className="mb-1 font-medium">2. Putaway — outdoor row</p>
-        <p className="mb-3 text-xs text-zinc-500">
-          Search product, pick sector/row, enter m² placed there.
-        </p>
-        <OutdoorPutawayForm
-          apiBase="/api/warehouse/stock"
-          locations={outdoorLocations}
-          submitLabel="Save putaway"
-          onSubmit={async ({ productId, locationId, quantityM2 }) => {
-            const res = await fetch("/api/warehouse/stock", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                action: "putaway",
-                productId,
-                locationId,
-                quantityM2,
-              }),
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error ?? "Putaway failed");
-            setMsg(
-              `Putaway ${formatM2(data.quantityM2)} m² at ${data.locationCode ?? "row"}`
-            );
-            load();
-          }}
-        />
-      </Card>
-
-      <Card className="mb-6 p-4">
-        <p className="mb-3 font-medium">Add outdoor row location</p>
-        <form onSubmit={addLocation} className="flex flex-wrap gap-2">
-          <Input
-            placeholder="Code e.g. D3-K1M"
-            value={form.code}
-            onChange={(e) => setForm({ ...form, code: e.target.value })}
-          />
-          <Input
-            placeholder="Sector e.g. Depo 3"
-            value={form.zone}
-            onChange={(e) => setForm({ ...form, zone: e.target.value })}
-          />
-          <Input
-            placeholder="Label (optional)"
-            value={form.label}
-            onChange={(e) => setForm({ ...form, label: e.target.value })}
-          />
-          <Button type="submit">Add location</Button>
-        </form>
       </Card>
 
       {productTotals.length > 0 && (
