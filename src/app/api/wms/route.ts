@@ -17,6 +17,7 @@ import {
   receiveStock,
   moveStock,
 } from "@/lib/services/stock";
+import { getEmployee } from "@/lib/services/employees";
 import { getProduct, searchProducts } from "@/lib/services/products";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
@@ -71,11 +72,19 @@ export async function GET(request: Request) {
       getOpenInventorySession(),
     ]);
 
+    const employee = await getEmployee(session.employeeId);
+    const warehouseZones = employee?.warehouseZones ?? [];
+
     const zones = openSession
       ? await listInventoryZonesWithStatus(openSession.id)
       : [];
 
-    return NextResponse.json({ locations, openSession, zones });
+    return NextResponse.json({
+      locations,
+      openSession,
+      zones,
+      warehouseZones,
+    });
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

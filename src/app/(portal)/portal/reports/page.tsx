@@ -13,6 +13,7 @@ import { Badge, Button, Input, Select, Textarea, Alert } from "@/components/ui";
 import { sq } from "@/lib/i18n/sq";
 import { WAREHOUSE_INCIDENT_CATEGORIES } from "@/lib/constants";
 import type { EmployeeRole } from "@/lib/constants";
+import { employeeShowDepotNav } from "@/lib/portal-depot-nav";
 
 interface EditRequest {
   id: number;
@@ -218,20 +219,9 @@ export default function PortalReportsPage() {
       subtitle={ctx?.employee.name}
       activeNav="reports"
       showOrders
-      showWms={
-        ctx?.employee.roles.some((r) =>
-          (
-            [
-              "warehouse_admin",
-              "warehouse_reporter",
-              "group_leader",
-              "picker",
-              "unloader",
-              "maintainer",
-            ] as EmployeeRole[]
-          ).includes(r as EmployeeRole)
-        ) ?? false
-      }
+      showDepotNav={employeeShowDepotNav(
+        (ctx?.employee.roles ?? []) as EmployeeRole[]
+      )}
       showReports
       onLogout={logout}
       onRefresh={refreshNow}

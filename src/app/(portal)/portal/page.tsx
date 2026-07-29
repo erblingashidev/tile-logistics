@@ -21,6 +21,7 @@ import {
   type EmployeeRole,
 } from "@/lib/constants";
 import { WAREHOUSE_REPORT_ROLES } from "@/lib/employee-categories";
+import { employeeShowDepotNav } from "@/lib/portal-depot-nav";
 import {
   orderStatusLabelSq,
   proofLabelSq,
@@ -381,10 +382,7 @@ export default function PortalPage() {
   const isLoader =
     employee?.roles.some((r) => r === "picker" || r === "unloader") ?? false;
   const isDriver = employee?.roles.includes("driver") ?? false;
-  const showWmsLink =
-    employee?.roles.some((r) =>
-      (["warehouse_admin", "warehouse_reporter", "group_leader", "picker", "unloader", "maintainer"] as EmployeeRole[]).includes(r)
-    ) ?? false;
+  const showDepotNav = employeeShowDepotNav(employee?.roles ?? []);
   const showReportsLink =
     employee?.roles.some((r) => WAREHOUSE_REPORT_ROLES.includes(r)) ?? false;
 
@@ -414,7 +412,7 @@ export default function PortalPage() {
       subtitle={employee?.name}
       activeNav="orders"
       showOrders
-      showWms={showWmsLink}
+      showDepotNav={showDepotNav}
       showReports={showReportsLink}
       onLogout={logout}
       onRefresh={refreshNow}

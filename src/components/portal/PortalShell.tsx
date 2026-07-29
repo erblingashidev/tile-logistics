@@ -4,14 +4,21 @@ import Link from "next/link";
 import { BRAND } from "@/lib/brand";
 import { sq } from "@/lib/i18n/sq";
 
-type PortalNav = "orders" | "wms" | "reports" | "profile";
+type PortalNav =
+  | "orders"
+  | "unload"
+  | "mapping"
+  | "inventory"
+  | "reports"
+  | "profile";
 
 interface PortalShellProps {
   title: string;
   subtitle?: string;
   activeNav?: PortalNav;
   showOrders?: boolean;
-  showWms?: boolean;
+  /** Show Shkarkim / Vendosje / Inventari links for depot staff */
+  showDepotNav?: boolean;
   showReports?: boolean;
   onLogout: () => void;
   onRefresh?: () => void | Promise<void>;
@@ -39,7 +46,7 @@ export function PortalShell({
   subtitle,
   activeNav,
   showOrders = true,
-  showWms = false,
+  showDepotNav = false,
   showReports = false,
   onLogout,
   onRefresh,
@@ -48,7 +55,21 @@ export function PortalShell({
 }: PortalShellProps) {
   const navItems = [
     showOrders && { id: "orders" as const, href: "/portal", label: sq.ordersLink },
-    showWms && { id: "wms" as const, href: "/portal/wms", label: sq.depotLink },
+    showDepotNav && {
+      id: "unload" as const,
+      href: "/portal/unload",
+      label: sq.unloadLink,
+    },
+    showDepotNav && {
+      id: "mapping" as const,
+      href: "/portal/mapping",
+      label: sq.mappingLink,
+    },
+    showDepotNav && {
+      id: "inventory" as const,
+      href: "/portal/inventory",
+      label: sq.inventoryLink,
+    },
     showReports && {
       id: "reports" as const,
       href: "/portal/reports",
@@ -103,7 +124,7 @@ export function PortalShell({
                   <Link
                     key={item.id}
                     href={item.href}
-                    className={`min-w-0 flex-1 rounded-xl px-2 py-2.5 text-center text-xs font-semibold transition ${navClass(
+                    className={`min-w-0 flex-1 rounded-xl px-1.5 py-2.5 text-center text-[10px] font-semibold leading-tight transition sm:px-2 sm:text-xs ${navClass(
                       activeNav === item.id
                     )}`}
                   >

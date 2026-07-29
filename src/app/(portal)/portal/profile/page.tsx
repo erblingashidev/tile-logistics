@@ -12,6 +12,7 @@ import { Alert, Badge, LoadingState } from "@/components/ui";
 import { sq } from "@/lib/i18n/sq";
 import type { EmployeeRole } from "@/lib/constants";
 import { WAREHOUSE_REPORT_ROLES } from "@/lib/employee-categories";
+import { employeeShowDepotNav } from "@/lib/portal-depot-nav";
 
 interface MeUser {
   name?: string;
@@ -54,18 +55,7 @@ export default function PortalProfilePage() {
   }
 
   const roles = user?.roles ?? [];
-  const showWms = roles.some((r) =>
-    (
-      [
-        "warehouse_admin",
-        "warehouse_reporter",
-        "group_leader",
-        "picker",
-        "unloader",
-        "maintainer",
-      ] as EmployeeRole[]
-    ).includes(r)
-  );
+  const showDepotNav = employeeShowDepotNav(roles);
   const showReports = roles.some((r) => WAREHOUSE_REPORT_ROLES.includes(r));
 
   return (
@@ -74,7 +64,7 @@ export default function PortalProfilePage() {
       subtitle={user?.name}
       activeNav="profile"
       showOrders
-      showWms={showWms}
+      showDepotNav={showDepotNav}
       showReports={showReports}
       onLogout={logout}
     >

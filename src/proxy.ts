@@ -30,8 +30,14 @@ function employeePathAllowed(pathname: string, roles: EmployeeRole[]) {
     return true;
   }
 
+  const isDepotPage =
+    pathname.startsWith("/portal/unload") ||
+    pathname.startsWith("/portal/mapping") ||
+    pathname.startsWith("/portal/inventory") ||
+    pathname.startsWith("/portal/wms");
+
   if (
-    (pathname.startsWith("/portal/wms") || pathname.startsWith("/api/wms")) &&
+    (isDepotPage || pathname.startsWith("/api/wms")) &&
     roles.some((r) => WMS_STAFF_ROLES.includes(r))
   ) {
     return true;
@@ -47,7 +53,7 @@ function employeePathAllowed(pathname: string, roles: EmployeeRole[]) {
 
   if (
     pathname.startsWith("/api/portal") ||
-    (pathname.startsWith("/portal") && !pathname.startsWith("/portal/wms"))
+    (pathname.startsWith("/portal") && !isDepotPage)
   ) {
     return isWarehouseStaff(roles);
   }

@@ -1,10 +1,24 @@
-/** Albanian UI — warehouse staff portal only (/portal, /portal/wms) */
+/** Albanian UI — warehouse staff portal only (/portal/*) */
 
 export const sq = {
   appName: "AGIMI Logjistikë",
   refresh: "Rifresko",
   logout: "Dil",
   depotLink: "Depo",
+  unloadLink: "Shkarkim",
+  mappingLink: "Vendosje",
+  inventoryLink: "Inventari",
+  unloadTitle: "Shkarkim nga kamioni",
+  mappingTitle: "Vendosje në rresht",
+  inventoryTitle: "Inventari vjetor",
+  unloadHint: "Skano kodin e lotit dhe shkruaj m². Stoku shkon në STAGING.",
+  mappingHint:
+    "Kërko produktin, zgjidh rreshtin (p.sh. D3-K1M = Depo 3, Kolona 1 Majtas) dhe shkruaj m².",
+  mappingPickSector: "Sektori",
+  mappingAllSectors: "Të gjitha",
+  mappingYourSector: "Sektori juaj",
+  unloadSave: "Regjistro në STAGING",
+  putawaySave: "Ruaj vendosjen",
   myStatus: "Statusi im",
   statusUpdated: "Statusi u përditësua",
   allDeliveredReturn:
@@ -152,7 +166,7 @@ export const sq = {
   locationOptional: "opsionale",
   stagingLocation: "STAGING — vendose më vonë",
   save: "Ruaj",
-  scanHint: "Skano kodin e lotit — pastaj paletat / kutitë ose m²",
+  scanHint: "Skano kodin e lotit dhe shkruaj m²",
   receiveSuccess: "Stoku u regjistrua",
   inventoryLineSaved: "Rreshti i inventarit u ruaj",
   inventoryPickZone: "Ku po numëron?",
