@@ -8,6 +8,7 @@ import { getDb } from "@/lib/db";
 import { dbOne } from "@/lib/db/query";
 import { vehicles } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
+import { isManualDispatchMode } from "@/lib/services/feature-flags";
 
 export const runtime = "nodejs";
 
@@ -47,6 +48,7 @@ export async function GET() {
         orders,
         truckGroups,
         notifications,
+        manualDispatchMode: await isManualDispatchMode(),
         employee: {
           ...session,
           status: profile?.status ?? "available",

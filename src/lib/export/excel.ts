@@ -1,29 +1,110 @@
 import * as XLSX from "xlsx";
-import { listOrders, getOrdersGroupedByLocation } from "@/lib/services/orders";
+import { listOrders } from "@/lib/services/orders";
 import {
   buildOrderLineRows,
   buildOrderSummaryRows,
+  buildPrintListRows,
+  orderGroupKey,
+  type ExportOrder,
 } from "@/lib/export/order-rows";
+import {
+  appendMetaSheet,
+  applyTableLayout,
+  sanitizeSheetName,
+  type ExportGroupBy,
+} from "@/lib/export/excel-format";
 
-export async function buildOrdersExcel(filters?: Parameters<typeof listOrders>[0]) {
+function sheetFromRows(rows: Record<string, string | number>[], freezeRow = 1) {
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const colCount = rows.length > 0 ? Object.keys(rows[0]!).length : 1;
+  applyTableLayout(ws, rows.length + 1, colCount, { freezeRow });
+  return ws;
+}
+
+function groupOrders(
+  orders: ExportOrder[],
+  groupBy: Exclude<ExportGroupBy, "none">
+): Map<string, ExportOrder[]> {
+  const map = new Map<string, ExportOrder[]>();
+  for (const order of orders) {
+    const key = orderGroupKey(order, groupBy);
+    const list = map.get(key) ?? [];
+    list.push(order);
+    map.set(key, list);
+  }
+  return new Map(
+    [...map.entries()].sort(([a], [b]) => a.localeCompare(b, "sq", { sensitivity: "base" }))
+  );
+}
+
+export async function buildOrdersExcel(
+  filters?: Parameters<typeof listOrders>[0],
+  options?: { groupBy?: ExportGroupBy }
+) {
+  const groupBy = options?.groupBy ?? "none";
   const orders = await listOrders(filters);
-  const summaryRows = buildOrderSummaryRows(orders);
-  const lineRows = buildOrderLineRows(orders);
+  const generatedAt = new Date().toLocaleString("sq-AL");
 
   const wb = XLSX.utils.book_new();
+  const usedNames = new Set<string>(["About", "Print list", "Order Summary", "Line Items"]);
+
+  appendMetaSheet(wb, [
+    { Field: "Report", Value: "AGIMI Logistics — Orders export" },
+    { Field: "Generated", Value: generatedAt },
+    { Field: "Orders", Value: String(orders.length) },
+    {
+      Field: "Grouped by",
+      Value:
+        groupBy === "none"
+          ? "Flat list (use Print list sheet to filter in Excel)"
+          : groupBy.charAt(0).toUpperCase() + groupBy.slice(1),
+    },
+    {
+      Field: "Tip",
+      Value:
+        "Use the Print list sheet for printing. Filter or sort by Group column in Excel.",
+    },
+  ]);
+
   XLSX.utils.book_append_sheet(
     wb,
-    XLSX.utils.json_to_sheet(summaryRows),
+    sheetFromRows(buildPrintListRows(orders, groupBy)),
+    "Print list"
+  );
+
+  XLSX.utils.book_append_sheet(
+    wb,
+    sheetFromRows(buildOrderSummaryRows(orders)),
     "Order Summary"
   );
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(lineRows), "Line Items");
+
+  XLSX.utils.book_append_sheet(
+    wb,
+    sheetFromRows(buildOrderLineRows(orders)),
+    "Line Items"
+  );
+
+  if (groupBy !== "none") {
+    const groups = groupOrders(orders, groupBy);
+    for (const [label, groupOrdersList] of groups) {
+      if (groupOrdersList.length === 0) continue;
+      const sheetName = sanitizeSheetName(label, usedNames);
+      XLSX.utils.book_append_sheet(
+        wb,
+        sheetFromRows(buildPrintListRows(groupOrdersList, "none")),
+        sheetName
+      );
+    }
+  }
+
   return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
 }
 
 export async function buildLocationGroupedExcel() {
+  const { getOrdersGroupedByLocation } = await import("@/lib/services/orders");
   const groups = await getOrdersGroupedByLocation();
   const orders = await listOrders();
-  const lineRows = buildOrderLineRows(orders);
+  const generatedAt = new Date().toLocaleString("sq-AL");
 
   const summaryRows = groups.map((g) => ({
     Region: g.region,
@@ -36,21 +117,29 @@ export async function buildLocationGroupedExcel() {
   }));
 
   const wb = XLSX.utils.book_new();
+  appendMetaSheet(wb, [
+    { Field: "Report", Value: "Orders by region — summary" },
+    { Field: "Generated", Value: generatedAt },
+    { Field: "Regions", Value: String(groups.length) },
+  ]);
+
+  XLSX.utils.book_append_sheet(wb, sheetFromRows(summaryRows), "By Region");
   XLSX.utils.book_append_sheet(
     wb,
-    XLSX.utils.json_to_sheet(summaryRows),
-    "By Location"
+    sheetFromRows(buildPrintListRows(orders, "region")),
+    "Print list"
   );
   XLSX.utils.book_append_sheet(
     wb,
-    XLSX.utils.json_to_sheet(buildOrderSummaryRows(orders)),
+    sheetFromRows(buildOrderSummaryRows(orders)),
     "Order Summary"
   );
   XLSX.utils.book_append_sheet(
     wb,
-    XLSX.utils.json_to_sheet(lineRows),
+    sheetFromRows(buildOrderLineRows(orders)),
     "Line Items"
   );
+
   return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
 }
 
@@ -65,6 +154,7 @@ export async function buildPartialDeliveriesExcel(filters: {
     "@/lib/services/partial-deliveries-report"
   );
   const report = await getPartialDeliveriesReport(filters);
+  const generatedAt = new Date().toLocaleString("sq-AL");
 
   const orderRows = report.orders.map((o) => ({
     Invoice: o.invoiceNumber,
@@ -106,15 +196,12 @@ export async function buildPartialDeliveriesExcel(filters: {
   );
 
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(
-    wb,
-    XLSX.utils.json_to_sheet(orderRows),
-    "Partial orders"
-  );
-  XLSX.utils.book_append_sheet(
-    wb,
-    XLSX.utils.json_to_sheet(tripRows),
-    "Delivery trips"
-  );
+  appendMetaSheet(wb, [
+    { Field: "Report", Value: "Partial deliveries" },
+    { Field: "Generated", Value: generatedAt },
+    { Field: "Orders", Value: String(report.orders.length) },
+  ]);
+  XLSX.utils.book_append_sheet(wb, sheetFromRows(orderRows), "Partial orders");
+  XLSX.utils.book_append_sheet(wb, sheetFromRows(tripRows), "Delivery trips");
   return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
 }

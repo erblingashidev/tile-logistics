@@ -153,6 +153,7 @@ export default function PortalPage() {
   const [orders, setOrders] = useState<PortalOrder[]>([]);
   const [truckGroups, setTruckGroups] = useState<TruckLoadGroup[]>([]);
   const [notifications, setNotifications] = useState<PortalNotification[]>([]);
+  const [manualDispatchMode, setManualDispatchMode] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [busyOrderId, setBusyOrderId] = useState<number | null>(null);
@@ -195,6 +196,7 @@ export default function PortalPage() {
       setOrders(data.orders ?? []);
       setTruckGroups(data.truckGroups ?? []);
       setNotifications(data.notifications ?? []);
+      setManualDispatchMode(Boolean(data.manualDispatchMode));
     } catch {
       setError(sq.errors.refresh);
     }
@@ -406,6 +408,8 @@ export default function PortalPage() {
     return isDriver && order.loadStatus !== "loaded";
   }
 
+  const showEmployeeActions = !manualDispatchMode;
+
   return (
     <PortalShell
       title={sq.appName}
@@ -420,6 +424,13 @@ export default function PortalPage() {
     >
       {error && <Alert tone="error">{error}</Alert>}
       {success && <Alert tone="info">{success}</Alert>}
+
+      {manualDispatchMode && (
+        <Alert tone="info">
+          <p className="text-sm leading-relaxed">{sq.manualDispatchBanner}</p>
+          <p className="mt-2 text-sm text-zinc-600">{sq.manualDispatchOrdersHint}</p>
+        </Alert>
+      )}
 
       {notifications.map((notification) => (
         <Alert key={notification.id} tone="warning">
@@ -437,7 +448,7 @@ export default function PortalPage() {
         </Alert>
       ))}
 
-      {isDriver && employee?.vehicleStatus === "returning" && (
+      {showEmployeeActions && isDriver && employee?.vehicleStatus === "returning" && (
         <PortalCard className="border-amber-200 bg-amber-50/80">
           <p className="text-sm text-amber-950">{sq.allDeliveredReturn}</p>
           <Button
@@ -481,7 +492,8 @@ export default function PortalPage() {
         )}
       </PortalCard>
 
-      {isDriver &&
+      {showEmployeeActions &&
+        isDriver &&
         truckGroups.map((truck) => {
           const isActiveRound = truck.canDepart || truck.hasFullyDeparted;
           return (
@@ -687,7 +699,7 @@ export default function PortalPage() {
                       </p>
                     )}
 
-                    {needsLoad && (
+                    {showEmployeeActions && needsLoad && (
                       <div className="mt-4 space-y-2">
                         {order.loadBlockedReason && (
                           <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -870,7 +882,7 @@ export default function PortalPage() {
                       </div>
                     )}
 
-                    {driverPhases.length > 0 && (
+                    {showEmployeeActions && driverPhases.length > 0 && (
                       <div className="mt-4 space-y-2">
                         {driverPhases.map((phase) => {
                           if (phase.id === "delivered") {
@@ -1072,7 +1084,7 @@ export default function PortalPage() {
             </div>
           )}
         </section>
-      {prepareOrder && (
+      {showEmployeeActions && prepareOrder && (
         <OrderPrepareModal
           orderId={prepareOrder.id}
           invoiceNumber={prepareOrder.invoiceNumber}

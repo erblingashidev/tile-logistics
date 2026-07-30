@@ -27,6 +27,7 @@ import {
   type OrderDisplayStage,
 } from "@/lib/order-display";
 import { isOrderUrgent } from "@/lib/order-priority";
+import { ManualOrderStatusSelect } from "@/components/ManualOrderStatusSelect";
 
 interface VehicleOption {
   id: number;
@@ -77,6 +78,7 @@ export interface OrderListCardProps {
   onWarning: (message: string) => void;
   onSuggestUrgentRoute: () => void;
   onQuickAssignToFocus?: () => void;
+  manualMode?: boolean;
 }
 
 function MetaItem({ label, value }: { label: string; value: string }) {
@@ -182,6 +184,7 @@ export function OrderListCard({
   onWarning,
   onSuggestUrgentRoute,
   onQuickAssignToFocus,
+  manualMode = false,
 }: OrderListCardProps) {
   const stage = (order.deliveryStage ?? order.status) as OrderDisplayStage;
   const isDelivered = stage === "delivered";
@@ -434,7 +437,15 @@ export function OrderListCard({
         )}
       </div>
 
-      <div className="bg-zinc-50 px-4 py-3">
+      <div className="bg-zinc-50 px-4 py-3 space-y-3">
+        {manualMode && order.id != null && (
+          <ManualOrderStatusSelect
+            orderId={order.id}
+            currentStatus={order.status}
+            onUpdated={onSaved}
+            onError={onError}
+          />
+        )}
         {isDelivered ? (
           <p className="text-sm font-medium text-green-700">Delivery complete</p>
         ) : (
@@ -457,6 +468,7 @@ export function OrderListCard({
             vehicles={vehicles}
             pickers={pickers}
             preferredVehicleId={preferredVehicleId}
+            manualMode={manualMode}
             onDraftChange={onDraftChange}
             onSaved={onSaved}
             onError={onError}

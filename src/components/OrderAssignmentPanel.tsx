@@ -59,6 +59,8 @@ interface OrderAssignmentPanelProps {
   onSaved: () => void;
   onError: (message: string) => void;
   onWarning: (message: string) => void;
+  /** Invoice-only ops: truck assign only, no picker/proofs */
+  manualMode?: boolean;
 }
 
 async function promptAdminPin(message: string): Promise<string | null> {
@@ -122,6 +124,7 @@ export function OrderAssignmentPanel({
   onSaved,
   onError,
   onWarning,
+  manualMode = false,
 }: OrderAssignmentPanelProps) {
   const [busy, setBusy] = useState(false);
   const [quickAssign, setQuickAssign] = useState(false);
@@ -187,8 +190,12 @@ export function OrderAssignmentPanel({
       body: JSON.stringify({
         vehicleId: Number(active.vehicleId),
         deliveryRound: Number(active.round) || 1,
-        pickerId: active.pickerId ? Number(active.pickerId) : null,
-        autoAssignTeam: true,
+        pickerId: manualMode
+          ? null
+          : active.pickerId
+            ? Number(active.pickerId)
+            : null,
+        autoAssignTeam: manualMode ? false : true,
         ignoreWeightWarning,
         ignoreCraneRule,
         ignoreLinkedWarning,
@@ -366,7 +373,7 @@ export function OrderAssignmentPanel({
       )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
-          Assign
+          {manualMode ? "Assign truck" : "Assign"}
         </p>
         <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-zinc-600">
           <input
@@ -399,6 +406,7 @@ export function OrderAssignmentPanel({
         </div>
       </div>
 
+      {!manualMode && (
       <div>
         <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
           Picker
@@ -427,6 +435,7 @@ export function OrderAssignmentPanel({
           ))}
         </div>
       </div>
+      )}
 
       <div>
         <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
@@ -569,6 +578,7 @@ export function OrderAssignmentPanel({
         >
           Clear truck
         </Button>
+        {!manualMode && (
         <Button
           variant="ghost"
           className="px-2 py-1 text-[11px]"
@@ -577,7 +587,8 @@ export function OrderAssignmentPanel({
         >
           Clear picker
         </Button>
-        {(hasAssignment || hasProgress) && (
+        )}
+        {(hasAssignment || hasProgress) && !manualMode && (
           <Button
             variant="ghost"
             className="px-2 py-1 text-[11px] text-red-700"
@@ -589,6 +600,7 @@ export function OrderAssignmentPanel({
         )}
       </div>
 
+      {!manualMode && (
       <AdminManualProofPanel
         orderId={orderId}
         invoiceNumber={invoiceNumber}
@@ -600,6 +612,7 @@ export function OrderAssignmentPanel({
         onSaved={onSaved}
         onError={onError}
       />
+      )}
     </div>
   );
 }

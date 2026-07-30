@@ -4,9 +4,18 @@ import {
   buildLocationGroupedExcel,
   buildPartialDeliveriesExcel,
 } from "@/lib/export/excel";
+import type { ExportGroupBy } from "@/lib/export/excel-format";
 import { parseWorkDayFilter } from "@/lib/delivery-schedule";
 
 export const runtime = "nodejs";
+
+function parseGroupBy(raw: string | null): ExportGroupBy {
+  const v = raw?.trim().toLowerCase();
+  if (v === "region" || v === "truck" || v === "picker" || v === "driver") {
+    return v;
+  }
+  return "none";
+}
 
 function parseExportFilters(sp: URLSearchParams) {
   const num = (key: string) => {
@@ -72,12 +81,19 @@ export async function GET(request: NextRequest) {
   const buffer =
     type === "locations"
       ? await buildLocationGroupedExcel()
-      : await buildOrdersExcel(filters);
+      : await buildOrdersExcel(filters, {
+          groupBy: parseGroupBy(sp.get("groupBy")),
+        });
+
+  const groupSuffix =
+    type === "orders" && sp.get("groupBy") && sp.get("groupBy") !== "none"
+      ? `-by-${sp.get("groupBy")}`
+      : "";
 
   const filename =
     type === "locations"
       ? "orders-by-location.xlsx"
-      : "orders-export.xlsx";
+      : `orders-export${groupSuffix}.xlsx`;
 
   return new NextResponse(new Uint8Array(buffer), {
     headers: {

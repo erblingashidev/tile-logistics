@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireEmployee } from "@/lib/auth";
 import { submitDeliveryProof } from "@/lib/services/delivery-proofs";
+import { assertEmployeeWorkflowEnabled } from "@/lib/services/feature-flags";
 import type { DeliveryProofPhase } from "@/lib/constants";
 
 export const runtime = "nodejs";
@@ -25,6 +26,10 @@ export async function POST(
   }
 
   try {
+    const blocked = await assertEmployeeWorkflowEnabled();
+    if (!blocked.ok) {
+      return NextResponse.json({ error: blocked.error }, { status: 403 });
+    }
     const { id } = await params;
     const orderId = Number(id);
     if (!Number.isFinite(orderId) || orderId <= 0) {

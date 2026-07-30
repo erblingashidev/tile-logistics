@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSessionNoSalesWrite } from "@/lib/auth/api-guard";
 import { assignOrderBundle } from "@/lib/services/orders";
+import { isManualDispatchMode } from "@/lib/services/feature-flags";
 
 export const runtime = "nodejs";
 
@@ -16,7 +17,8 @@ export async function POST(
   const vehicleId = Number(body.vehicleId);
   const deliveryRound = Number(body.deliveryRound) || 1;
   const pickerId = body.pickerId ? Number(body.pickerId) : null;
-  const autoAssignTeam = body.autoAssignTeam !== false;
+  const manualMode = await isManualDispatchMode();
+  const autoAssignTeam = manualMode ? false : body.autoAssignTeam !== false;
   const ignoreWeightWarning = Boolean(body.ignoreWeightWarning);
   const ignoreCraneRule = Boolean(body.ignoreCraneRule);
   const ignoreLinkedWarning = Boolean(body.ignoreLinkedWarning);
@@ -29,7 +31,7 @@ export async function POST(
     orderId: Number(id),
     vehicleId,
     deliveryRound,
-    pickerId,
+    pickerId: manualMode ? null : pickerId,
     autoAssignTeam,
     ignoreWeightWarning,
     ignoreCraneRule,

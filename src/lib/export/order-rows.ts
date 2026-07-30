@@ -166,3 +166,71 @@ export function buildOrderLineRows(orders: ExportOrder[]) {
 export function buildOrderSummaryRows(orders: ExportOrder[]) {
   return orders.map((order) => orderHeaderFields(order));
 }
+
+export function orderGroupKey(
+  order: ExportOrder,
+  groupBy: "region" | "truck" | "picker" | "driver"
+): string {
+  if (groupBy === "region") {
+    return order.region?.trim() || order.city?.trim() || "Unknown region";
+  }
+  if (groupBy === "truck") {
+    const a = order.assignment;
+    if (!a?.vehicleName) return "Unassigned truck";
+    return `${a.vehicleName} · R${a.deliveryRound ?? 1}`;
+  }
+  if (groupBy === "picker") {
+    return order.staff?.picker?.employeeName?.trim() || "No picker assigned";
+  }
+  const driver =
+    order.staff?.driver?.employeeName?.trim() ||
+    order.assignment?.driverName?.trim() ||
+    "";
+  return driver || "No driver assigned";
+}
+
+/** Compact rows for printing — one line per order with group column. */
+export function buildPrintListRows(
+  orders: ExportOrder[],
+  groupBy: "none" | "region" | "truck" | "picker" | "driver"
+) {
+  const sorted = [...orders].sort((a, b) => {
+    if (groupBy !== "none") {
+      const ga = orderGroupKey(a, groupBy);
+      const gb = orderGroupKey(b, groupBy);
+      const cmp = ga.localeCompare(gb, "sq", { sensitivity: "base" });
+      if (cmp !== 0) return cmp;
+    }
+    return a.invoiceNumber.localeCompare(b.invoiceNumber, "sq", {
+      numeric: true,
+    });
+  });
+
+  return sorted.map((order) => {
+    const assignment = order.assignment;
+    const header = orderHeaderFields(order);
+    return {
+      ...(groupBy !== "none"
+        ? { Group: orderGroupKey(order, groupBy) }
+        : {}),
+      Invoice: header.Invoice,
+      Customer: header.Customer,
+      Region: header.Region,
+      City: header.City,
+      "Delivery details": header["Delivery details"],
+      "Delivery schedule": header["Delivery schedule"],
+      Status: header.Status,
+      "Delivery stage": header["Delivery stage"],
+      Truck: header.Vehicle,
+      Round: header["Delivery round"],
+      Picker: header.Picker,
+      Driver: header.Driver,
+      "Total m²": header["Order total m²"],
+      Pallets: header["Order total pallets"],
+      "Weight (kg)": header["Order total weight (kg)"],
+      Price: header.Price,
+      Notes: header.Notes,
+      "Plate number": header["Plate number"],
+    };
+  });
+}

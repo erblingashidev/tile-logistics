@@ -312,6 +312,10 @@ export default function OrdersPage() {
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
   const [bulkAssigning, setBulkAssigning] = useState(false);
+  const [manualDispatchMode, setManualDispatchMode] = useState(true);
+  const [exportGroupBy, setExportGroupBy] = useState<
+    "none" | "region" | "truck" | "picker" | "driver"
+  >("region");
   const [truckWorkspace, setTruckWorkspace] =
     useState<TruckWorkspaceSnapshot | null>(null);
   const focusedVehicleRef = useRef("");
@@ -352,6 +356,17 @@ export default function OrdersPage() {
     const interval = setInterval(load, 15000);
     return () => clearInterval(interval);
   }, [load]);
+
+  useEffect(() => {
+    fetch("/api/settings/features", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data: { manualDispatchMode?: boolean }) => {
+        if (typeof data.manualDispatchMode === "boolean") {
+          setManualDispatchMode(data.manualDispatchMode);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const today = todayDateString();
@@ -1103,12 +1118,36 @@ export default function OrdersPage() {
   return (
     <AppShell title="Orders">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button onClick={openNewOrder}>New order</Button>
+          <select
+            className="rounded border border-zinc-300 bg-white px-2.5 py-2 text-sm text-zinc-700"
+            value={exportGroupBy}
+            onChange={(e) =>
+              setExportGroupBy(
+                e.target.value as
+                  | "none"
+                  | "region"
+                  | "truck"
+                  | "picker"
+                  | "driver"
+              )
+            }
+            aria-label="Excel grouping"
+          >
+            <option value="none">Excel: flat list</option>
+            <option value="region">Excel: group by region</option>
+            <option value="truck">Excel: group by truck</option>
+            <option value="picker">Excel: group by picker</option>
+            <option value="driver">Excel: group by driver</option>
+          </select>
           <Button
             variant="secondary"
             onClick={() => {
               const params = new URLSearchParams({ type: "orders" });
+              if (exportGroupBy !== "none") {
+                params.set("groupBy", exportGroupBy);
+              }
               appendOrderFilterParams(params, filters);
               window.open(`/api/export?${params}`, "_blank");
             }}
@@ -1138,6 +1177,20 @@ export default function OrdersPage() {
           </Link>
         </div>
       </div>
+
+      {manualDispatchMode && (
+        <div className="mb-4">
+          <Alert tone="info">
+            <span className="font-medium">Manual dispatch mode is on.</span>{" "}
+            Employee portal proofs and picker workflow are paused. Assign trucks
+            and update order status here. Re-enable the full workflow in{" "}
+            <Link href="/settings" className="font-medium underline">
+              Settings
+            </Link>
+            .
+          </Alert>
+        </div>
+      )}
 
       {warning && (
         <div className="mb-4">
@@ -2026,19 +2079,21 @@ export default function OrdersPage() {
                 </option>
               ))}
             </select>
-            <select
-              className="rounded border border-violet-200 bg-white px-2 py-1 text-xs"
-              value={transferPickerId}
-              onChange={(e) => setTransferPickerId(e.target.value)}
-              aria-label="Assign picker"
-            >
-              <option value="">Picker (optional)…</option>
-              {pickers.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+            {!manualDispatchMode && (
+              <select
+                className="rounded border border-violet-200 bg-white px-2 py-1 text-xs"
+                value={transferPickerId}
+                onChange={(e) => setTransferPickerId(e.target.value)}
+                aria-label="Assign picker"
+              >
+                <option value="">Picker (optional)…</option>
+                {pickers.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            )}
             <Button
               variant="secondary"
               className="text-xs"
@@ -2208,6 +2263,7 @@ export default function OrdersPage() {
                       ? () => quickAssignOrderToFocus(order)
                       : undefined
                   }
+                  manualMode={manualDispatchMode}
                 />
               );
             })}
@@ -2253,17 +2309,20 @@ export default function OrdersPage() {
                 const full = visibleOrders.find((o) => o.id === boardOrder.id);
                 if (full) void quickAssignOrderToFocus(full);
               }}
+              manualMode={manualDispatchMode}
             />
           )}
         </div>
       </Card>
 
-      <SmartDispatchPanel
-        regionFilter={filters.region || undefined}
-        onApplied={load}
-        onError={setError}
-        onWarning={setWarning}
-      />
+      {!manualDispatchMode && (
+        <SmartDispatchPanel
+          regionFilter={filters.region || undefined}
+          onApplied={load}
+          onError={setError}
+          onWarning={setWarning}
+        />
+      )}
     </AppShell>
   );
 }

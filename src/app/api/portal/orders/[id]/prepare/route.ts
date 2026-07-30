@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireEmployee } from "@/lib/auth";
+import { assertEmployeeWorkflowEnabled } from "@/lib/services/feature-flags";
 import {
   getOrderPrepareLines,
   prepareOrderWithPicks,
@@ -13,6 +14,10 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const blocked = await assertEmployeeWorkflowEnabled();
+    if (!blocked.ok) {
+      return NextResponse.json({ error: blocked.error }, { status: 403 });
+    }
     const session = await requireEmployee();
     if (!session.roles.includes("picker")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -34,6 +39,10 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const blocked = await assertEmployeeWorkflowEnabled();
+    if (!blocked.ok) {
+      return NextResponse.json({ error: blocked.error }, { status: 403 });
+    }
     const session = await requireEmployee();
     if (!session.roles.includes("picker")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });

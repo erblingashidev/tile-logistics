@@ -16,6 +16,7 @@ import {
 import { isOrderUrgent } from "@/lib/order-priority";
 import type { OrderListCardOrder } from "@/components/OrderListCard";
 import { staffOptionsFromOrder } from "@/components/OrderListCard";
+import { ManualOrderStatusSelect } from "@/components/ManualOrderStatusSelect";
 import { OrderBoardDetail } from "@/components/OrderBoardDetail";
 import {
   DeliveryLinkBadge,
@@ -101,6 +102,7 @@ interface OrderBoardViewProps {
   onError: (message: string) => void;
   onWarning: (message: string) => void;
   onQuickAssignToFocus?: (order: OrderListCardOrder) => void;
+  manualMode?: boolean;
 }
 
 function OrderRow({
@@ -126,6 +128,7 @@ function OrderRow({
   onError,
   onWarning,
   onQuickAssignToFocus,
+  manualMode = false,
   compact,
 }: {
   order: OrderListCardOrder;
@@ -150,6 +153,7 @@ function OrderRow({
   onError: (message: string) => void;
   onWarning: (message: string) => void;
   onQuickAssignToFocus?: () => void;
+  manualMode?: boolean;
   compact?: "list" | "grid";
 }) {
   const stage = (order.deliveryStage ?? order.status) as OrderDisplayStage;
@@ -233,7 +237,15 @@ function OrderRow({
           </div>
         )}
         {assignOpen && !isDelivered && (
-          <div className="border-t border-zinc-100 bg-zinc-50 p-3">
+          <div className="border-t border-zinc-100 bg-zinc-50 p-3 space-y-3">
+            {manualMode && order.id != null && (
+              <ManualOrderStatusSelect
+                orderId={order.id}
+                currentStatus={order.status}
+                onUpdated={onSaved}
+                onError={onError}
+              />
+            )}
             <OrderAssignmentPanel
               orderId={order.id!}
               invoiceNumber={order.invoiceNumber}
@@ -253,6 +265,7 @@ function OrderRow({
               vehicles={vehicles}
               pickers={pickers}
               preferredVehicleId={preferredVehicleId}
+              manualMode={manualMode}
               onDraftChange={onDraftChange}
               onSaved={onSaved}
               onError={onError}
@@ -349,7 +362,15 @@ function OrderRow({
         </div>
       )}
       {assignOpen && !isDelivered && (
-        <div className="border-t border-zinc-100 bg-zinc-50 px-3 py-3">
+        <div className="border-t border-zinc-100 bg-zinc-50 px-3 py-3 space-y-3">
+          {manualMode && order.id != null && (
+            <ManualOrderStatusSelect
+              orderId={order.id}
+              currentStatus={order.status}
+              onUpdated={onSaved}
+              onError={onError}
+            />
+          )}
           <OrderAssignmentPanel
             orderId={order.id!}
             invoiceNumber={order.invoiceNumber}
@@ -410,6 +431,7 @@ export function OrderBoardView({
   onError,
   onWarning,
   onQuickAssignToFocus,
+  manualMode = false,
 }: OrderBoardViewProps) {
   const groups = groupOrdersByRegion(orders, (a, b) => {
     const aAssigned = a.assignment ? 1 : 0;
@@ -513,6 +535,7 @@ export function OrderBoardView({
                         ? () => onQuickAssignToFocus(order)
                         : undefined
                     }
+                    manualMode={manualMode}
                     compact={mode}
                   />
                 );

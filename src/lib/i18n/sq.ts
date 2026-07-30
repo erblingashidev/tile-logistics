@@ -26,6 +26,10 @@ export const sq = {
   truckArrivedButton: "Kamioni mbërriti në depo",
   truckArrivedSuccess: "Arritja u regjistrua — ngarkuesit u njoftuan.",
   notificationDismiss: "E kuptova",
+  manualDispatchBanner:
+    "Modaliteti manual është aktiv. Përgatitja, ngarkimi dhe dorëzimi nga telefoni janë çaktivizuar — statusi përditësohet nga zyra.",
+  manualDispatchOrdersHint:
+    "Shiko porositë e tua më poshtë. Për ndryshime, kontakto zyrën.",
 
   status: {
     available: "I lirë",
