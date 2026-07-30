@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { WMS_ENABLED } from "@/lib/features/wms-enabled";
 
 const links = [
   { href: "/warehouse", label: "Overview", exact: true },
@@ -21,6 +22,8 @@ function isActive(pathname: string, href: string, exact?: boolean) {
 
 export function WarehouseNav() {
   const pathname = usePathname();
+
+  if (!WMS_ENABLED) return null;
 
   return (
     <nav

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { BRAND } from "@/lib/brand";
 import { Button } from "@/components/ui";
+import { WMS_ENABLED } from "@/lib/features/wms-enabled";
 import { WAREHOUSE_SIDEBAR_LINKS } from "@/components/warehouse/WarehouseNav";
 
 const navGroups = [
@@ -31,10 +32,14 @@ const navGroups = [
       { href: "/admins", label: "Admins" },
     ],
   },
-  {
-    label: "Warehouse",
-    items: WAREHOUSE_SIDEBAR_LINKS,
-  },
+  ...(WMS_ENABLED
+    ? [
+        {
+          label: "Warehouse",
+          items: WAREHOUSE_SIDEBAR_LINKS,
+        },
+      ]
+    : []),
   {
     label: "System",
     items: [

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { BRAND } from "@/lib/brand";
 import { sq } from "@/lib/i18n/sq";
+import { WMS_ENABLED } from "@/lib/features/wms-enabled";
 
 type PortalNav =
   | "orders"
@@ -70,7 +71,7 @@ export function PortalShell({
       href: "/portal/inventory",
       label: sq.inventoryLink,
     },
-    showReports && {
+    showReports && WMS_ENABLED && {
       id: "reports" as const,
       href: "/portal/reports",
       label: sq.reportsLink,

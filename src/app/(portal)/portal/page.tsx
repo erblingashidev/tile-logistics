@@ -21,6 +21,7 @@ import {
   type EmployeeRole,
 } from "@/lib/constants";
 import { WAREHOUSE_REPORT_ROLES } from "@/lib/employee-categories";
+import { WMS_ENABLED } from "@/lib/features/wms-enabled";
 import { employeeShowDepotNav } from "@/lib/portal-depot-nav";
 import {
   orderStatusLabelSq,
@@ -386,7 +387,8 @@ export default function PortalPage() {
   const isDriver = employee?.roles.includes("driver") ?? false;
   const showDepotNav = employeeShowDepotNav(employee?.roles ?? []);
   const showReportsLink =
-    employee?.roles.some((r) => WAREHOUSE_REPORT_ROLES.includes(r)) ?? false;
+    WMS_ENABLED &&
+    (employee?.roles.some((r) => WAREHOUSE_REPORT_ROLES.includes(r)) ?? false);
 
   function loaderNeedsAction(order: PortalOrder) {
     if (!isLoader) return false;
