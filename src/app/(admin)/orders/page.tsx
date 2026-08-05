@@ -279,7 +279,7 @@ export default function OrdersPage() {
     driverId: "",
     search: "",
     hideDelivered: "true",
-    workDay: "today" as WorkDayFilter,
+    workDay: "all" as WorkDayFilter,
     workDayDate: todayDateString(),
     vehicleId: "",
     deliveryRound: "1",
