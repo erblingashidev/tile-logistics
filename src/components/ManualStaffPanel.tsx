@@ -106,10 +106,6 @@ export function ManualStaffPanel({
       <p className="text-xs font-semibold uppercase tracking-wide text-zinc-600">
         Assign staff (manual tracking)
       </p>
-      <p className="mt-1 text-xs text-zinc-500">
-        Record who is responsible — used in daily Excel reports for group
-        leaders.
-      </p>
       <div className="mt-3 grid gap-3 sm:grid-cols-3">
         {ASSIGN_ROLES.map(({ role, label }) => {
           const options = employees.filter((e) => e.roles.includes(role));

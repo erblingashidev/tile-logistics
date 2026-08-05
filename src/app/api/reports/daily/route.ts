@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { getDailyReportOrders } from "@/lib/services/daily-operations-report";
-import { buildGroupLeaderSummaryRows } from "@/lib/export/daily-report-rows";
+import { buildPickerPerformanceRows } from "@/lib/export/daily-report-rows";
 
 export const runtime = "nodejs";
 
@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
       new Date().toISOString().slice(0, 10);
 
     const { orders, stats } = await getDailyReportOrders(date);
-    const leaderRows = buildGroupLeaderSummaryRows(orders, date);
+    const pickerRows = buildPickerPerformanceRows(orders, date);
 
     return NextResponse.json({
       reportDate: date,
@@ -26,16 +26,22 @@ export async function GET(request: NextRequest) {
       scheduled: stats.scheduled,
       totalValue: stats.totalValue,
       waitingValue: stats.waitingValue,
+      completedValue: stats.completedValue,
       completedTodayValue: stats.completedTodayValue,
-      groupLeaders: leaderRows.map((row) => ({
-        name: row["Group leader"],
-        orders: row["Orders assigned"],
+      pickers: pickerRows.map((row) => ({
+        name: row.Picker,
+        orders: row.Orders,
+        assignedToday: row["Assigned today"],
         completed: row.Completed,
         completedToday: row["Completed today"],
-        waiting: row["Still waiting"],
+        waiting: row.Waiting,
         delayed: row.Delayed,
-        valueTotal: row["Total value (€)"],
+        partial: row.Partial,
         valueCompleted: row["Value completed (€)"],
+        valueCompletedToday: row["Value completed today (€)"],
+        valueWaiting: row["Value waiting (€)"],
+        firstAssigned: row["First assigned"],
+        lastCompleted: row["Last completed"],
       })),
     });
   } catch {

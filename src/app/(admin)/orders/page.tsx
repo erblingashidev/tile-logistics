@@ -1181,17 +1181,7 @@ export default function OrdersPage() {
       {manualDispatchMode && (
         <div className="mb-4">
           <Alert tone="info">
-            <span className="font-medium">Manual dispatch mode is on.</span>{" "}
-            You assign trucks and staff here and record when orders hit the road.
-            Download the daily Excel for your boss from{" "}
-            <Link href="/reports/daily" className="font-medium underline">
-              Daily report
-            </Link>
-            . Employee portal proofs stay paused — re-enable the full workflow in{" "}
-            <Link href="/settings" className="font-medium underline">
-              Settings
-            </Link>
-            .
+            Manual dispatch mode is on.
           </Alert>
         </div>
       )}

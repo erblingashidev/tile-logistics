@@ -1,24 +1,16 @@
-import { BRAND } from "@/lib/brand";
 import { orderWorkDate } from "@/lib/delivery-schedule";
 import type { ExportOrder } from "@/lib/export/order-rows";
 import {
-  classifyDailyOrder,
   completedOnReportDate,
-  type DailyOrderBucket,
 } from "@/lib/services/daily-operations-report";
 import {
   daysBetweenDates,
-  formatExportDate,
   formatExportDateTime,
 } from "@/lib/export/report-dates";
 
-const BUCKET_LABELS: Record<DailyOrderBucket, string> = {
-  scheduled: "Scheduled today",
-  waiting: "Waiting / in progress",
-  completed_today: "Completed today",
-  delayed: "Delayed",
-  partial: "Partial delivery",
-};
+function roundMoney(n: number) {
+  return Math.round(n * 100) / 100;
+}
 
 function staffMember(
   order: ExportOrder,
@@ -63,10 +55,6 @@ function proofAt(order: ExportOrder, phase: string): string {
   );
 }
 
-function proofEmployee(order: ExportOrder, phase: string): string {
-  return order.proofs?.find((p) => p.phase === phase)?.employeeName ?? "";
-}
-
 function isComplete(order: ExportOrder): boolean {
   return order.status === "delivered" || order.status === "cancelled";
 }
@@ -77,19 +65,61 @@ function isPartial(order: ExportOrder): boolean {
   return Boolean(shipment?.hasPartialShipments || shipment?.isPartialLoad);
 }
 
-function bucketLabel(order: ExportOrder, reportDate: string): string {
-  const buckets = classifyDailyOrder(order, reportDate);
-  if (buckets.length === 0) return "In report";
-  return buckets.map((b) => BUCKET_LABELS[b]).join(" · ");
+function proofRawAt(order: ExportOrder, phase: string): string {
+  return order.proofs?.find((p) => p.phase === phase)?.capturedAt ?? "";
 }
 
-function waitingLabel(order: ExportOrder): string {
-  if (isComplete(order)) return "Done";
-  const stage =
-    "deliveryStageLabel" in order && order.deliveryStageLabel
-      ? order.deliveryStageLabel
-      : order.status;
-  return stage;
+function orderDetailRow(order: ExportOrder, reportDate: string) {
+  const workDate = orderWorkDate(order);
+  const leader = staffMember(order, "group_leader");
+  const picker = staffMember(order, "picker");
+  const driver = staffMember(order, "driver");
+  const complete = isComplete(order);
+  const partial = isPartial(order);
+  const delayed =
+    !complete && workDate < reportDate && order.status !== "cancelled";
+  const daysOverdue = delayed ? daysBetweenDates(workDate, reportDate) : 0;
+  const shipment = "shipment" in order ? order.shipment : undefined;
+  const deliveredRaw =
+    proofRawAt(order, "delivered") ||
+    (order.status === "delivered" ? order.updatedAt : "");
+
+  return {
+    Picker: picker.name || "—",
+    "Group leader": leader.name || "—",
+    Invoice: order.invoiceNumber,
+    Customer: order.customerName,
+    Region: order.region ?? "",
+    City: order.city ?? "",
+    Status: order.status,
+    Stage:
+      "deliveryStageLabel" in order && order.deliveryStageLabel
+        ? order.deliveryStageLabel
+        : order.status,
+    Complete: complete ? "Yes" : "No",
+    Partial: partial ? "Yes" : "No",
+    Delayed: delayed ? "Yes" : "No",
+    "Days overdue": delayed ? daysOverdue : "",
+    "Order created": formatExportDateTime(order.createdAt),
+    "Delivery date": workDate,
+    "Picker assigned": formatExportDateTime(picker.assignedAt),
+    "Leader assigned": formatExportDateTime(leader.assignedAt),
+    "Truck assigned": formatExportDateTime(order.assignment?.assignedAt),
+    Truck: order.assignment?.vehicleName ?? "",
+    Round: order.assignment?.deliveryRound ?? "",
+    "Plate number": order.assignment?.plateNumber ?? "",
+    Driver: driver.name || "—",
+    "Prepared at": proofAt(order, "prepared"),
+    "Loaded at": proofAt(order, "loaded"),
+    "Hit the road at": proofAt(order, "departed"),
+    "Delivered at": formatExportDateTime(deliveredRaw),
+    "Remaining pallets": shipment?.remaining?.pallets ?? order.totalPallets,
+    Pallets: order.totalPallets,
+    "m²": order.totalM2,
+    "Weight (kg)": order.totalWeightKg,
+    "Value (€)": roundMoney(order.price ?? 0),
+    Notes: order.notes ?? "",
+  };
 }
 
 export function buildDailyOrderRows(
@@ -100,159 +130,123 @@ export function buildDailyOrderRows(
     .sort((a, b) =>
       a.invoiceNumber.localeCompare(b.invoiceNumber, "sq", { numeric: true })
     )
-    .map((order) => {
-      const workDate = orderWorkDate(order);
-      const leader = staffMember(order, "group_leader");
-      const picker = staffMember(order, "picker");
-      const driver = staffMember(order, "driver");
-      const complete = isComplete(order);
-      const partial = isPartial(order);
-      const delayed =
-        !complete && workDate < reportDate && order.status !== "cancelled";
-      const daysOverdue = delayed ? daysBetweenDates(workDate, reportDate) : 0;
-      const shipment = "shipment" in order ? order.shipment : undefined;
-      const departedAt =
-        proofAt(order, "departed") ||
-        (order.status === "in_transit" ? "In transit (manual)" : "");
+    .map((order) => orderDetailRow(order, reportDate));
+}
+
+export function buildOrdersByPickerRows(
+  orders: ExportOrder[],
+  reportDate: string
+) {
+  return [...orders]
+    .sort((a, b) => {
+      const pa = staffMember(a, "picker").name || "Unassigned";
+      const pb = staffMember(b, "picker").name || "Unassigned";
+      const byPicker = pa.localeCompare(pb, "sq", { sensitivity: "base" });
+      if (byPicker !== 0) return byPicker;
+      return a.invoiceNumber.localeCompare(b.invoiceNumber, "sq", {
+        numeric: true,
+      });
+    })
+    .map((order) => orderDetailRow(order, reportDate));
+}
+
+
+export function buildPickerPerformanceRows(
+  orders: ExportOrder[],
+  reportDate: string
+): Record<string, string | number>[] {
+  type Bucket = { name: string; orders: ExportOrder[] };
+  const buckets = new Map<string, Bucket>();
+
+  for (const order of orders) {
+    const picker = staffMember(order, "picker");
+    const name = picker.name || "Unassigned";
+    const bucket = buckets.get(name) ?? { name, orders: [] };
+    bucket.orders.push(order);
+    buckets.set(name, bucket);
+  }
+
+  return [...buckets.values()]
+    .sort((a, b) => a.name.localeCompare(b.name, "sq"))
+    .map(({ name, orders: pickerOrders }) => {
+      let completed = 0;
+      let waiting = 0;
+      let delayed = 0;
+      let partial = 0;
+      let completedToday = 0;
+      let assignedToday = 0;
+      let valueCompleted = 0;
+      let valueCompletedToday = 0;
+      let valueWaiting = 0;
+      let firstAssigned = "";
+      let lastCompleted = "";
+
+      for (const order of pickerOrders) {
+        const workDate = orderWorkDate(order);
+        const complete = isComplete(order);
+        const price = order.price ?? 0;
+        const pickerAssigned = staffMember(order, "picker").assignedAt;
+
+        if (pickerAssigned) {
+          if (!firstAssigned || pickerAssigned < firstAssigned) {
+            firstAssigned = pickerAssigned;
+          }
+          if (pickerAssigned.startsWith(reportDate)) assignedToday += 1;
+        }
+
+        if (complete) {
+          completed += 1;
+          valueCompleted += price;
+          const deliveredAt =
+            proofRawAt(order, "delivered") ||
+            (order.status === "delivered" ? order.updatedAt : "");
+          if (deliveredAt) {
+            if (!lastCompleted || deliveredAt > lastCompleted) {
+              lastCompleted = deliveredAt;
+            }
+          }
+        } else if (order.status !== "cancelled") {
+          waiting += 1;
+          valueWaiting += price;
+        }
+
+        if (
+          !complete &&
+          workDate < reportDate &&
+          order.status !== "cancelled"
+        ) {
+          delayed += 1;
+        }
+        if (isPartial(order)) partial += 1;
+        if (completedOnReportDate(order, reportDate)) {
+          completedToday += 1;
+          valueCompletedToday += price;
+        }
+      }
 
       return {
-        Category: bucketLabel(order, reportDate),
-        Invoice: order.invoiceNumber,
-        Customer: order.customerName,
-        Region: order.region ?? "",
-        City: order.city ?? "",
-        "Order created": formatExportDateTime(order.createdAt),
-        "Work / delivery date": workDate,
-        "Waiting status": waitingLabel(order),
-        Complete: complete ? "Yes" : "No",
-        Partial: partial ? "Yes" : "No",
-        "Remaining pallets":
-          shipment?.remaining?.pallets ?? order.totalPallets,
-        "Group leader": leader.name,
-        "Leader assigned at": formatExportDateTime(leader.assignedAt),
-        Picker: picker.name,
-        "Picker assigned at": formatExportDateTime(picker.assignedAt),
-        Driver: driver.name,
-        "Driver assigned at": formatExportDateTime(driver.assignedAt),
-        Truck: order.assignment?.vehicleName ?? "",
-        "Plate number": order.assignment?.plateNumber ?? "",
-        Round: order.assignment?.deliveryRound ?? "",
-        "Truck assigned at": formatExportDateTime(
-          order.assignment?.assignedAt
-        ),
-        "Prepared at": proofAt(order, "prepared"),
-        "Prepared by": proofEmployee(order, "prepared"),
-        "Loaded at": proofAt(order, "loaded"),
-        "Loaded by": proofEmployee(order, "loaded"),
-        "Hit the road at": departedAt,
-        "Departed by": proofEmployee(order, "departed"),
-        "Delivered at":
-          proofAt(order, "delivered") ||
-          (order.status === "delivered"
-            ? formatExportDateTime(order.updatedAt)
-            : ""),
-        "Delivered by": proofEmployee(order, "delivered"),
-        Delayed: delayed ? "Yes" : "No",
-        "Days overdue": delayed ? daysOverdue : "",
-        "Delivery stage":
-          "deliveryStageLabel" in order && order.deliveryStageLabel
-            ? order.deliveryStageLabel
-            : order.status,
-        "Total pallets": order.totalPallets,
-        "Total m²": order.totalM2,
-        "Total weight (kg)": order.totalWeightKg,
-        "Order value (€)": order.price,
-        Notes: order.notes ?? "",
+        Picker: name,
+        Orders: pickerOrders.length,
+        "Assigned today": assignedToday,
+        Completed: completed,
+        "Completed today": completedToday,
+        Waiting: waiting,
+        Delayed: delayed,
+        Partial: partial,
+        "Value completed (€)": roundMoney(valueCompleted),
+        "Value completed today (€)": roundMoney(valueCompletedToday),
+        "Value waiting (€)": roundMoney(valueWaiting),
+        "First assigned": formatExportDateTime(firstAssigned),
+        "Last completed": formatExportDateTime(lastCompleted),
       };
     });
 }
 
-const PROOF_LABELS: Record<string, string> = {
-  prepared: "Marked prepared",
-  loaded: "Loaded on truck",
-  load_skipped: "Could not load",
-  departed: "Hit the road",
-  arrived: "Arrived at customer",
-  delivered: "Delivered (complete)",
-  partial_delivery: "Partial delivery",
-};
-
-export function buildActivityLogRows(
+export function buildPickerSummaryRows(
   orders: ExportOrder[],
   reportDate: string
-) {
-  const events: Array<Record<string, string | number>> = [];
-
-  for (const order of orders) {
-    const base = {
-      Invoice: order.invoiceNumber,
-      Customer: order.customerName,
-      Region: order.region ?? "",
-    };
-
-    if (order.createdAt?.startsWith(reportDate)) {
-      events.push({
-        ...base,
-        Time: formatExportDateTime(order.createdAt),
-        Event: "Order created",
-        Person: "",
-        Detail: `Value €${order.price ?? 0}`,
-      });
-    }
-
-    if (order.assignment?.assignedAt?.startsWith(reportDate)) {
-      events.push({
-        ...base,
-        Time: formatExportDateTime(order.assignment.assignedAt),
-        Event: "Truck assigned",
-        Person: order.assignment.driverName ?? "",
-        Detail: `${order.assignment.vehicleName ?? ""} · R${order.assignment.deliveryRound ?? 1}`,
-      });
-    }
-
-    for (const member of [
-      order.staff?.groupLeader,
-      order.staff?.picker,
-      ...(order.staff?.staff ?? []),
-    ]) {
-      if (!member?.assignedAt?.startsWith(reportDate)) continue;
-      const role =
-        "role" in member && member.role
-          ? String(member.role).replace("_", " ")
-          : member === order.staff?.picker
-            ? "picker"
-            : member === order.staff?.groupLeader
-              ? "group leader"
-              : "staff";
-      events.push({
-        ...base,
-        Time: formatExportDateTime(member.assignedAt),
-        Event: `${role} assigned`,
-        Person: member.employeeName,
-        Detail: "",
-      });
-    }
-
-    for (const proof of order.proofs ?? []) {
-      if (!proof.capturedAt?.startsWith(reportDate)) continue;
-      events.push({
-        ...base,
-        Time: formatExportDateTime(proof.capturedAt),
-        Event: PROOF_LABELS[proof.phase] ?? proof.phase,
-        Person: proof.employeeName ?? "",
-        Detail: [
-          proof.sentPallets != null ? `${proof.sentPallets} plt` : "",
-          proof.notes ?? "",
-        ]
-          .filter(Boolean)
-          .join(" · "),
-      });
-    }
-  }
-
-  return events.sort((a, b) =>
-    String(a.Time).localeCompare(String(b.Time), "sq")
-  );
+): Record<string, string | number>[] {
+  return buildPickerPerformanceRows(orders, reportDate);
 }
 
 function buildStaffPerformanceRows(
@@ -260,15 +254,17 @@ function buildStaffPerformanceRows(
   reportDate: string,
   role: "group_leader" | "picker"
 ): Record<string, string | number>[] {
+  if (role === "picker") {
+    return buildPickerPerformanceRows(orders, reportDate);
+  }
+
   type Bucket = { name: string; orders: ExportOrder[] };
   const buckets = new Map<string, Bucket>();
-  const roleLabel = role === "group_leader" ? "Group leader" : "Picker";
+  const roleLabel = "Group leader";
 
   for (const order of orders) {
     const member = staffMember(order, role);
-    const name =
-      member.name ||
-      (role === "picker" ? "Unassigned picker" : "Unassigned leader");
+    const name = member.name || "Unassigned leader";
     const bucket = buckets.get(name) ?? { name, orders: [] };
     bucket.orders.push(order);
     buckets.set(name, bucket);
@@ -280,25 +276,17 @@ function buildStaffPerformanceRows(
       let completed = 0;
       let waiting = 0;
       let delayed = 0;
-      let partial = 0;
-      let completedToday = 0;
       let valueCompleted = 0;
-      let valueWaiting = 0;
-      let valueTotal = 0;
-      const hoursToRoad: number[] = [];
 
       for (const order of staffOrders) {
         const workDate = orderWorkDate(order);
         const complete = isComplete(order);
         const price = order.price ?? 0;
-        valueTotal += price;
-
         if (complete) {
           completed += 1;
           valueCompleted += price;
         } else if (order.status !== "cancelled") {
           waiting += 1;
-          valueWaiting += price;
         }
         if (
           !complete &&
@@ -307,38 +295,15 @@ function buildStaffPerformanceRows(
         ) {
           delayed += 1;
         }
-        if (isPartial(order)) partial += 1;
-        if (completedOnReportDate(order, reportDate)) completedToday += 1;
-
-        const assignedAt = staffMember(order, role).assignedAt;
-        const departed = order.proofs?.find((p) => p.phase === "departed")
-          ?.capturedAt;
-        if (assignedAt && departed) {
-          const ms =
-            new Date(departed).getTime() - new Date(assignedAt).getTime();
-          if (Number.isFinite(ms) && ms >= 0) {
-            hoursToRoad.push(ms / (60 * 60 * 1000));
-          }
-        }
       }
 
       return {
         [roleLabel]: name,
-        "Orders assigned": staffOrders.length,
+        Orders: staffOrders.length,
         Completed: completed,
-        "Completed today": completedToday,
-        "Still waiting": waiting,
+        Waiting: waiting,
         Delayed: delayed,
-        Partial: partial,
-        "Value completed (€)": Math.round(valueCompleted * 100) / 100,
-        "Value waiting (€)": Math.round(valueWaiting * 100) / 100,
-        "Total value (€)": Math.round(valueTotal * 100) / 100,
-        "Avg hours assign → road":
-          hoursToRoad.length > 0
-            ? (
-                hoursToRoad.reduce((a, b) => a + b, 0) / hoursToRoad.length
-              ).toFixed(1)
-            : "",
+        "Value completed (€)": roundMoney(valueCompleted),
       };
     });
 }
@@ -350,14 +315,7 @@ export function buildGroupLeaderSummaryRows(
   return buildStaffPerformanceRows(orders, reportDate, "group_leader");
 }
 
-export function buildPickerSummaryRows(
-  orders: ExportOrder[],
-  reportDate: string
-): Record<string, string | number>[] {
-  return buildStaffPerformanceRows(orders, reportDate, "picker");
-}
-
-export function buildExecutiveDashboardRows(
+export function buildReportSummaryRows(
   reportDate: string,
   stats: {
     total: number;
@@ -374,78 +332,22 @@ export function buildExecutiveDashboardRows(
   },
   generatedAt: string
 ) {
-  const money = (n: number) => Math.round(n * 100) / 100;
-
   return [
-    { Section: BRAND.shortName, Metric: "Daily Operations Report", Value: "" },
-    { Section: "", Metric: "Report date", Value: reportDate },
-    { Section: "", Metric: "Generated", Value: generatedAt },
-    { Section: "", Metric: "", Value: "" },
-    { Section: "PIPELINE", Metric: "Orders in this report", Value: stats.total },
+    { Metric: "Report date", Value: reportDate },
+    { Metric: "Generated", Value: generatedAt },
+    { Metric: "Orders", Value: stats.total },
+    { Metric: "Waiting", Value: stats.waiting },
+    { Metric: "Completed", Value: stats.completed },
+    { Metric: "Completed today", Value: stats.completedToday },
+    { Metric: "Scheduled", Value: stats.scheduled },
+    { Metric: "Delayed", Value: stats.delayed },
+    { Metric: "Partial", Value: stats.partial },
+    { Metric: "Total value (€)", Value: roundMoney(stats.totalValue) },
+    { Metric: "Value waiting (€)", Value: roundMoney(stats.waitingValue) },
+    { Metric: "Value completed (€)", Value: roundMoney(stats.completedValue) },
     {
-      Section: "",
-      Metric: "Still waiting / in progress",
-      Value: stats.waiting,
-    },
-    {
-      Section: "",
-      Metric: "Completed (in report)",
-      Value: stats.completed,
-    },
-    {
-      Section: "",
-      Metric: "Completed today",
-      Value: stats.completedToday,
-    },
-    { Section: "", Metric: "Scheduled for this date", Value: stats.scheduled },
-    { Section: "", Metric: "Delayed (overdue)", Value: stats.delayed },
-    { Section: "", Metric: "Partial deliveries", Value: stats.partial },
-    { Section: "", Metric: "", Value: "" },
-    {
-      Section: "VALUE (€)",
-      Metric: "Total pipeline value",
-      Value: money(stats.totalValue),
-    },
-    {
-      Section: "",
-      Metric: "Value still waiting",
-      Value: money(stats.waitingValue),
-    },
-    {
-      Section: "",
-      Metric: "Value completed (in report)",
-      Value: money(stats.completedValue),
-    },
-    {
-      Section: "",
-      Metric: "Value completed today",
-      Value: money(stats.completedTodayValue),
-    },
-    { Section: "", Metric: "", Value: "" },
-    {
-      Section: "WORKSHEETS",
-      Metric: "All orders",
-      Value: "Full detail + assignment & road timestamps",
-    },
-    {
-      Section: "",
-      Metric: "Waiting",
-      Value: "Orders not yet delivered",
-    },
-    {
-      Section: "",
-      Metric: "Completed today",
-      Value: "Delivered on this date",
-    },
-    {
-      Section: "",
-      Metric: "Activity log",
-      Value: "Assignments & milestones this day",
-    },
-    {
-      Section: "",
-      Metric: "Group leaders / Pickers",
-      Value: "Performance & value per person",
+      Metric: "Value completed today (€)",
+      Value: roundMoney(stats.completedTodayValue),
     },
   ];
 }
@@ -471,14 +373,11 @@ export function buildDailySummaryRows(
 
   return [
     { Metric: "Report date", Value: reportDate },
-    { Metric: "Orders in report", Value: orders.length },
-    { Metric: "Still waiting", Value: waiting },
+    { Metric: "Orders", Value: orders.length },
+    { Metric: "Waiting", Value: waiting },
     { Metric: "Completed", Value: complete },
-    { Metric: "Partial deliveries", Value: partial },
-    { Metric: "Delayed (overdue)", Value: delayed },
-    {
-      Metric: "Total value (€)",
-      Value: Math.round(totalValue * 100) / 100,
-    },
+    { Metric: "Partial", Value: partial },
+    { Metric: "Delayed", Value: delayed },
+    { Metric: "Total value (€)", Value: roundMoney(totalValue) },
   ];
 }

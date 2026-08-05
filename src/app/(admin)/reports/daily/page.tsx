@@ -25,16 +25,22 @@ interface DailyPreview {
   scheduled: number;
   totalValue: number;
   waitingValue: number;
+  completedValue: number;
   completedTodayValue: number;
-  groupLeaders: Array<{
+  pickers: Array<{
     name: string;
     orders: number;
+    assignedToday: number;
     completed: number;
     completedToday: number;
     waiting: number;
     delayed: number;
-    valueTotal: number;
+    partial: number;
     valueCompleted: number;
+    valueCompletedToday: number;
+    valueWaiting: number;
+    firstAssigned: string;
+    lastCompleted: string;
   }>;
 }
 
@@ -89,15 +95,7 @@ export default function DailyReportsPage() {
         </Link>
       </div>
 
-      <Alert tone="info">
-        <span className="font-medium">Daily report for management.</span>{" "}
-        Includes all open orders, anything that happened on the selected date
-        (assignments, hit the road, delivered), plus group leader and picker
-        performance with order values. Record steps manually in Orders after
-        you hand invoices to staff.
-      </Alert>
-
-      <PageSection title="Report date" className="mt-6">
+      <PageSection title="Report date">
         <Card className="p-4">
           <div className="flex flex-wrap items-end gap-3">
             <Input
@@ -107,10 +105,10 @@ export default function DailyReportsPage() {
               onChange={(e) => setReportDate(e.target.value)}
             />
             <Button variant="secondary" onClick={() => load()}>
-              Refresh preview
+              Refresh
             </Button>
             <Button onClick={downloadExcel}>
-              Download Excel for {reportDate}
+              Download Excel — {reportDate}
             </Button>
             <Button
               variant="secondary"
@@ -129,18 +127,18 @@ export default function DailyReportsPage() {
       )}
 
       {loading ? (
-        <LoadingState title="Loading preview…" />
+        <LoadingState title="Loading…" />
       ) : preview ? (
         <>
           <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard label="Orders in report" value={preview.orderCount} />
-            <StatCard label="Still waiting" value={preview.inProgress} />
+            <StatCard label="Orders" value={preview.orderCount} />
+            <StatCard label="Waiting" value={preview.inProgress} />
             <StatCard label="Completed today" value={preview.completedToday} />
             <StatCard label="Delayed" value={preview.delayed} />
           </div>
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard label="Scheduled this date" value={preview.scheduled} />
-            <StatCard label="Partial deliveries" value={preview.partial} />
+            <StatCard label="Scheduled" value={preview.scheduled} />
+            <StatCard label="Partial" value={preview.partial} />
             <StatCard
               label="Value waiting (€)"
               value={Math.round(preview.waitingValue)}
@@ -151,75 +149,57 @@ export default function DailyReportsPage() {
             />
           </div>
 
-          <PageSection title="Group leaders" className="mt-8">
+          <PageSection title="Pickers" className="mt-8">
             <Card className="overflow-x-auto p-0">
-              {preview.groupLeaders.length === 0 ? (
-                <p className="p-4 text-sm text-zinc-500">
-                  No group leaders assigned yet. In Orders → Assign →{" "}
-                  <strong>Assign staff</strong>, pick a group leader after you
-                  give the invoice to them.
-                </p>
+              {preview.pickers.length === 0 ? (
+                <p className="p-4 text-sm text-zinc-500">No pickers assigned.</p>
               ) : (
                 <table className="w-full text-left text-sm">
                   <thead className="border-b border-zinc-200 bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500">
                     <tr>
-                      <th className="px-4 py-3">Leader</th>
+                      <th className="px-4 py-3">Picker</th>
                       <th className="px-4 py-3">Orders</th>
-                      <th className="px-4 py-3">Waiting</th>
+                      <th className="px-4 py-3">Assigned today</th>
+                      <th className="px-4 py-3">Completed</th>
                       <th className="px-4 py-3">Done today</th>
-                      <th className="px-4 py-3">Value (€)</th>
+                      <th className="px-4 py-3">Waiting</th>
+                      <th className="px-4 py-3">Delayed</th>
+                      <th className="px-4 py-3">Value done (€)</th>
+                      <th className="px-4 py-3">Value today (€)</th>
+                      <th className="px-4 py-3">First assigned</th>
+                      <th className="px-4 py-3">Last completed</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {preview.groupLeaders.map((row) => (
+                    {preview.pickers.map((row) => (
                       <tr
                         key={row.name}
                         className="border-b border-zinc-100 last:border-0"
                       >
                         <td className="px-4 py-3 font-medium">{row.name}</td>
                         <td className="px-4 py-3">{row.orders}</td>
-                        <td className="px-4 py-3">{row.waiting}</td>
+                        <td className="px-4 py-3">{row.assignedToday}</td>
+                        <td className="px-4 py-3">{row.completed}</td>
                         <td className="px-4 py-3">{row.completedToday}</td>
+                        <td className="px-4 py-3">{row.waiting}</td>
+                        <td className="px-4 py-3">{row.delayed}</td>
                         <td className="px-4 py-3">
-                          {Math.round(row.valueTotal)}
+                          {Math.round(Number(row.valueCompleted))}
+                        </td>
+                        <td className="px-4 py-3">
+                          {Math.round(Number(row.valueCompletedToday))}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-zinc-600">
+                          {row.firstAssigned || "—"}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-zinc-600">
+                          {row.lastCompleted || "—"}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               )}
-            </Card>
-          </PageSection>
-
-          <PageSection title="Excel workbook sheets" className="mt-8">
-            <Card className="p-4 text-sm text-zinc-600">
-              <ol className="list-decimal space-y-2 pl-5">
-                <li>
-                  <strong>Dashboard</strong> — executive summary your boss reads
-                  first
-                </li>
-                <li>
-                  <strong>All orders</strong> — invoice, value, who is assigned,
-                  when truck/staff assigned, when it hit the road, delivered
-                </li>
-                <li>
-                  <strong>Waiting</strong> — pipeline not yet done
-                </li>
-                <li>
-                  <strong>Completed today</strong> — finished on this date
-                </li>
-                <li>
-                  <strong>Activity log</strong> — chronological log of assignments
-                  and milestones recorded this day
-                </li>
-                <li>
-                  <strong>Group leaders & Pickers</strong> — orders done, waiting,
-                  delayed, and € value per person
-                </li>
-                <li>
-                  <strong>Delayed</strong> — overdue orders (if any)
-                </li>
-              </ol>
             </Card>
           </PageSection>
         </>
