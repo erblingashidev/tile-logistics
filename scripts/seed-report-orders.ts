@@ -135,15 +135,14 @@ async function runProofs(
   options?: { partialPallets?: number; partialM2?: number }
 ) {
   for (const phase of phases) {
-    const loaderPhases = new Set([
-      "prepared",
-      "loaded",
-      "load_skipped",
-    ] satisfies DeliveryProofPhase[]);
+    const isLoaderPhase =
+      phase === "prepared" ||
+      phase === "loaded" ||
+      phase === "load_skipped";
     const result = await submitAdminDeliveryProof({
       orderId,
       phase,
-      employeeId: loaderPhases.has(phase) ? pickerId : driverId,
+      employeeId: isLoaderPhase ? pickerId : driverId,
       force:
         phase === "loaded" ||
         phase === "departed" ||
