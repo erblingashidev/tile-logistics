@@ -1,10 +1,24 @@
+import { BRAND } from "@/lib/brand";
 import { orderWorkDate } from "@/lib/delivery-schedule";
 import type { ExportOrder } from "@/lib/export/order-rows";
+import {
+  classifyDailyOrder,
+  completedOnReportDate,
+  type DailyOrderBucket,
+} from "@/lib/services/daily-operations-report";
 import {
   daysBetweenDates,
   formatExportDate,
   formatExportDateTime,
 } from "@/lib/export/report-dates";
+
+const BUCKET_LABELS: Record<DailyOrderBucket, string> = {
+  scheduled: "Scheduled today",
+  waiting: "Waiting / in progress",
+  completed_today: "Completed today",
+  delayed: "Delayed",
+  partial: "Partial delivery",
+};
 
 function staffMember(
   order: ExportOrder,
@@ -44,8 +58,9 @@ function staffMember(
 }
 
 function proofAt(order: ExportOrder, phase: string): string {
-  const proof = order.proofs?.find((p) => p.phase === phase);
-  return formatExportDateTime(proof?.capturedAt);
+  return formatExportDateTime(
+    order.proofs?.find((p) => p.phase === phase)?.capturedAt
+  );
 }
 
 function proofEmployee(order: ExportOrder, phase: string): string {
@@ -59,9 +74,22 @@ function isComplete(order: ExportOrder): boolean {
 function isPartial(order: ExportOrder): boolean {
   if (order.status === "partially_delivered") return true;
   const shipment = "shipment" in order ? order.shipment : undefined;
-  return Boolean(
-    shipment?.hasPartialShipments || shipment?.isPartialLoad
-  );
+  return Boolean(shipment?.hasPartialShipments || shipment?.isPartialLoad);
+}
+
+function bucketLabel(order: ExportOrder, reportDate: string): string {
+  const buckets = classifyDailyOrder(order, reportDate);
+  if (buckets.length === 0) return "In report";
+  return buckets.map((b) => BUCKET_LABELS[b]).join(" · ");
+}
+
+function waitingLabel(order: ExportOrder): string {
+  if (isComplete(order)) return "Done";
+  const stage =
+    "deliveryStageLabel" in order && order.deliveryStageLabel
+      ? order.deliveryStageLabel
+      : order.status;
+  return stage;
 }
 
 export function buildDailyOrderRows(
@@ -88,13 +116,14 @@ export function buildDailyOrderRows(
         (order.status === "in_transit" ? "In transit (manual)" : "");
 
       return {
+        Category: bucketLabel(order, reportDate),
         Invoice: order.invoiceNumber,
         Customer: order.customerName,
         Region: order.region ?? "",
         City: order.city ?? "",
         "Order created": formatExportDateTime(order.createdAt),
         "Work / delivery date": workDate,
-        Status: order.status,
+        "Waiting status": waitingLabel(order),
         Complete: complete ? "Yes" : "No",
         Partial: partial ? "Yes" : "No",
         "Remaining pallets":
@@ -119,7 +148,9 @@ export function buildDailyOrderRows(
         "Departed by": proofEmployee(order, "departed"),
         "Delivered at":
           proofAt(order, "delivered") ||
-          (order.status === "delivered" ? formatExportDate(order.updatedAt) : ""),
+          (order.status === "delivered"
+            ? formatExportDateTime(order.updatedAt)
+            : ""),
         "Delivered by": proofEmployee(order, "delivered"),
         Delayed: delayed ? "Yes" : "No",
         "Days overdue": delayed ? daysOverdue : "",
@@ -136,46 +167,150 @@ export function buildDailyOrderRows(
     });
 }
 
-export function buildGroupLeaderSummaryRows(
+const PROOF_LABELS: Record<string, string> = {
+  prepared: "Marked prepared",
+  loaded: "Loaded on truck",
+  load_skipped: "Could not load",
+  departed: "Hit the road",
+  arrived: "Arrived at customer",
+  delivered: "Delivered (complete)",
+  partial_delivery: "Partial delivery",
+};
+
+export function buildActivityLogRows(
   orders: ExportOrder[],
   reportDate: string
-): Record<string, string | number>[] {
-  type Bucket = {
-    leader: string;
-    orders: ExportOrder[];
-  };
-  const buckets = new Map<string, Bucket>();
+) {
+  const events: Array<Record<string, string | number>> = [];
 
   for (const order of orders) {
-    const leader = staffMember(order, "group_leader").name || "Unassigned leader";
-    const bucket = buckets.get(leader) ?? { leader, orders: [] };
+    const base = {
+      Invoice: order.invoiceNumber,
+      Customer: order.customerName,
+      Region: order.region ?? "",
+    };
+
+    if (order.createdAt?.startsWith(reportDate)) {
+      events.push({
+        ...base,
+        Time: formatExportDateTime(order.createdAt),
+        Event: "Order created",
+        Person: "",
+        Detail: `Value €${order.price ?? 0}`,
+      });
+    }
+
+    if (order.assignment?.assignedAt?.startsWith(reportDate)) {
+      events.push({
+        ...base,
+        Time: formatExportDateTime(order.assignment.assignedAt),
+        Event: "Truck assigned",
+        Person: order.assignment.driverName ?? "",
+        Detail: `${order.assignment.vehicleName ?? ""} · R${order.assignment.deliveryRound ?? 1}`,
+      });
+    }
+
+    for (const member of [
+      order.staff?.groupLeader,
+      order.staff?.picker,
+      ...(order.staff?.staff ?? []),
+    ]) {
+      if (!member?.assignedAt?.startsWith(reportDate)) continue;
+      const role =
+        "role" in member && member.role
+          ? String(member.role).replace("_", " ")
+          : member === order.staff?.picker
+            ? "picker"
+            : member === order.staff?.groupLeader
+              ? "group leader"
+              : "staff";
+      events.push({
+        ...base,
+        Time: formatExportDateTime(member.assignedAt),
+        Event: `${role} assigned`,
+        Person: member.employeeName,
+        Detail: "",
+      });
+    }
+
+    for (const proof of order.proofs ?? []) {
+      if (!proof.capturedAt?.startsWith(reportDate)) continue;
+      events.push({
+        ...base,
+        Time: formatExportDateTime(proof.capturedAt),
+        Event: PROOF_LABELS[proof.phase] ?? proof.phase,
+        Person: proof.employeeName ?? "",
+        Detail: [
+          proof.sentPallets != null ? `${proof.sentPallets} plt` : "",
+          proof.notes ?? "",
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      });
+    }
+  }
+
+  return events.sort((a, b) =>
+    String(a.Time).localeCompare(String(b.Time), "sq")
+  );
+}
+
+function buildStaffPerformanceRows(
+  orders: ExportOrder[],
+  reportDate: string,
+  role: "group_leader" | "picker"
+): Record<string, string | number>[] {
+  type Bucket = { name: string; orders: ExportOrder[] };
+  const buckets = new Map<string, Bucket>();
+  const roleLabel = role === "group_leader" ? "Group leader" : "Picker";
+
+  for (const order of orders) {
+    const member = staffMember(order, role);
+    const name =
+      member.name ||
+      (role === "picker" ? "Unassigned picker" : "Unassigned leader");
+    const bucket = buckets.get(name) ?? { name, orders: [] };
     bucket.orders.push(order);
-    buckets.set(leader, bucket);
+    buckets.set(name, bucket);
   }
 
   return [...buckets.values()]
-    .sort((a, b) => a.leader.localeCompare(b.leader, "sq"))
-    .map(({ leader, orders: leaderOrders }) => {
+    .sort((a, b) => a.name.localeCompare(b.name, "sq"))
+    .map(({ name, orders: staffOrders }) => {
       let completed = 0;
-      let inProgress = 0;
+      let waiting = 0;
       let delayed = 0;
       let partial = 0;
-      let onTime = 0;
+      let completedToday = 0;
+      let valueCompleted = 0;
+      let valueWaiting = 0;
+      let valueTotal = 0;
       const hoursToRoad: number[] = [];
 
-      for (const order of leaderOrders) {
+      for (const order of staffOrders) {
         const workDate = orderWorkDate(order);
         const complete = isComplete(order);
-        const isDelayed =
-          !complete && workDate < reportDate && order.status !== "cancelled";
+        const price = order.price ?? 0;
+        valueTotal += price;
 
-        if (complete) completed += 1;
-        else inProgress += 1;
-        if (isDelayed) delayed += 1;
+        if (complete) {
+          completed += 1;
+          valueCompleted += price;
+        } else if (order.status !== "cancelled") {
+          waiting += 1;
+          valueWaiting += price;
+        }
+        if (
+          !complete &&
+          workDate < reportDate &&
+          order.status !== "cancelled"
+        ) {
+          delayed += 1;
+        }
         if (isPartial(order)) partial += 1;
-        if (complete && !isDelayed) onTime += 1;
+        if (completedOnReportDate(order, reportDate)) completedToday += 1;
 
-        const assignedAt = staffMember(order, "group_leader").assignedAt;
+        const assignedAt = staffMember(order, role).assignedAt;
         const departed = order.proofs?.find((p) => p.phase === "departed")
           ?.capturedAt;
         if (assignedAt && departed) {
@@ -187,24 +322,132 @@ export function buildGroupLeaderSummaryRows(
         }
       }
 
-      const avgHours =
-        hoursToRoad.length > 0
-          ? (
-              hoursToRoad.reduce((a, b) => a + b, 0) / hoursToRoad.length
-            ).toFixed(1)
-          : "";
-
       return {
-        "Group leader": leader,
-        "Orders on report": leaderOrders.length,
+        [roleLabel]: name,
+        "Orders assigned": staffOrders.length,
         Completed: completed,
-        "In progress": inProgress,
+        "Completed today": completedToday,
+        "Still waiting": waiting,
         Delayed: delayed,
         Partial: partial,
-        "Completed on time": onTime,
-        "Avg hours assign → road": avgHours,
+        "Value completed (€)": Math.round(valueCompleted * 100) / 100,
+        "Value waiting (€)": Math.round(valueWaiting * 100) / 100,
+        "Total value (€)": Math.round(valueTotal * 100) / 100,
+        "Avg hours assign → road":
+          hoursToRoad.length > 0
+            ? (
+                hoursToRoad.reduce((a, b) => a + b, 0) / hoursToRoad.length
+              ).toFixed(1)
+            : "",
       };
     });
+}
+
+export function buildGroupLeaderSummaryRows(
+  orders: ExportOrder[],
+  reportDate: string
+): Record<string, string | number>[] {
+  return buildStaffPerformanceRows(orders, reportDate, "group_leader");
+}
+
+export function buildPickerSummaryRows(
+  orders: ExportOrder[],
+  reportDate: string
+): Record<string, string | number>[] {
+  return buildStaffPerformanceRows(orders, reportDate, "picker");
+}
+
+export function buildExecutiveDashboardRows(
+  reportDate: string,
+  stats: {
+    total: number;
+    waiting: number;
+    completed: number;
+    completedToday: number;
+    delayed: number;
+    partial: number;
+    scheduled: number;
+    waitingValue: number;
+    completedValue: number;
+    completedTodayValue: number;
+    totalValue: number;
+  },
+  generatedAt: string
+) {
+  const money = (n: number) => Math.round(n * 100) / 100;
+
+  return [
+    { Section: BRAND.shortName, Metric: "Daily Operations Report", Value: "" },
+    { Section: "", Metric: "Report date", Value: reportDate },
+    { Section: "", Metric: "Generated", Value: generatedAt },
+    { Section: "", Metric: "", Value: "" },
+    { Section: "PIPELINE", Metric: "Orders in this report", Value: stats.total },
+    {
+      Section: "",
+      Metric: "Still waiting / in progress",
+      Value: stats.waiting,
+    },
+    {
+      Section: "",
+      Metric: "Completed (in report)",
+      Value: stats.completed,
+    },
+    {
+      Section: "",
+      Metric: "Completed today",
+      Value: stats.completedToday,
+    },
+    { Section: "", Metric: "Scheduled for this date", Value: stats.scheduled },
+    { Section: "", Metric: "Delayed (overdue)", Value: stats.delayed },
+    { Section: "", Metric: "Partial deliveries", Value: stats.partial },
+    { Section: "", Metric: "", Value: "" },
+    {
+      Section: "VALUE (€)",
+      Metric: "Total pipeline value",
+      Value: money(stats.totalValue),
+    },
+    {
+      Section: "",
+      Metric: "Value still waiting",
+      Value: money(stats.waitingValue),
+    },
+    {
+      Section: "",
+      Metric: "Value completed (in report)",
+      Value: money(stats.completedValue),
+    },
+    {
+      Section: "",
+      Metric: "Value completed today",
+      Value: money(stats.completedTodayValue),
+    },
+    { Section: "", Metric: "", Value: "" },
+    {
+      Section: "WORKSHEETS",
+      Metric: "All orders",
+      Value: "Full detail + assignment & road timestamps",
+    },
+    {
+      Section: "",
+      Metric: "Waiting",
+      Value: "Orders not yet delivered",
+    },
+    {
+      Section: "",
+      Metric: "Completed today",
+      Value: "Delivered on this date",
+    },
+    {
+      Section: "",
+      Metric: "Activity log",
+      Value: "Assignments & milestones this day",
+    },
+    {
+      Section: "",
+      Metric: "Group leaders / Pickers",
+      Value: "Performance & value per person",
+    },
+  ];
 }
 
 export function buildDailySummaryRows(
@@ -212,6 +455,9 @@ export function buildDailySummaryRows(
   reportDate: string
 ) {
   const complete = orders.filter(isComplete).length;
+  const waiting = orders.filter(
+    (o) => !isComplete(o) && o.status !== "cancelled"
+  ).length;
   const partial = orders.filter(isPartial).length;
   const delayed = orders.filter((order) => {
     const workDate = orderWorkDate(order);
@@ -225,13 +471,13 @@ export function buildDailySummaryRows(
 
   return [
     { Metric: "Report date", Value: reportDate },
-    { Metric: "Orders", Value: orders.length },
+    { Metric: "Orders in report", Value: orders.length },
+    { Metric: "Still waiting", Value: waiting },
     { Metric: "Completed", Value: complete },
-    { Metric: "In progress", Value: orders.length - complete },
     { Metric: "Partial deliveries", Value: partial },
     { Metric: "Delayed (overdue)", Value: delayed },
     {
-      Metric: "Total order value (€)",
+      Metric: "Total value (€)",
       Value: Math.round(totalValue * 100) / 100,
     },
   ];

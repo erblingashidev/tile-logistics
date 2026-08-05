@@ -17,8 +17,16 @@ import {
   buildDailyOrderRows,
   buildDailySummaryRows,
   buildGroupLeaderSummaryRows,
+  buildPickerSummaryRows,
+  buildExecutiveDashboardRows,
+  buildActivityLogRows,
 } from "@/lib/export/daily-report-rows";
 import { todayDateString } from "@/lib/delivery-schedule";
+import {
+  activityOnReportDate,
+  completedOnReportDate,
+  getDailyReportOrders,
+} from "@/lib/services/daily-operations-report";
 
 function sheetFromRows(rows: Record<string, string | number>[], freezeRow = 1) {
   const ws = XLSX.utils.json_to_sheet(rows);
@@ -214,29 +222,39 @@ export async function buildPartialDeliveriesExcel(filters: {
 
 /** Daily boss report — filename and title use the report date. */
 export async function buildDailyOperationsExcel(reportDate?: string) {
-  const date = reportDate?.trim() || todayDateString();
-  const orders = await listOrders({
-    workDay: "date",
-    shipAsOfDate: date,
-    hideDelivered: false,
-  });
+  const { reportDate: date, orders, stats } =
+    await getDailyReportOrders(reportDate);
   const generatedAt = new Date().toLocaleString("sq-AL");
   const title = `AGIMI Logistics — Daily report ${date}`;
 
-  const wb = XLSX.utils.book_new();
-  const usedNames = new Set<string>(["About", date, "Group leaders", "Delayed"]);
+  const allOrders = await listOrders({ hideDelivered: false });
+  const activitySource = allOrders.filter((o) =>
+    activityOnReportDate(o, date)
+  );
 
-  appendMetaSheet(wb, [
-    { Field: "Report", Value: title },
-    { Field: "Report date", Value: date },
-    { Field: "Generated", Value: generatedAt },
-    { Field: "Orders scheduled", Value: String(orders.length) },
-    {
-      Field: "How to use",
-      Value:
-        "Send this file to management daily. Orders sheet = full detail; Group leaders = team performance.",
-    },
-  ]);
+  const waitingOrders = orders.filter(
+    (o) => o.status !== "delivered" && o.status !== "cancelled"
+  );
+  const completedTodayOrders = orders.filter((o) =>
+    completedOnReportDate(o, date)
+  );
+  const delayedOrders = orders.filter((o) => {
+    const workDate = o.requestedDeliveryDate?.trim() || o.orderDate;
+    return (
+      o.status !== "delivered" &&
+      o.status !== "cancelled" &&
+      workDate < date
+    );
+  });
+
+  const wb = XLSX.utils.book_new();
+  const usedNames = new Set<string>();
+
+  XLSX.utils.book_append_sheet(
+    wb,
+    sheetFromRows(buildExecutiveDashboardRows(date, stats, generatedAt)),
+    sanitizeSheetName("Dashboard", usedNames)
+  );
 
   XLSX.utils.book_append_sheet(
     wb,
@@ -247,7 +265,27 @@ export async function buildDailyOperationsExcel(reportDate?: string) {
   XLSX.utils.book_append_sheet(
     wb,
     sheetFromRows(buildDailyOrderRows(orders, date)),
-    sanitizeSheetName(date, usedNames)
+    sanitizeSheetName("All orders", usedNames)
+  );
+
+  XLSX.utils.book_append_sheet(
+    wb,
+    sheetFromRows(buildDailyOrderRows(waitingOrders, date)),
+    sanitizeSheetName("Waiting", usedNames)
+  );
+
+  if (completedTodayOrders.length > 0) {
+    XLSX.utils.book_append_sheet(
+      wb,
+      sheetFromRows(buildDailyOrderRows(completedTodayOrders, date)),
+      sanitizeSheetName("Completed today", usedNames)
+    );
+  }
+
+  XLSX.utils.book_append_sheet(
+    wb,
+    sheetFromRows(buildActivityLogRows(activitySource, date)),
+    sanitizeSheetName("Activity log", usedNames)
   );
 
   XLSX.utils.book_append_sheet(
@@ -256,19 +294,16 @@ export async function buildDailyOperationsExcel(reportDate?: string) {
     sanitizeSheetName("Group leaders", usedNames)
   );
 
-  const delayed = orders.filter((order) => {
-    const workDate =
-      order.requestedDeliveryDate?.trim() || order.orderDate;
-    return (
-      order.status !== "delivered" &&
-      order.status !== "cancelled" &&
-      workDate < date
-    );
-  });
-  if (delayed.length > 0) {
+  XLSX.utils.book_append_sheet(
+    wb,
+    sheetFromRows(buildPickerSummaryRows(orders, date)),
+    sanitizeSheetName("Pickers", usedNames)
+  );
+
+  if (delayedOrders.length > 0) {
     XLSX.utils.book_append_sheet(
       wb,
-      sheetFromRows(buildDailyOrderRows(delayed, date)),
+      sheetFromRows(buildDailyOrderRows(delayedOrders, date)),
       sanitizeSheetName("Delayed", usedNames)
     );
   }
@@ -278,5 +313,6 @@ export async function buildDailyOperationsExcel(reportDate?: string) {
     filename: `AGIMI-daily-report-${date}.xlsx`,
     title,
     orderCount: orders.length,
+    stats,
   };
 }

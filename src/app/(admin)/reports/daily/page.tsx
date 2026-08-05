@@ -19,14 +19,22 @@ interface DailyPreview {
   orderCount: number;
   completed: number;
   inProgress: number;
+  completedToday: number;
   delayed: number;
   partial: number;
+  scheduled: number;
   totalValue: number;
+  waitingValue: number;
+  completedTodayValue: number;
   groupLeaders: Array<{
     name: string;
     orders: number;
     completed: number;
+    completedToday: number;
+    waiting: number;
     delayed: number;
+    valueTotal: number;
+    valueCompleted: number;
   }>;
 }
 
@@ -82,12 +90,11 @@ export default function DailyReportsPage() {
       </div>
 
       <Alert tone="info">
-        <span className="font-medium">For your boss each day.</span> Download
-        the Excel file — it is named with the date (e.g.{" "}
-        <code className="text-xs">AGIMI-daily-report-2026-08-05.xlsx</code>
-        ). You work manually in Orders: assign staff, truck, and record when
-        orders hit the road. Employee portal stays off until you re-enable it in
-        Settings.
+        <span className="font-medium">Daily report for management.</span>{" "}
+        Includes all open orders, anything that happened on the selected date
+        (assignments, hit the road, delivered), plus group leader and picker
+        performance with order values. Record steps manually in Orders after
+        you hand invoices to staff.
       </Alert>
 
       <PageSection title="Report date" className="mt-6">
@@ -107,9 +114,7 @@ export default function DailyReportsPage() {
             </Button>
             <Button
               variant="secondary"
-              onClick={() => {
-                setReportDate(todayDateString());
-              }}
+              onClick={() => setReportDate(todayDateString())}
             >
               Today
             </Button>
@@ -127,14 +132,22 @@ export default function DailyReportsPage() {
         <LoadingState title="Loading preview…" />
       ) : preview ? (
         <>
-          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            <StatCard label="Orders" value={preview.orderCount} />
-            <StatCard label="Completed" value={preview.completed} />
-            <StatCard label="In progress" value={preview.inProgress} />
+          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard label="Orders in report" value={preview.orderCount} />
+            <StatCard label="Still waiting" value={preview.inProgress} />
+            <StatCard label="Completed today" value={preview.completedToday} />
             <StatCard label="Delayed" value={preview.delayed} />
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard label="Scheduled this date" value={preview.scheduled} />
+            <StatCard label="Partial deliveries" value={preview.partial} />
             <StatCard
-              label="Total value (€)"
-              value={Math.round(preview.totalValue)}
+              label="Value waiting (€)"
+              value={Math.round(preview.waitingValue)}
+            />
+            <StatCard
+              label="Completed today (€)"
+              value={Math.round(preview.completedTodayValue)}
             />
           </div>
 
@@ -142,8 +155,9 @@ export default function DailyReportsPage() {
             <Card className="overflow-x-auto p-0">
               {preview.groupLeaders.length === 0 ? (
                 <p className="p-4 text-sm text-zinc-500">
-                  No group leaders assigned on these orders yet. Open an order →
-                  Assign → assign a group leader under manual tracking.
+                  No group leaders assigned yet. In Orders → Assign →{" "}
+                  <strong>Assign staff</strong>, pick a group leader after you
+                  give the invoice to them.
                 </p>
               ) : (
                 <table className="w-full text-left text-sm">
@@ -151,8 +165,9 @@ export default function DailyReportsPage() {
                     <tr>
                       <th className="px-4 py-3">Leader</th>
                       <th className="px-4 py-3">Orders</th>
-                      <th className="px-4 py-3">Completed</th>
-                      <th className="px-4 py-3">Delayed</th>
+                      <th className="px-4 py-3">Waiting</th>
+                      <th className="px-4 py-3">Done today</th>
+                      <th className="px-4 py-3">Value (€)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -163,8 +178,11 @@ export default function DailyReportsPage() {
                       >
                         <td className="px-4 py-3 font-medium">{row.name}</td>
                         <td className="px-4 py-3">{row.orders}</td>
-                        <td className="px-4 py-3">{row.completed}</td>
-                        <td className="px-4 py-3">{row.delayed}</td>
+                        <td className="px-4 py-3">{row.waiting}</td>
+                        <td className="px-4 py-3">{row.completedToday}</td>
+                        <td className="px-4 py-3">
+                          {Math.round(row.valueTotal)}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -173,25 +191,35 @@ export default function DailyReportsPage() {
             </Card>
           </PageSection>
 
-          <PageSection title="What's in the Excel file" className="mt-8">
+          <PageSection title="Excel workbook sheets" className="mt-8">
             <Card className="p-4 text-sm text-zinc-600">
-              <ul className="list-disc space-y-1 pl-5">
+              <ol className="list-decimal space-y-2 pl-5">
                 <li>
-                  <strong>Summary</strong> — counts and total value for the day
+                  <strong>Dashboard</strong> — executive summary your boss reads
+                  first
                 </li>
                 <li>
-                  <strong>{reportDate}</strong> — every order: invoice, created
-                  date, staff assigned, truck, when it hit the road, value,
-                  partial/delivered status
+                  <strong>All orders</strong> — invoice, value, who is assigned,
+                  when truck/staff assigned, when it hit the road, delivered
                 </li>
                 <li>
-                  <strong>Group leaders</strong> — completed, delayed, and in
-                  progress per leader
+                  <strong>Waiting</strong> — pipeline not yet done
+                </li>
+                <li>
+                  <strong>Completed today</strong> — finished on this date
+                </li>
+                <li>
+                  <strong>Activity log</strong> — chronological log of assignments
+                  and milestones recorded this day
+                </li>
+                <li>
+                  <strong>Group leaders & Pickers</strong> — orders done, waiting,
+                  delayed, and € value per person
                 </li>
                 <li>
                   <strong>Delayed</strong> — overdue orders (if any)
                 </li>
-              </ul>
+              </ol>
             </Card>
           </PageSection>
         </>
