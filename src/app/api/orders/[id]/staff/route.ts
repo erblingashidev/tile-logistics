@@ -4,7 +4,6 @@ import {
   assignEmployeeToOrder,
   unassignEmployeeFromOrder,
 } from "@/lib/services/employees";
-import { isManualDispatchMode } from "@/lib/services/feature-flags";
 import { getOrder } from "@/lib/services/orders";
 import type { EmployeeRole } from "@/lib/constants";
 
@@ -16,16 +15,6 @@ export async function POST(
 ) {
   const auth = await requireApiSessionNoSalesWrite(request.method);
   if (!auth.ok) return auth.response;
-
-  if (await isManualDispatchMode()) {
-    return NextResponse.json(
-      {
-        error:
-          "Staff assignment is paused in manual mode. Assign trucks only, or turn off manual mode in Settings.",
-      },
-      { status: 403 }
-    );
-  }
 
   const { id } = await params;
   const body = await request.json();
@@ -52,16 +41,6 @@ export async function DELETE(
 ) {
   const auth = await requireApiSessionNoSalesWrite(request.method);
   if (!auth.ok) return auth.response;
-
-  if (await isManualDispatchMode()) {
-    return NextResponse.json(
-      {
-        error:
-          "Staff assignment is paused in manual mode. Assign trucks only, or turn off manual mode in Settings.",
-      },
-      { status: 403 }
-    );
-  }
 
   const { id } = await params;
   const role = request.nextUrl.searchParams.get("role") as EmployeeRole;

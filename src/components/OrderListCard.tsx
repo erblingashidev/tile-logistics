@@ -463,6 +463,7 @@ export function OrderListCard({
             }
             loadStatus={order.loadStatus}
             staffOptions={staffOptionsFromOrder(order)}
+            staffSnapshot={order.staff}
             deliveryLinks={order.deliveryLinks}
             draft={draft}
             vehicles={vehicles}

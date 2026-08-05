@@ -71,7 +71,16 @@ export default function ReportsPage() {
 
   return (
     <AppShell title="Reports">
-      <div className="mb-6 grid gap-4 sm:grid-cols-2">
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <Link href="/reports/daily">
+          <Card className="h-full border-blue-200 bg-blue-50/40 p-5 transition hover:border-blue-300">
+            <p className="font-semibold text-zinc-900">Daily report (for boss)</p>
+            <p className="mt-1 text-sm text-zinc-600">
+              Excel with the date in the filename — orders, staff, trucks, group
+              leader performance, delayed orders.
+            </p>
+          </Card>
+        </Link>
         <Link href="/reports/partial-deliveries">
           <Card className="h-full p-5 transition hover:border-zinc-400">
             <p className="font-semibold text-zinc-900">Partial deliveries</p>

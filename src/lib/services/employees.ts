@@ -808,6 +808,7 @@ export async function getOrderStaff(orderId: number) {
   return {
     staff,
     picker: staff.find((s) => s.role === "picker") ?? null,
+    groupLeader: staff.find((s) => s.role === "group_leader") ?? null,
     driver:
       driverFromVehicle ??
       staff.find((s) => s.role === "driver") ??

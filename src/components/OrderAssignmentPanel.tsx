@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui";
 import { AdminManualProofPanel } from "@/components/AdminManualProofPanel";
+import { ManualStaffPanel } from "@/components/ManualStaffPanel";
 import { DeliveryLinkNotice } from "@/components/DeliveryLinkNotice";
 import { deliveryRoundSelectOptions } from "@/lib/delivery-rounds";
 import type { OrderDisplayStage } from "@/lib/order-display";
@@ -45,6 +46,17 @@ interface OrderAssignmentPanelProps {
   prepStatus?: "pending" | "prepared";
   loadStatus?: "pending" | "loaded" | "load_skipped";
   staffOptions?: Array<{ id: number; name: string; role: string }>;
+  staffSnapshot?: {
+    picker?: { employeeId?: number; employeeName: string; assignedAt?: string } | null;
+    driver?: { employeeId?: number; employeeName: string; assignedAt?: string } | null;
+    groupLeader?: { employeeId?: number; employeeName: string; assignedAt?: string } | null;
+    staff?: Array<{
+      role: string;
+      employeeId?: number;
+      employeeName: string;
+      assignedAt?: string;
+    }>;
+  };
   deliveryLinks?: Array<{
     id: number;
     invoiceNumber: string;
@@ -115,6 +127,7 @@ export function OrderAssignmentPanel({
   prepStatus,
   loadStatus,
   staffOptions = [],
+  staffSnapshot,
   deliveryLinks = [],
   draft,
   vehicles,
@@ -437,6 +450,15 @@ export function OrderAssignmentPanel({
       </div>
       )}
 
+      {manualMode && (
+        <ManualStaffPanel
+          orderId={orderId}
+          staff={staffSnapshot}
+          onSaved={onSaved}
+          onError={onError}
+        />
+      )}
+
       <div>
         <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
           Truck
@@ -600,7 +622,6 @@ export function OrderAssignmentPanel({
         )}
       </div>
 
-      {!manualMode && (
       <AdminManualProofPanel
         orderId={orderId}
         invoiceNumber={invoiceNumber}
@@ -612,7 +633,6 @@ export function OrderAssignmentPanel({
         onSaved={onSaved}
         onError={onError}
       />
-      )}
     </div>
   );
 }

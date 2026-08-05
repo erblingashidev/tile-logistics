@@ -1182,8 +1182,12 @@ export default function OrdersPage() {
         <div className="mb-4">
           <Alert tone="info">
             <span className="font-medium">Manual dispatch mode is on.</span>{" "}
-            Employee portal proofs and picker workflow are paused. Assign trucks
-            and update order status here. Re-enable the full workflow in{" "}
+            You assign trucks and staff here and record when orders hit the road.
+            Download the daily Excel for your boss from{" "}
+            <Link href="/reports/daily" className="font-medium underline">
+              Daily report
+            </Link>
+            . Employee portal proofs stay paused — re-enable the full workflow in{" "}
             <Link href="/settings" className="font-medium underline">
               Settings
             </Link>

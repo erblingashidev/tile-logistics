@@ -3,6 +3,7 @@ import {
   buildOrdersExcel,
   buildLocationGroupedExcel,
   buildPartialDeliveriesExcel,
+  buildDailyOperationsExcel,
 } from "@/lib/export/excel";
 import type { ExportGroupBy } from "@/lib/export/excel-format";
 import { parseWorkDayFilter } from "@/lib/delivery-schedule";
@@ -74,6 +75,18 @@ export async function GET(request: NextRequest) {
           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "Content-Disposition":
           'attachment; filename="partial-deliveries.xlsx"',
+      },
+    });
+  }
+
+  if (type === "daily") {
+    const reportDate = sp.get("date") ?? undefined;
+    const { buffer, filename } = await buildDailyOperationsExcel(reportDate);
+    return new NextResponse(new Uint8Array(buffer), {
+      headers: {
+        "Content-Type":
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="${filename}"`,
       },
     });
   }

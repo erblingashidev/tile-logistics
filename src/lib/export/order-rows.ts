@@ -1,4 +1,5 @@
 import { normalizeOrderUnit } from "@/lib/constants";
+import { formatExportDateTime } from "@/lib/export/report-dates";
 import { formatDeliverySchedule } from "@/lib/delivery-schedule";
 import type { listOrders } from "@/lib/services/orders";
 
@@ -16,9 +17,18 @@ function formatDimensions(item: ExportOrder["items"][number]) {
   return base;
 }
 
+function proofAt(order: ExportOrder, phase: string) {
+  return formatExportDateTime(
+    order.proofs?.find((p) => p.phase === phase)?.capturedAt
+  );
+}
+
 function orderHeaderFields(order: ExportOrder) {
   const assignment = order.assignment;
   const picker = order.staff?.picker;
+  const groupLeader =
+    order.staff?.groupLeader ??
+    order.staff?.staff?.find((s) => s.role === "group_leader");
   const driver =
     order.staff?.driver?.employeeName ?? assignment?.driverName ?? "";
 
@@ -47,12 +57,19 @@ function orderHeaderFields(order: ExportOrder) {
     "Load notes":
       "loadNotes" in order ? (order.loadNotes ?? "") : "",
     Notes: order.notes ?? "",
+    "Group leader": groupLeader?.employeeName ?? "",
+    "Leader assigned at": formatExportDateTime(groupLeader?.assignedAt),
     Picker: picker?.employeeName ?? "",
+    "Picker assigned at": formatExportDateTime(picker?.assignedAt),
     Driver: driver,
     Vehicle: assignment?.vehicleName ?? "",
     "Plate number": assignment?.plateNumber ?? "",
     "Delivery round": assignment?.deliveryRound ?? "",
-    "Truck assigned at": assignment?.assignedAt ?? "",
+    "Truck assigned at": formatExportDateTime(assignment?.assignedAt),
+    "Prepared at": proofAt(order, "prepared"),
+    "Loaded at": proofAt(order, "loaded"),
+    "Hit the road at": proofAt(order, "departed"),
+    "Delivered at": proofAt(order, "delivered"),
     "Proof steps completed": order.proofs
       ?.map((p) => p.phase)
       .join(", ") ?? "",

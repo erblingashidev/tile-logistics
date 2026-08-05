@@ -390,7 +390,7 @@ export async function listOrders(filters?: {
         return {
           ...order,
           assignment: null,
-          staff: { staff: [], picker: null, driver: null },
+          staff: { staff: [], picker: null, driver: null, groupLeader: null },
           proofs: [],
           deliveryStage,
           deliveryStageLabel: ORDER_STAGE_LABELS[deliveryStage],
