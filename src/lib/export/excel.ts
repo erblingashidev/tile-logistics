@@ -14,6 +14,15 @@ import {
   type ExportGroupBy,
 } from "@/lib/export/excel-format";
 import {
+  addLegendSheet,
+  addStyledDataSheet,
+  addSummarySheet,
+  classifyOrderExportRow,
+  classifyPickerExportRow,
+  createStyledWorkbook,
+  workbookToBuffer,
+} from "@/lib/export/excel-styled";
+import {
   buildDailyOrderRows,
   buildOrdersByPickerRows,
   buildPickerPerformanceRows,
@@ -216,7 +225,7 @@ export async function buildPartialDeliveriesExcel(filters: {
   return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
 }
 
-/** Daily operations Excel — date in filename. */
+/** Daily operations Excel — date in filename, color-coded rows. */
 export async function buildDailyOperationsExcel(reportDate?: string) {
   const { reportDate: date, orders, stats } =
     await getDailyReportOrders(reportDate);
@@ -240,59 +249,67 @@ export async function buildDailyOperationsExcel(reportDate?: string) {
     );
   });
 
-  const wb = XLSX.utils.book_new();
+  const wb = createStyledWorkbook();
   const usedNames = new Set<string>();
 
-  XLSX.utils.book_append_sheet(
+  addSummarySheet(
     wb,
-    sheetFromRows(buildReportSummaryRows(date, stats, generatedAt)),
-    sanitizeSheetName("Summary", usedNames)
+    sanitizeSheetName("Summary", usedNames),
+    buildReportSummaryRows(date, stats, generatedAt)
   );
 
-  XLSX.utils.book_append_sheet(
+  addStyledDataSheet(
     wb,
-    sheetFromRows(buildDailyOrderRows(orders, date)),
-    sanitizeSheetName("Orders", usedNames)
+    sanitizeSheetName("Orders", usedNames),
+    buildDailyOrderRows(orders, date),
+    { rowStatus: classifyOrderExportRow, highlightColumn: "Pipeline" }
   );
 
-  XLSX.utils.book_append_sheet(
+  addStyledDataSheet(
     wb,
-    sheetFromRows(buildPickerPerformanceRows(orders, date)),
-    sanitizeSheetName("Pickers", usedNames)
+    sanitizeSheetName("Pickers", usedNames),
+    buildPickerPerformanceRows(orders, date),
+    { rowStatus: classifyPickerExportRow }
   );
 
-  XLSX.utils.book_append_sheet(
+  addStyledDataSheet(
     wb,
-    sheetFromRows(buildOrdersByPickerRows(orders, date)),
-    sanitizeSheetName("Orders by picker", usedNames)
+    sanitizeSheetName("Orders by picker", usedNames),
+    buildOrdersByPickerRows(orders, date),
+    { rowStatus: classifyOrderExportRow, highlightColumn: "Pipeline" }
   );
 
   if (waitingOrders.length > 0) {
-    XLSX.utils.book_append_sheet(
+    addStyledDataSheet(
       wb,
-      sheetFromRows(buildDailyOrderRows(waitingOrders, date)),
-      sanitizeSheetName("Waiting", usedNames)
+      sanitizeSheetName("Waiting", usedNames),
+      buildDailyOrderRows(waitingOrders, date),
+      { rowStatus: classifyOrderExportRow, highlightColumn: "Pipeline" }
     );
   }
 
   if (completedTodayOrders.length > 0) {
-    XLSX.utils.book_append_sheet(
+    addStyledDataSheet(
       wb,
-      sheetFromRows(buildDailyOrderRows(completedTodayOrders, date)),
-      sanitizeSheetName("Completed today", usedNames)
+      sanitizeSheetName("Completed today", usedNames),
+      buildDailyOrderRows(completedTodayOrders, date),
+      { rowStatus: classifyOrderExportRow, highlightColumn: "Pipeline" }
     );
   }
 
   if (delayedOrders.length > 0) {
-    XLSX.utils.book_append_sheet(
+    addStyledDataSheet(
       wb,
-      sheetFromRows(buildDailyOrderRows(delayedOrders, date)),
-      sanitizeSheetName("Delayed", usedNames)
+      sanitizeSheetName("Delayed", usedNames),
+      buildDailyOrderRows(delayedOrders, date),
+      { rowStatus: classifyOrderExportRow, highlightColumn: "Pipeline" }
     );
   }
 
+  addLegendSheet(wb);
+
   return {
-    buffer: XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer,
+    buffer: await workbookToBuffer(wb),
     filename: `AGIMI-operations-${date}.xlsx`,
     title: `AGIMI Operations ${date}`,
     orderCount: orders.length,

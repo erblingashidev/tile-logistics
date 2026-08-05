@@ -69,6 +69,25 @@ function proofRawAt(order: ExportOrder, phase: string): string {
   return order.proofs?.find((p) => p.phase === phase)?.capturedAt ?? "";
 }
 
+export function orderPipelineLabel(
+  order: ExportOrder,
+  reportDate: string
+): string {
+  const workDate = orderWorkDate(order);
+  const complete = isComplete(order);
+  const partial = isPartial(order);
+  const delayed =
+    !complete && workDate < reportDate && order.status !== "cancelled";
+
+  if (order.status === "cancelled") return "Cancelled";
+  if (complete) return "Completed";
+  if (partial) return "Partial";
+  if (delayed) return "Delayed";
+  if (order.status === "in_transit") return "In transit";
+  if (order.status === "assigned") return "Waiting";
+  return "Pending";
+}
+
 function orderDetailRow(order: ExportOrder, reportDate: string) {
   const workDate = orderWorkDate(order);
   const leader = staffMember(order, "group_leader");
@@ -85,6 +104,7 @@ function orderDetailRow(order: ExportOrder, reportDate: string) {
     (order.status === "delivered" ? order.updatedAt : "");
 
   return {
+    Pipeline: orderPipelineLabel(order, reportDate),
     Picker: picker.name || "—",
     "Group leader": leader.name || "—",
     Invoice: order.invoiceNumber,
