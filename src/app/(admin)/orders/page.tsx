@@ -1116,7 +1116,7 @@ export default function OrdersPage() {
   }
 
   return (
-    <AppShell title="Orders">
+    <AppShell title="Orders" contentMaxWidth="wide">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <Button onClick={openNewOrder}>New order</Button>
@@ -2186,7 +2186,7 @@ export default function OrdersPage() {
             )}
           </div>
         </div>
-        <div className="max-h-[min(72vh,880px)] overflow-y-auto overscroll-y-contain bg-zinc-50/40 p-3 sm:p-4">
+        <div className="bg-zinc-50/40 p-3 sm:p-4">
           {loading && orders.length === 0 ? (
             <LoadingState title="Loading orders…" />
           ) : visibleOrders.length === 0 ? (

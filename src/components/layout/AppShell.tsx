@@ -125,11 +125,20 @@ export function AppShell({
   children,
   title,
   description,
+  contentMaxWidth = "default",
 }: {
   children: React.ReactNode;
   title?: string;
   description?: string;
+  /** default = 1280px; wide = 1680px; full = use full viewport width */
+  contentMaxWidth?: "default" | "wide" | "full";
 }) {
+  const mainMaxWidthClass =
+    contentMaxWidth === "full"
+      ? "max-w-none"
+      : contentMaxWidth === "wide"
+        ? "max-w-[min(100%,1680px)]"
+        : "max-w-7xl";
   const pathname = usePathname();
   const router = useRouter();
   const [userName, setUserName] = useState<string | null>(null);
@@ -283,7 +292,9 @@ export function AppShell({
             </div>
           )}
 
-          <main className="safe-bottom mx-auto w-full max-w-7xl flex-1 px-4 py-5 sm:px-6 lg:px-8 lg:py-6">
+          <main
+            className={`safe-bottom mx-auto w-full flex-1 px-4 py-5 sm:px-6 lg:px-8 lg:py-6 ${mainMaxWidthClass}`}
+          >
             {children}
           </main>
         </div>
