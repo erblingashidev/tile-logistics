@@ -699,6 +699,61 @@ export async function scanInvoiceWatchRoot(
   });
 }
 
+/** List DD.MM.YYYY subfolders under the invoice watch root. */
+export function listInvoiceDateFolders(rootDir: string): {
+  ok: boolean;
+  folders: string[];
+  root: string;
+  error?: string;
+} {
+  const absoluteRoot = path.resolve(rootDir);
+  if (!fs.existsSync(absoluteRoot)) {
+    return {
+      ok: false,
+      folders: [],
+      root: absoluteRoot,
+      error: `Folder not found: ${absoluteRoot}`,
+    };
+  }
+
+  const rootName = path.basename(absoluteRoot);
+  if (isDateFolderName(rootName)) {
+    return { ok: true, folders: [rootName], root: absoluteRoot };
+  }
+
+  try {
+    const entries = fs.readdirSync(absoluteRoot, { withFileTypes: true });
+    const folders = entries
+      .filter((entry) => entry.isDirectory() && isDateFolderName(entry.name))
+      .map((entry) => entry.name)
+      .sort((a, b) => {
+        const isoA = folderDateLabelToIso(a) ?? "";
+        const isoB = folderDateLabelToIso(b) ?? "";
+        return isoB.localeCompare(isoA);
+      });
+    return { ok: true, folders, root: absoluteRoot };
+  } catch (err) {
+    return {
+      ok: false,
+      folders: [],
+      root: absoluteRoot,
+      error: err instanceof Error ? err.message : "Cannot read folder",
+    };
+  }
+}
+
+/** Resolve base watch path + optional date folder label (e.g. 6.8.2026). */
+export function resolveInvoiceScanPath(
+  baseRoot: string,
+  folderDate?: string | null
+): string {
+  const base = path.resolve(baseRoot);
+  const label = folderDate?.trim();
+  if (!label) return base;
+  if (path.isAbsolute(label)) return path.resolve(label);
+  return path.join(base, label);
+}
+
 /** Mark pending queue rows as approved when an order is created outside the Approve button. */
 export async function linkImportQueueToOrder(options: {
   orderId: number;

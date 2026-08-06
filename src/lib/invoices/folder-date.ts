@@ -3,6 +3,13 @@ export function isDateFolderName(name: string): boolean {
   return /^\d{1,2}\.\d{1,2}\.\d{4}$/.test(name.trim());
 }
 
+export function todayFolderDateLabel(asOf = new Date()): string {
+  const day = asOf.getDate();
+  const month = asOf.getMonth() + 1;
+  const year = asOf.getFullYear();
+  return `${day}.${month}.${year}`;
+}
+
 export function folderDateLabelToIso(label: string): string | null {
   const match = label.trim().match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
   if (!match) return null;

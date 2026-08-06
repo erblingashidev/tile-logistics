@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Badge, Button, CollapsibleCard, Input, SegmentedControl } from "@/components/ui";
+import { Alert, Badge, Button, CollapsibleCard, Input, SegmentedControl, Select } from "@/components/ui";
+import { todayFolderDateLabel } from "@/lib/invoices/folder-date";
 import {
   agimiDocumentKindLabel,
   type AgimiDocumentKind,
@@ -62,6 +63,10 @@ export function InvoiceImportQueuePanel({
   const [pendingCount, setPendingCount] = useState(0);
   const [rejectedCount, setRejectedCount] = useState(0);
   const [configured, setConfigured] = useState(false);
+  const [scanAvailable, setScanAvailable] = useState(false);
+  const [watchRoot, setWatchRoot] = useState("");
+  const [dateFolders, setDateFolders] = useState<string[]>([]);
+  const [folderDate, setFolderDate] = useState(() => todayFolderDateLabel());
   const [busyId, setBusyId] = useState<number | null>(null);
   const [scanning, setScanning] = useState(false);
   const [invoiceOverrides, setInvoiceOverrides] = useState<Record<number, string>>(
@@ -77,9 +82,23 @@ export function InvoiceImportQueuePanel({
     if (!res.ok) return;
     const data = await res.json();
     setItems(data.items ?? []);
-    setPendingCount(data.pendingCount ?? 0);
-    setRejectedCount(data.rejectedCount ?? 0);
-    setConfigured(Boolean(data.configured));
+      setPendingCount(data.pendingCount ?? 0);
+      setRejectedCount(data.rejectedCount ?? 0);
+      setConfigured(Boolean(data.configured));
+      setScanAvailable(Boolean(data.scanAvailable));
+      setWatchRoot(typeof data.watchRoot === "string" ? data.watchRoot : "");
+      const folders = Array.isArray(data.dateFolders)
+        ? (data.dateFolders as string[])
+        : [];
+      setDateFolders(folders);
+      if (folders.length > 0) {
+        setFolderDate((current) =>
+          folders.includes(current) ? current : folders[0]!
+        );
+      }
+      if (data.folderListError && !data.scanAvailable) {
+        setScanHint(String(data.folderListError));
+      }
   }, [tab]);
 
   useEffect(() => {
@@ -90,7 +109,18 @@ export function InvoiceImportQueuePanel({
 
   async function scanFolder() {
     if (!configured) {
-      onError("Invoice folder scan is not available in this environment.");
+      onError("Invoice folder is not configured on the server.");
+      return;
+    }
+    if (!scanAvailable) {
+      onError(
+        scanHint ||
+          "Scan from the website is not available here. Run npm run watch:invoices:turso on the HP PC, then approve imports below."
+      );
+      return;
+    }
+    if (!folderDate.trim()) {
+      onError("Enter a date folder name, e.g. 6.8.2026");
       return;
     }
     setScanning(true);
@@ -101,7 +131,7 @@ export function InvoiceImportQueuePanel({
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ folderDate: folderDate.trim() }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -116,7 +146,7 @@ export function InvoiceImportQueuePanel({
       }
       if ((data.queued as number) > 0) {
         onWarning(
-          `Queued ${data.queued} invoice(s) from ${data.scanned} file(s) scanned`
+          `Queued ${data.queued} invoice(s) from folder ${folderDate.trim()} (${data.scanned} file(s) scanned)`
         );
       } else if ((data.scanned as number) > 0 && (data.skipped as number) > 0) {
         onWarning(
@@ -201,15 +231,52 @@ export function InvoiceImportQueuePanel({
       }
     >
       {configured ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={scanning}
-            onClick={() => void scanFolder()}
-          >
-            {scanning ? "Scanning…" : "Scan folder"}
-          </Button>
+        <div className="space-y-3">
+          {watchRoot ? (
+            <p className="text-xs text-zinc-500">
+              Invoice folder: <span className="font-mono">{watchRoot}</span>
+            </p>
+          ) : null}
+          <div className="flex flex-wrap items-end gap-3">
+            {dateFolders.length > 0 ? (
+              <Select
+                label="Date folder"
+                value={folderDate}
+                onChange={(e) => setFolderDate(e.target.value)}
+                className="min-w-[160px]"
+              >
+                {dateFolders.map((folder) => (
+                  <option key={folder} value={folder}>
+                    {folder}
+                  </option>
+                ))}
+              </Select>
+            ) : (
+              <Input
+                label="Date folder"
+                value={folderDate}
+                onChange={(e) => setFolderDate(e.target.value)}
+                placeholder="6.8.2026"
+                className="min-w-[160px]"
+              />
+            )}
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={scanning || !scanAvailable}
+              onClick={() => void scanFolder()}
+            >
+              {scanning ? "Scanning…" : "Scan folder"}
+            </Button>
+          </div>
+          {!scanAvailable ? (
+            <p className="text-xs text-zinc-600">
+              Online approval works from any device. To load new files into the
+              queue, run{" "}
+              <span className="font-mono">npm run watch:invoices:turso</span> on
+              the HP PC (or scan here when the app runs on that same machine).
+            </p>
+          ) : null}
         </div>
       ) : null}
 

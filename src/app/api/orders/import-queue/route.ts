@@ -1,20 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSessionNoSalesWrite } from "@/lib/auth/api-guard";
+import { isNetlify } from "@/lib/config/env";
+import { getInvoiceWatchRoot } from "@/lib/services/app-settings";
 import {
   listImportQueue,
+  listInvoiceDateFolders,
   pendingImportQueueCount,
   rejectedImportQueueCount,
+  resolveInvoiceScanPath,
   scanInvoiceWatchRoot,
 } from "@/lib/services/invoice-import-queue";
-import { getInvoiceWatchRoot } from "@/lib/services/app-settings";
-import { isNetlify } from "@/lib/config/env";
 
 export const runtime = "nodejs";
 
 function cloudScanBlocked(watchRoot: string): string | null {
   if (!isNetlify()) return null;
   if (/^[A-Za-z]:[\\/]/.test(watchRoot)) {
-    return "Folder scan is not available from this environment. Run the invoice import service on the workstation that hosts the watch folder.";
+    return "Folder scan runs on the HP PC where invoices are saved. Start npm run watch:invoices:turso there, then approve imports here.";
   }
   return null;
 }
@@ -32,6 +34,11 @@ export async function GET(request: NextRequest) {
       : "pending";
 
   const watchRoot = (await getInvoiceWatchRoot()) ?? "";
+  const cloudBlock = watchRoot ? cloudScanBlocked(watchRoot) : null;
+  const folderListing =
+    watchRoot && !cloudBlock
+      ? listInvoiceDateFolders(watchRoot)
+      : { ok: false, folders: [] as string[], root: watchRoot, error: cloudBlock ?? undefined };
 
   const [items, pendingCount, rejectedCount] = await Promise.all([
     listImportQueue(status),
@@ -45,6 +52,9 @@ export async function GET(request: NextRequest) {
     rejectedCount,
     watchRoot,
     configured: Boolean(watchRoot),
+    scanAvailable: Boolean(watchRoot && !cloudBlock),
+    dateFolders: folderListing.folders,
+    folderListError: folderListing.error,
   });
 }
 
@@ -52,14 +62,22 @@ export async function POST(request: NextRequest) {
   const auth = await requireApiSessionNoSalesWrite(request.method);
   if (!auth.ok) return auth.response;
 
-  let watchRoot = (await getInvoiceWatchRoot()) ?? "";
+  const baseRoot = (await getInvoiceWatchRoot()) ?? "";
+  let watchRoot = baseRoot;
+  let folderDate: string | undefined;
+
   try {
     const body = await request.json();
+    if (typeof body.folderDate === "string" && body.folderDate.trim()) {
+      folderDate = body.folderDate.trim();
+    }
     if (typeof body.watchRoot === "string" && body.watchRoot.trim()) {
       watchRoot = body.watchRoot.trim();
+    } else if (baseRoot && folderDate) {
+      watchRoot = resolveInvoiceScanPath(baseRoot, folderDate);
     }
   } catch {
-    // empty body is fine
+    // empty body scans the full watch root
   }
 
   if (!watchRoot) {
@@ -80,7 +98,7 @@ export async function POST(request: NextRequest) {
         queued: 0,
         skipped: 0,
         errors: [],
-      hint: cloudBlock,
+        hint: cloudBlock,
       },
       { status: 422 }
     );
@@ -92,6 +110,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     ...result,
     watchRoot,
+    folderDate: folderDate ?? null,
     configured: true,
     pendingCount: items.length,
   });
