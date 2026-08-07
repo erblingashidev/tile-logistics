@@ -22,6 +22,7 @@ import {
   resolveProductByAlias,
   getLearnedUnitForItem,
 } from "@/lib/services/product-learning";
+import { isInvoiceAdjustmentLine } from "@/lib/order-lines/classification";
 
 export type ProductSource =
   | "order"
@@ -370,6 +371,7 @@ export async function registerProductsFromOrder(orderId: number) {
 
   const registered: ProductRecord[] = [];
   for (const item of items) {
+    if (isInvoiceAdjustmentLine(item)) continue;
     const unit = normalizeOrderUnit(item.unit);
     const observed = observedPalletStats(item);
     const unitWeightKg =
@@ -539,7 +541,9 @@ export async function resolveOrderItemCatalog(item: {
   productId?: number;
   productEan?: string;
   productName?: string;
+  lineKind?: string;
 }): Promise<ProductPalletSpec | null> {
+  if (isInvoiceAdjustmentLine(item)) return null;
   if (item.productId) {
     return palletSpecFromProduct(await getProduct(item.productId));
   }

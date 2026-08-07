@@ -5,6 +5,10 @@ import {
 } from "@/lib/calculations";
 import { normalizeOrderUnit } from "@/lib/constants";
 import type { OrderItemPayload, OrderPayload } from "@/lib/services/orders";
+import {
+  shouldSkipInvalidProductRow,
+  withLineKind,
+} from "@/lib/order-lines/classification";
 
 export interface ParsedAgimiInvoice {
   documentKind: AgimiDocumentKind;
@@ -1183,6 +1187,19 @@ interface ParsedAgimiTableRow {
   name: string;
   quantity: number;
   unitToken: string;
+  linePrice?: number;
+}
+
+function parseLineTotalFromPriceTail(tail: string): number | null {
+  const matches = [
+    ...tail.matchAll(/-?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?|-?\d+(?:[.,]\d{1,2})?/g),
+  ];
+  if (matches.length === 0) return null;
+  return parseLocaleNumber(matches[matches.length - 1][0]);
+}
+
+function shouldSkipDeductionProduct(name: string, quantity: number): boolean {
+  return shouldSkipInvalidProductRow(name, quantity);
 }
 
 function normalizeAgimiUnitToken(raw: string): string {
@@ -1196,12 +1213,6 @@ function normalizeAgimiUnitToken(raw: string): string {
     return "METER";
   }
   return raw.toUpperCase();
-}
-
-function shouldSkipDeductionProduct(name: string, quantity: number): boolean {
-  if (/FURNIZIM\s+ME\s+KERAMIK/i.test(name)) return true;
-  if (quantity <= 0) return true;
-  return false;
 }
 
 /** Pro-Data PDF rows glued on one line: 1130002001QUEENS NATURAL 20X12055.20M2… */
@@ -1230,12 +1241,17 @@ function parseProDataGluedInlineRowLine(
     );
     const quantity = parseAgimiLineQuantity(tileSizeGluedQty[3], "M2");
     if (!name || shouldSkipDeductionProduct(name, quantity)) return null;
+    const priceTail = rest.slice(
+      tileSizeGluedQty.index! + tileSizeGluedQty[0].length
+    );
+    const linePrice = parseLineTotalFromPriceTail(priceTail);
     return {
       lineNumber,
       ean,
       name,
       quantity,
       unitToken: "M2",
+      ...(linePrice != null ? { linePrice } : {}),
     };
   }
 
@@ -1249,12 +1265,16 @@ function parseProDataGluedInlineRowLine(
   const name = sanitizeRowProductName(match[1].trim());
   if (!name || shouldSkipDeductionProduct(name, quantity)) return null;
 
+  const priceTail = rest.slice(match.index! + match[0].length);
+  const linePrice = parseLineTotalFromPriceTail(priceTail);
+
   return {
     lineNumber,
     ean,
     name,
     quantity,
     unitToken,
+    ...(linePrice != null ? { linePrice } : {}),
   };
 }
 
@@ -1282,6 +1302,9 @@ function parseAgimiTableRowLine(line: string): Omit<ParsedAgimiTableRow, "lineIn
   }
 
   const unitToken = normalizeAgimiUnitToken(tail[2]);
+  const cleaned = trimmed.replace(/\s+/g, " ");
+  const priceTail = cleaned.slice(tail.index! + tail[0].length);
+  const linePrice = parseLineTotalFromPriceTail(priceTail);
 
   return {
     lineNumber: head.lineNumber,
@@ -1289,6 +1312,7 @@ function parseAgimiTableRowLine(line: string): Omit<ParsedAgimiTableRow, "lineIn
     name: sanitizeRowProductName(name),
     quantity: parseAgimiLineQuantity(tail[1], unitToken),
     unitToken,
+    ...(linePrice != null ? { linePrice } : {}),
   };
 }
 
@@ -1323,9 +1347,10 @@ function tableRowToOrderItem(row: ParsedAgimiTableRow): OrderItemPayload {
   const productName = row.name.replace(/\s+/g, " ").trim();
   const productEan = row.ean?.trim() || undefined;
   const tileSize = parseTileSizeFromName(productName);
+  const linePrice = row.linePrice;
 
   if (row.unitToken === "M2") {
-    return {
+    return withLineKind({
       unit: "m2",
       productName,
       productEan,
@@ -1333,33 +1358,37 @@ function tableRowToOrderItem(row: ParsedAgimiTableRow): OrderItemPayload {
         ? { tileWidthCm: tileSize.w, tileHeightCm: tileSize.h }
         : {}),
       quantityM2: row.quantity,
-    };
+      ...(linePrice != null ? { linePrice } : {}),
+    });
   }
 
   if (row.unitToken === "KG") {
-    return {
+    return withLineKind({
       unit: "kg",
       productName,
       productEan,
       weightKg: row.quantity,
-    };
+      ...(linePrice != null ? { linePrice } : {}),
+    });
   }
 
   if (row.unitToken === "METER") {
-    return {
+    return withLineKind({
       unit: "meter",
       productName,
       productEan,
       lengthM: row.quantity,
-    };
+      ...(linePrice != null ? { linePrice } : {}),
+    });
   }
 
-  return {
+  return withLineKind({
     unit: "piece",
     productName,
     productEan,
     manualPieces: Math.round(row.quantity * 100) / 100,
-  };
+    ...(linePrice != null ? { linePrice } : {}),
+  });
 }
 
 const AGIMI_COMPACT_ROW_HEAD_RE = /^(\d{1,2})(1300\d{5,8})$/;

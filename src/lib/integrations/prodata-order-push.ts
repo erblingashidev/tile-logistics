@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { dbAll } from "@/lib/db/query";
 import { orderItems, orders } from "@/lib/db/schema";
+import { isInvoiceAdjustmentLine } from "@/lib/order-lines/classification";
 import { logActivity } from "@/lib/logger";
 import {
   postProDataBulkOrder,
@@ -41,6 +42,8 @@ export async function pushOrderToProData(
       .select({
         ean: orderItems.productEan,
         quantityM2: orderItems.quantityM2,
+        lineKind: orderItems.lineKind,
+        productName: orderItems.productName,
       })
       .from(orderItems)
       .where(eq(orderItems.orderId, orderId))
@@ -48,6 +51,7 @@ export async function pushOrderToProData(
 
   const items: ProDataBulkOrderItem[] = [];
   for (const line of lines) {
+    if (isInvoiceAdjustmentLine(line)) continue;
     const code = line.ean?.trim();
     const qty = line.quantityM2 ?? 0;
     if (!code || qty <= 0) continue;

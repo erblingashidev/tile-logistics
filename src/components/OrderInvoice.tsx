@@ -15,6 +15,7 @@ import {
   orderStageBadgeTone,
   type OrderDisplayStage,
 } from "@/lib/order-display";
+import { isInvoiceAdjustmentLine } from "@/lib/order-lines/classification";
 
 export interface OrderInvoiceItem {
   unit?: string | null;
@@ -31,6 +32,8 @@ export interface OrderInvoiceItem {
   tileThicknessCm?: number | null;
   calculatedPieces?: number | null;
   calculatedPallets?: number | null;
+  lineKind?: string | null;
+  linePrice?: number | null;
 }
 
 export interface OrderInvoiceData {
@@ -300,7 +303,12 @@ export function OrderInvoice({ order }: { order: OrderInvoiceData }) {
               </tr>
             ) : (
               order.items.map((item, i) => (
-                <tr key={i} className="border-b border-zinc-100">
+                <tr
+                  key={i}
+                  className={`border-b border-zinc-100 ${
+                    isInvoiceAdjustmentLine(item) ? "bg-amber-50/60" : ""
+                  }`}
+                >
                   <td className="py-3 pr-3 text-zinc-400">{i + 1}</td>
                   <td className="py-3 pr-3 font-mono text-xs text-zinc-600">
                     {item.productEan?.trim() || "—"}
@@ -310,27 +318,43 @@ export function OrderInvoice({ order }: { order: OrderInvoiceData }) {
                       {itemDescription(item)}
                     </p>
                     <p className="text-xs capitalize text-zinc-400">
-                      {ORDER_UNIT_LABELS[normalizeOrderUnit(item.unit ?? item.productType)]}
+                      {isInvoiceAdjustmentLine(item)
+                        ? "Prepaid credit (invoice only)"
+                        : ORDER_UNIT_LABELS[normalizeOrderUnit(item.unit ?? item.productType)]}
                     </p>
                   </td>
                   <td className="py-3 pr-3 text-zinc-600">
-                    {itemDimensions(item)}
+                    {isInvoiceAdjustmentLine(item) ? "—" : itemDimensions(item)}
                   </td>
                   <td className="py-3 pr-3 text-right tabular-nums text-zinc-900">
                     {normalizeOrderUnit(item.unit ?? item.productType) === "m2"
                       ? (item.quantityM2 ?? 0).toFixed(2)
-                      : "—"}
+                      : normalizeOrderUnit(item.unit ?? item.productType) === "kg"
+                        ? item.weightKg != null
+                          ? `${item.weightKg.toFixed(1)} kg`
+                          : "—"
+                        : normalizeOrderUnit(item.unit ?? item.productType) === "piece"
+                          ? (item.pieceCount ?? "—")
+                          : normalizeOrderUnit(item.unit ?? item.productType) === "meter"
+                            ? item.lengthM != null
+                              ? `${item.lengthM} m`
+                              : "—"
+                            : "—"}
                   </td>
                   <td className="py-3 pr-3 text-right tabular-nums text-zinc-900">
-                    {item.pieceCount ?? "—"}
+                    {isInvoiceAdjustmentLine(item) ? "—" : (item.pieceCount ?? "—")}
                   </td>
                   <td className="py-3 pr-3 text-right tabular-nums text-zinc-900">
-                    {item.palletCount ?? "—"}
+                    {isInvoiceAdjustmentLine(item) ? "—" : (item.palletCount ?? "—")}
                   </td>
                   <td className="py-3 text-right tabular-nums text-zinc-900">
-                    {item.weightKg != null
-                      ? `${item.weightKg.toFixed(1)} kg`
-                      : "—"}
+                    {isInvoiceAdjustmentLine(item)
+                      ? item.linePrice != null
+                        ? `${item.linePrice.toFixed(2)} €`
+                        : "—"
+                      : item.weightKg != null
+                        ? `${item.weightKg.toFixed(1)} kg`
+                        : "—"}
                   </td>
                 </tr>
               ))

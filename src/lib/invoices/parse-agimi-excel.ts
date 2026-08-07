@@ -2,6 +2,10 @@ import * as XLSX from "xlsx";
 import { resolveLocation } from "@/lib/locations";
 import type { OrderItemPayload } from "@/lib/services/orders";
 import {
+  shouldSkipInvalidProductRow,
+  withLineKind,
+} from "@/lib/order-lines/classification";
+import {
   type AgimiDocumentKind,
   type ParsedAgimiInvoice,
   documentKindFromInvoiceNumber,
@@ -47,9 +51,7 @@ function parseNumber(value: unknown): number {
 }
 
 function shouldSkipDeductionProduct(name: string, quantity: number): boolean {
-  if (/FURNIZIM\s+ME\s+KERAMIK/i.test(name)) return true;
-  if (quantity <= 0) return true;
-  return false;
+  return shouldSkipInvalidProductRow(name, quantity);
 }
 
 function parseTileSizeFromName(name: string): { w: number; h: number } | null {
@@ -83,26 +85,26 @@ function rowToOrderItem(row: {
   const unit = normalizeUnitToken(row.unitToken);
 
   if (unit === "M2") {
-    return {
+    return withLineKind({
       unit: "m2",
       productName,
       productEan,
       ...(tileSize ? { tileWidthCm: tileSize.w, tileHeightCm: tileSize.h } : {}),
       quantityM2: row.quantity,
-    };
+    });
   }
   if (unit === "KG") {
-    return { unit: "kg", productName, productEan, weightKg: row.quantity };
+    return withLineKind({ unit: "kg", productName, productEan, weightKg: row.quantity });
   }
   if (unit === "METER") {
-    return { unit: "meter", productName, productEan, lengthM: row.quantity };
+    return withLineKind({ unit: "meter", productName, productEan, lengthM: row.quantity });
   }
-  return {
+  return withLineKind({
     unit: "piece",
     productName,
     productEan,
     manualPieces: Math.round(row.quantity * 100) / 100,
-  };
+  });
 }
 
 type ColumnMap = {

@@ -598,6 +598,21 @@ async function runMigrations(client: Client) {
     "length_m REAL",
     orderItemCols3
   );
+  const orderItemCols4 = await tableColumns(client, "order_items");
+  await addColumnIfMissing(
+    client,
+    "order_items",
+    "line_kind",
+    "line_kind TEXT NOT NULL DEFAULT 'product'",
+    orderItemCols4
+  );
+  await addColumnIfMissing(
+    client,
+    "order_items",
+    "line_price",
+    "line_price REAL",
+    orderItemCols4
+  );
 
   await client.execute(
     "UPDATE order_items SET product_type = 'm2' WHERE product_type = 'tile'"

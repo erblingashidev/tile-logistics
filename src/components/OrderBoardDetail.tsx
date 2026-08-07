@@ -7,6 +7,7 @@ import {
   tileSpecOptionsForItem,
 } from "@/lib/calculations";
 import { getTilePalletSpec, normalizeOrderUnit } from "@/lib/constants";
+import { isInvoiceAdjustmentLine } from "@/lib/order-lines/classification";
 import {
   deliveryScheduleBadgeTone,
   formatDeliverySchedule,
@@ -143,14 +144,17 @@ export function OrderBoardDetail({ order }: { order: OrderListCardOrder }) {
           <ul className="divide-y divide-zinc-100 rounded-lg border border-zinc-200 bg-white">
             {order.items.map((item, idx) => {
               const unit = normalizeOrderUnit(item.unit);
-              const lineWeight =
-                unit === "m2" && (item.weightKg ?? 0) > 0
+              const adjustment = isInvoiceAdjustmentLine(item);
+              const lineWeight = adjustment
+                ? 0
+                : unit === "m2" && (item.weightKg ?? 0) > 0
                   ? item.weightKg!
                   : unit === "kg"
                     ? item.weightKg ?? 0
                     : 0;
-              const lineKgPerM2 =
-                unit === "m2" &&
+              const lineKgPerM2 = adjustment
+                ? 0
+                : unit === "m2" &&
                 (item.quantityM2 ?? 0) > 0 &&
                 lineWeight > 0
                   ? lineWeight / (item.quantityM2 ?? 1)
@@ -182,12 +186,17 @@ export function OrderBoardDetail({ order }: { order: OrderListCardOrder }) {
               return (
               <li
                 key={idx}
-                className="flex flex-wrap items-baseline justify-between gap-2 px-3 py-2"
+                className={`flex flex-wrap items-baseline justify-between gap-2 px-3 py-2 ${
+                  adjustment ? "bg-amber-50/70" : ""
+                }`}
               >
                 <div className="min-w-0 flex-1">
                   <p className="font-medium text-zinc-900">
                     {item.productName?.trim() || "Product"}
                   </p>
+                  {adjustment && (
+                    <p className="text-xs text-amber-800">Prepaid credit (invoice only)</p>
+                  )}
                   {item.productEan && (
                     <p className="text-xs text-zinc-500">{item.productEan}</p>
                   )}
@@ -207,7 +216,10 @@ export function OrderBoardDetail({ order }: { order: OrderListCardOrder }) {
                 </div>
                 <div className="shrink-0 text-right tabular-nums text-zinc-600">
                   <p>{formatItemQty(item)}</p>
-                  {lineWeight > 0 && (
+                  {adjustment && item.linePrice != null && (
+                    <p className="text-xs text-zinc-500">{item.linePrice.toFixed(2)} €</p>
+                  )}
+                  {!adjustment && lineWeight > 0 && (
                     <p className="text-xs text-zinc-500">
                       ~{lineWeight.toFixed(0)} kg
                     </p>

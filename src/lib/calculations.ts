@@ -13,6 +13,11 @@ import {
   isUsablePalletSpec,
   type ProductPalletSpec,
 } from "./product-pallet-spec";
+import {
+  isInvoiceAdjustmentLine,
+  isLogisticsLine,
+  type OrderLineKind,
+} from "./order-lines/classification";
 
 export type { ProductPalletSpec };
 
@@ -205,6 +210,8 @@ export interface OrderItemInput {
   lengthM?: number;
   manualPallets?: number;
   manualPieces?: number;
+  lineKind?: OrderLineKind;
+  linePrice?: number;
   /** When linked to catalog with pallet specs, orders use these for weight/space. */
   catalogPallet?: ProductPalletSpec | null;
 }
@@ -307,6 +314,23 @@ export function formatOrderProductSummary(
 
 export function enrichOrderItem(item: OrderItemInput): EnrichedOrderItem {
   const unit = normalizeOrderUnit(item.unit);
+
+  if (isInvoiceAdjustmentLine(item)) {
+    return {
+      unit,
+      productName: item.productName?.trim() || null,
+      tileWidthCm: item.tileWidthCm ?? null,
+      tileHeightCm: item.tileHeightCm ?? null,
+      tileThicknessCm: item.tileThicknessCm ?? null,
+      quantityM2: unit === "m2" ? (item.quantityM2 ?? null) : null,
+      pieceCount: unit === "piece" ? (item.manualPieces ?? null) : null,
+      palletCount: null,
+      weightKg: unit === "kg" ? (item.weightKg ?? null) : null,
+      lengthM: unit === "meter" ? (item.lengthM ?? null) : null,
+      calculatedPieces: null,
+      calculatedPallets: null,
+    };
+  }
 
   if (unit === "m2") {
     const m2 = item.quantityM2 ?? 0;
@@ -438,6 +462,8 @@ export function calculateOrderTotals(items: OrderItemInput[]): OrderTotals {
   let totalTruckPalletSlots = 0;
 
   for (const item of items) {
+    if (!isLogisticsLine(item)) continue;
+
     const enriched = enrichOrderItem(item);
     const unit = normalizeOrderUnit(item.unit);
 

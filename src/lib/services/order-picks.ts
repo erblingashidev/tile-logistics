@@ -9,6 +9,7 @@ import {
 } from "@/lib/services/stock";
 import { submitDeliveryProof } from "@/lib/services/delivery-proofs";
 import type { EmployeeRole } from "@/lib/constants";
+import { isInvoiceAdjustmentLine } from "@/lib/order-lines/classification";
 
 export interface OrderPickLineInput {
   orderItemId?: number | null;
@@ -37,6 +38,7 @@ export async function getOrderPrepareLines(
         productEan: orderItems.productEan,
         productName: orderItems.productName,
         quantityM2: orderItems.quantityM2,
+        lineKind: orderItems.lineKind,
       })
       .from(orderItems)
       .where(eq(orderItems.orderId, orderId))
@@ -44,6 +46,7 @@ export async function getOrderPrepareLines(
 
   const lines: OrderPrepareLine[] = [];
   for (const item of items) {
+    if (isInvoiceAdjustmentLine(item)) continue;
     let productId: number | null = null;
     const ean = item.productEan?.trim();
     if (ean) {

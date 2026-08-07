@@ -12,6 +12,7 @@ import {
   stockBalances,
   stockMovements,
 } from "@/lib/db/schema";
+import { isInvoiceAdjustmentLine } from "@/lib/order-lines/classification";
 import { formatM2 } from "@/lib/calculations";
 import { logActivity } from "@/lib/logger";
 import {
@@ -77,6 +78,8 @@ export async function issueStockForOrder(
       .select({
         ean: orderItems.productEan,
         quantityM2: orderItems.quantityM2,
+        lineKind: orderItems.lineKind,
+        productName: orderItems.productName,
       })
       .from(orderItems)
       .where(eq(orderItems.orderId, orderId))
@@ -88,6 +91,10 @@ export async function issueStockForOrder(
   const shortfalls: string[] = [];
 
   for (const line of lines) {
+    if (isInvoiceAdjustmentLine(line)) {
+      skippedLines += 1;
+      continue;
+    }
     const ean = line.ean?.trim();
     const qty = line.quantityM2 ?? 0;
     if (!ean || qty <= 0) {

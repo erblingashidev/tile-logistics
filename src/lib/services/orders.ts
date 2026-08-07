@@ -31,6 +31,7 @@ import {
   resolveOrderItemCatalog,
 } from "@/lib/services/products";
 import { getLearnedUnitForItem } from "@/lib/services/product-learning";
+import { isInvoiceAdjustmentLine } from "@/lib/order-lines/classification";
 import { validateTruckForOrder } from "@/lib/dispatch/validate-assignment";
 import { normalizeScannedInvoiceNumber } from "@/lib/invoices/scan-utils";
 import {
@@ -100,6 +101,8 @@ export interface OrderItemPayload {
   lengthM?: number;
   manualPallets?: number;
   manualPieces?: number;
+  lineKind?: import("@/lib/order-lines/classification").OrderLineKind;
+  linePrice?: number;
 }
 
 export interface OrderPayload {
@@ -182,6 +185,7 @@ function resolveLocationFields(
 function enrichItems(items: OrderItemInput[]) {
   return items.map((item) => {
     const enriched = enrichOrderItem(item);
+    const lineKind = item.lineKind ?? (isInvoiceAdjustmentLine(item) ? "invoice_adjustment" : "product");
     return {
       unit: enriched.unit,
       productName: enriched.productName,
@@ -196,6 +200,8 @@ function enrichItems(items: OrderItemInput[]) {
       calculatedPallets: enriched.calculatedPallets,
       weightKg: enriched.weightKg,
       lengthM: enriched.lengthM,
+      lineKind,
+      linePrice: item.linePrice ?? null,
     };
   });
 }
@@ -210,7 +216,9 @@ async function itemsWithCatalog(
         learnedUnit && !item.unit ? { ...item, unit: learnedUnit } : item;
       return {
         ...withLearned,
-        catalogPallet: await resolveOrderItemCatalog(withLearned),
+        catalogPallet: isInvoiceAdjustmentLine(withLearned)
+          ? null
+          : await resolveOrderItemCatalog(withLearned),
       };
     })
   );
@@ -881,6 +889,8 @@ function mapStoredItemToPayload(item: {
   lengthM: number | null;
   palletCount: number | null;
   pieceCount: number | null;
+  lineKind?: string | null;
+  linePrice?: number | null;
 }): OrderItemPayload {
   const unit = normalizeOrderUnit(item.unit);
   const payload: OrderItemPayload = {
@@ -893,7 +903,14 @@ function mapStoredItemToPayload(item: {
     quantityM2: item.quantityM2 ?? undefined,
     weightKg: item.weightKg ?? undefined,
     lengthM: item.lengthM ?? undefined,
+    lineKind:
+      item.lineKind === "invoice_adjustment" ? "invoice_adjustment" : "product",
+    linePrice: item.linePrice ?? undefined,
   };
+
+  if (isInvoiceAdjustmentLine(payload)) {
+    return payload;
+  }
 
   if (unit === "m2") {
     const w = item.tileWidthCm ?? 60;

@@ -76,6 +76,10 @@ export const orderItems = sqliteTable("order_items", {
   calculatedPallets: real("calculated_pallets"),
   weightKg: real("weight_kg"),
   lengthM: real("length_m"),
+  /** product = shippable line; invoice_adjustment = prepaid credit evidence only */
+  lineKind: text("line_kind").notNull().default("product"),
+  /** Line total from invoice when parsed — informational only */
+  linePrice: real("line_price"),
 });
 
 export const vehicles = sqliteTable("vehicles", {
