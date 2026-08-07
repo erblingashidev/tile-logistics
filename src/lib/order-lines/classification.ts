@@ -1,11 +1,18 @@
 export type OrderLineKind = "product" | "invoice_adjustment";
 
+export const FURNIZIM_ADJUSTMENT_RE = /FURNIZIM\s+ME\s+(?:K|Q)?ERAMIK/i;
+
 /** Prepaid / tile-change credit lines on AGIMI invoices — not shipped products. */
 export function classifyOrderLineByName(name?: string | null): OrderLineKind {
-  if (/FURNIZIM\s+ME\s+KERAMIK/i.test(name ?? "")) {
+  if (FURNIZIM_ADJUSTMENT_RE.test(name ?? "")) {
     return "invoice_adjustment";
   }
   return "product";
+}
+
+export function findFurnizimProductName(text: string): string | null {
+  const match = text.match(/FURNIZIM\s+ME\s+(?:K|Q)?ERAMIK[A-ZËÉeë]*/i);
+  return match?.[0]?.replace(/\s+/g, " ").trim() ?? null;
 }
 
 export function isInvoiceAdjustmentLine(item: {

@@ -2,6 +2,8 @@ import * as XLSX from "xlsx";
 import { resolveLocation } from "@/lib/locations";
 import type { OrderItemPayload } from "@/lib/services/orders";
 import {
+  findFurnizimProductName,
+  isInvoiceAdjustmentLine,
   shouldSkipInvalidProductRow,
   withLineKind,
 } from "@/lib/order-lines/classification";
@@ -37,17 +39,72 @@ function parseNumber(value: unknown): number {
   if (typeof value === "number") return value;
   const text = normalizeCell(value).replace(/\s/g, "");
   if (!text) return 0;
+  if (text.startsWith("-") && text.includes(",") && !text.includes(".")) {
+    const negative = text.slice(1);
+    const parts = negative.split(",");
+    if (parts.length === 2 && parts[1].length <= 2) {
+      return -Number(`${parts[0].replace(/\./g, "")}.${parts[1]}`) || 0;
+    }
+  }
   if (text.includes(",") && text.includes(".")) {
     return Number(text.replace(/,/g, "")) || 0;
   }
   if (text.includes(",")) {
     const parts = text.split(",");
     if (parts.length === 2 && parts[1].length <= 2) {
-      return Number(`${parts[0].replace(/\./g, "")}.${parts[1]}`) || 0;
+      const unsigned = Number(`${parts[0].replace(/\./g, "")}.${parts[1]}`) || 0;
+      return text.startsWith("-") ? -unsigned : unsigned;
     }
     return Number(text.replace(/,/g, "")) || 0;
   }
   return Number(text.replace(/,/g, "")) || 0;
+}
+
+function findFurnizimNameInRow(row: unknown[]): string | null {
+  for (const cell of row) {
+    const name = findFurnizimProductName(normalizeCell(cell));
+    if (name) return name;
+  }
+  return findFurnizimProductName(row.map((cell) => normalizeCell(cell)).join(" "));
+}
+
+function findUnitTokenInRow(row: unknown[]): string {
+  for (const cell of row) {
+    const token = normalizeUnitToken(normalizeCell(cell));
+    if (["M2", "KG", "THAS", "PAKO", "COPE", "METER"].includes(token)) {
+      return token;
+    }
+  }
+  return "M2";
+}
+
+function parseLinePriceFromExcelRow(row: unknown[]): number | undefined {
+  const numbers: number[] = [];
+  for (const cell of row) {
+    const n = parseNumber(cell);
+    if (n !== 0) numbers.push(n);
+  }
+  const negatives = numbers.filter((n) => n < -0.001);
+  if (negatives.length > 0) return negatives.at(-1);
+  const priced = numbers.filter((n) => Math.abs(n) >= 1);
+  return priced.at(-1);
+}
+
+function findQuantityInRow(row: unknown[], preferredCol?: number): number {
+  if (preferredCol != null && preferredCol >= 0 && preferredCol < row.length) {
+    const preferred = parseNumber(row[preferredCol]);
+    if (preferred !== 0) return preferred;
+  }
+  for (const cell of row) {
+    if (typeof cell === "number" && cell !== 0) return cell;
+    const text = normalizeCell(cell);
+    if (!text || isUnitCell(cell) || isKodiCell(cell)) continue;
+    if (/^-?\d/.test(text)) {
+      const n = parseNumber(text);
+      if (n !== 0) return n;
+    }
+  }
+  return 0;
 }
 
 function shouldSkipDeductionProduct(name: string, quantity: number): boolean {
@@ -78,11 +135,13 @@ function rowToOrderItem(row: {
   name: string;
   quantity: number;
   unitToken: string;
+  linePrice?: number;
 }): OrderItemPayload {
   const productName = row.name.replace(/\s+/g, " ").trim();
   const productEan = row.ean.trim() || undefined;
   const tileSize = parseTileSizeFromName(productName);
   const unit = normalizeUnitToken(row.unitToken);
+  const linePrice = row.linePrice;
 
   if (unit === "M2") {
     return withLineKind({
@@ -91,19 +150,33 @@ function rowToOrderItem(row: {
       productEan,
       ...(tileSize ? { tileWidthCm: tileSize.w, tileHeightCm: tileSize.h } : {}),
       quantityM2: row.quantity,
+      ...(linePrice != null ? { linePrice } : {}),
     });
   }
   if (unit === "KG") {
-    return withLineKind({ unit: "kg", productName, productEan, weightKg: row.quantity });
+    return withLineKind({
+      unit: "kg",
+      productName,
+      productEan,
+      weightKg: row.quantity,
+      ...(linePrice != null ? { linePrice } : {}),
+    });
   }
   if (unit === "METER") {
-    return withLineKind({ unit: "meter", productName, productEan, lengthM: row.quantity });
+    return withLineKind({
+      unit: "meter",
+      productName,
+      productEan,
+      lengthM: row.quantity,
+      ...(linePrice != null ? { linePrice } : {}),
+    });
   }
   return withLineKind({
     unit: "piece",
     productName,
     productEan,
     manualPieces: Math.round(row.quantity * 100) / 100,
+    ...(linePrice != null ? { linePrice } : {}),
   });
 }
 
@@ -210,10 +283,38 @@ function findProductNameInRow(
   return best;
 }
 
+function extractFurnizimFromExcelRow(
+  row: unknown[],
+  cols: ColumnMap
+): { ean: string; name: string; quantity: number; unitToken: string; linePrice?: number } | null {
+  const name = findFurnizimNameInRow(row);
+  if (!name) return null;
+
+  const kodiCol = findNearestDataColumn(row, cols.kodi, isKodiCell);
+  const sasiaCol = findNearestDataColumn(row, cols.sasia, isQuantityCell);
+  const ean = normalizeCell(row[kodiCol]).replace(/\D/g, "");
+  const quantity = findQuantityInRow(row, sasiaCol);
+  const unitToken = normalizeCell(row[cols.njesia])
+    ? normalizeUnitToken(normalizeCell(row[cols.njesia]))
+    : findUnitTokenInRow(row);
+  const linePrice = parseLinePriceFromExcelRow(row);
+
+  return {
+    ean,
+    name,
+    quantity,
+    unitToken,
+    ...(linePrice != null ? { linePrice } : {}),
+  };
+}
+
 function extractProductFromRow(
   row: unknown[],
   cols: ColumnMap
-): { ean: string; name: string; quantity: number; unitToken: string } | null {
+): { ean: string; name: string; quantity: number; unitToken: string; linePrice?: number } | null {
+  const furnizim = extractFurnizimFromExcelRow(row, cols);
+  if (furnizim) return furnizim;
+
   const kodiCol = findNearestDataColumn(row, cols.kodi, isKodiCell);
   const sasiaCol = findNearestDataColumn(row, cols.sasia, isQuantityCell);
   const njesiaCol = findNearestDataColumn(row, cols.njesia, isUnitCell);
@@ -230,10 +331,16 @@ function extractProductFromRow(
   if (!ean && !name) return null;
   if (!name || name.length < 2) return null;
   if (/^(no|kodi|emertimi|sasia|njesia)$/i.test(name)) return null;
-  if (!unitRaw) return null;
+  if (!unitRaw && !isInvoiceAdjustmentLine({ productName: name })) return null;
   if (shouldSkipDeductionProduct(name, quantity)) return null;
 
-  return { ean, name, quantity, unitToken: unitRaw };
+  return {
+    ean,
+    name,
+    quantity,
+    unitToken: unitRaw ? normalizeUnitToken(unitRaw) : findUnitTokenInRow(row),
+    linePrice: parseLinePriceFromExcelRow(row),
+  };
 }
 
 function looksLikeProductRow(row: unknown[], cols: ColumnMap): boolean {
@@ -323,6 +430,46 @@ function parseProductRows(rows: unknown[][], table: ProductTable): OrderItemPayl
     }
 
     items.push(rowToOrderItem(product));
+  }
+
+  return items;
+}
+
+/** Second pass — Furnizim rows often sit outside normal column alignment in Pro-Data Excel. */
+function appendMissingFurnizimFromRows(
+  rows: unknown[][],
+  items: OrderItemPayload[],
+  table: ProductTable | null
+): OrderItemPayload[] {
+  if (items.some((item) => isInvoiceAdjustmentLine(item))) return items;
+  if (!table) return items;
+
+  for (let r = table.headerRow + 1; r < rows.length; r++) {
+    const row = rows[r];
+    const nameProbe = normalizeCell(row[table.cols.emertimi]);
+    if (isProductTableFooter(nameProbe, row)) break;
+
+    const furnizim = extractFurnizimFromExcelRow(row, table.cols);
+    if (!furnizim) continue;
+
+    return [...items, rowToOrderItem(furnizim)];
+  }
+
+  for (const row of rows) {
+    const furnizim = findFurnizimNameInRow(row);
+    if (!furnizim) continue;
+    const joined = row.map((cell) => normalizeCell(cell)).join(" ");
+    if (!/1300\d{5,8}/.test(joined) && !/FURNIZIM/i.test(joined)) continue;
+    return [
+      ...items,
+      rowToOrderItem({
+        ean: joined.match(/\b(1300\d{5,8})\b/)?.[1] ?? "",
+        name: furnizim,
+        quantity: findQuantityInRow(row),
+        unitToken: findUnitTokenInRow(row),
+        linePrice: parseLinePriceFromExcelRow(row),
+      }),
+    ];
   }
 
   return items;
@@ -633,7 +780,8 @@ export function parseAgimiExcel(
 
   const price = findTotalPrice(rows) ?? 0;
   const productTable = findProductTable(rows);
-  const items = productTable ? parseProductRows(rows, productTable) : [];
+  let items = productTable ? parseProductRows(rows, productTable) : [];
+  items = appendMissingFurnizimFromRows(rows, items, productTable);
 
   const locationFields =
     cityRaw || address
