@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS assignments (
   vehicle_id INTEGER NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
   driver_employee_id INTEGER,
   delivery_round INTEGER NOT NULL DEFAULT 1,
-  assigned_at TEXT NOT NULL,
+  assigned_at TEXT,
   UNIQUE(order_id, delivery_round)
 );
 
@@ -122,7 +122,7 @@ CREATE TABLE IF NOT EXISTS order_employee_assignments (
   order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
   employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
   role TEXT NOT NULL,
-  assigned_at TEXT NOT NULL,
+  assigned_at TEXT,
   UNIQUE(order_id, role)
 );
 

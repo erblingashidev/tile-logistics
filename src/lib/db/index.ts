@@ -49,6 +49,85 @@ async function addColumnIfMissing(
   }
 }
 
+async function columnIsNotNull(
+  client: Client,
+  table: string,
+  column: string
+): Promise<boolean> {
+  const result = await client.execute(`PRAGMA table_info(${table})`);
+  for (const row of result.rows) {
+    const name = row.name ?? row[1];
+    if (name !== column) continue;
+    const notnull = row.notnull ?? row[3];
+    return Number(notnull) === 1;
+  }
+  return false;
+}
+
+/** Allow NULL assigned_at for retroactive manual closes (truck/staff without step times). */
+async function ensureNullableAssignmentTimestamps(client: Client) {
+  if (await columnIsNotNull(client, "assignments", "assigned_at")) {
+    await client.execute(`
+      CREATE TABLE assignments__nullable_ts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+        vehicle_id INTEGER NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+        driver_employee_id INTEGER,
+        delivery_round INTEGER NOT NULL DEFAULT 1,
+        assigned_at TEXT
+      )
+    `);
+    await client.execute(`
+      INSERT INTO assignments__nullable_ts
+        (id, order_id, vehicle_id, driver_employee_id, delivery_round, assigned_at)
+      SELECT id, order_id, vehicle_id, driver_employee_id, delivery_round, assigned_at
+      FROM assignments
+    `);
+    await client.execute(`DROP TABLE assignments`);
+    await client.execute(
+      `ALTER TABLE assignments__nullable_ts RENAME TO assignments`
+    );
+    await client.execute(`
+      CREATE INDEX IF NOT EXISTS idx_assignments_vehicle
+        ON assignments(vehicle_id, delivery_round)
+    `);
+  }
+
+  if (
+    await columnIsNotNull(client, "order_employee_assignments", "assigned_at")
+  ) {
+    await client.execute(`
+      CREATE TABLE order_employee_assignments__nullable_ts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+        employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+        role TEXT NOT NULL,
+        assigned_at TEXT,
+        UNIQUE(order_id, role)
+      )
+    `);
+    await client.execute(`
+      INSERT INTO order_employee_assignments__nullable_ts
+        (id, order_id, employee_id, role, assigned_at)
+      SELECT id, order_id, employee_id, role, assigned_at
+      FROM order_employee_assignments
+    `);
+    await client.execute(`DROP TABLE order_employee_assignments`);
+    await client.execute(`
+      ALTER TABLE order_employee_assignments__nullable_ts
+      RENAME TO order_employee_assignments
+    `);
+    await client.execute(`
+      CREATE INDEX IF NOT EXISTS idx_order_staff_order
+        ON order_employee_assignments(order_id)
+    `);
+    await client.execute(`
+      CREATE INDEX IF NOT EXISTS idx_order_staff_employee
+        ON order_employee_assignments(employee_id)
+    `);
+  }
+}
+
 let deliveryProofDbPhotosEnabled = false;
 
 export function hasDeliveryProofDbPhotos(): boolean {
@@ -994,6 +1073,7 @@ export async function getDb() {
         await ensureAdminsTable(clientInstance);
         await ensureOrderDeliveryLinksTable(clientInstance);
         await ensureOrderSchemaPatches(clientInstance);
+        await ensureNullableAssignmentTimestamps(clientInstance);
         await ensureVehicleSchemaPatches(clientInstance);
         await ensureWarehouseSchemaPatches(clientInstance);
         await ensureInvoiceImportTables(clientInstance);

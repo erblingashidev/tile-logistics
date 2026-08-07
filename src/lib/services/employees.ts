@@ -320,7 +320,9 @@ async function getEmployeeActiveAssignments(employeeId: number) {
     merged.set(key, {
       ...prev,
       assignedAt:
-        row.assignedAt > prev.assignedAt ? row.assignedAt : prev.assignedAt,
+        (row.assignedAt ?? "") > (prev.assignedAt ?? "")
+          ? row.assignedAt
+          : prev.assignedAt,
       vehicleName: row.vehicleName ?? prev.vehicleName,
       plateNumber: row.plateNumber ?? prev.plateNumber,
       deliveryRound: row.deliveryRound ?? prev.deliveryRound,
@@ -328,7 +330,7 @@ async function getEmployeeActiveAssignments(employeeId: number) {
   }
 
   return [...merged.values()].sort((a, b) =>
-    b.assignedAt.localeCompare(a.assignedAt)
+    (b.assignedAt ?? "").localeCompare(a.assignedAt ?? "")
   );
 }
 
@@ -819,7 +821,8 @@ export async function getOrderStaff(orderId: number) {
 export async function assignEmployeeToOrder(
   orderId: number,
   employeeId: number,
-  role: EmployeeRole
+  role: EmployeeRole,
+  options?: { skipTimestamp?: boolean; skipBusyStatus?: boolean }
 ) {
   const db = await getDb();
   const order = await dbOne(
@@ -837,6 +840,7 @@ export async function assignEmployeeToOrder(
   }
 
   const now = new Date().toISOString();
+  const assignedAt = options?.skipTimestamp ? null : now;
   const existing = await dbOne(
     db
       .select()
@@ -852,15 +856,15 @@ export async function assignEmployeeToOrder(
   if (existing) {
     await db
       .update(orderEmployeeAssignments)
-      .set({ employeeId, assignedAt: now })
+      .set({ employeeId, assignedAt })
       .where(eq(orderEmployeeAssignments.id, existing.id));
   } else {
     await db
       .insert(orderEmployeeAssignments)
-      .values({ orderId, employeeId, role, assignedAt: now });
+      .values({ orderId, employeeId, role, assignedAt });
   }
 
-  if (employee.status === "available") {
+  if (!options?.skipBusyStatus && employee.status === "available") {
     await db
       .update(employees)
       .set({ status: "busy", updatedAt: now })
@@ -885,6 +889,7 @@ export async function assignEmployeeToOrder(
         employeeName: employee.name,
         role,
         roleLabel: EMPLOYEE_ROLE_LABELS[role],
+        retroactive: options?.skipTimestamp ?? false,
       },
     }
   );

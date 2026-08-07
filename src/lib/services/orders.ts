@@ -1527,6 +1527,114 @@ async function checkAssignmentChangePermission(
   };
 }
 
+/** Record truck + preparer without step timestamps (manual status close). */
+export async function applyRetroactiveOrderAttribution(input: {
+  orderId: number;
+  vehicleId?: number;
+  deliveryRound?: number;
+  pickerId?: number;
+}) {
+  const db = await getDb();
+  const order = await dbOne(
+    db.select().from(orders).where(eq(orders.id, input.orderId))
+  );
+  if (!order) return { ok: false as const, error: "Order not found" };
+
+  const round = input.deliveryRound ?? 1;
+  if (round < 1 || round > MAX_DELIVERY_ROUNDS) {
+    return {
+      ok: false as const,
+      error: `Delivery round must be between 1 and ${MAX_DELIVERY_ROUNDS}`,
+    };
+  }
+
+  const attributionOpts = { skipTimestamp: true, skipBusyStatus: true };
+
+  if (input.vehicleId) {
+    const vehicle = await dbOne(
+      db.select().from(vehicles).where(eq(vehicles.id, input.vehicleId))
+    );
+    if (!vehicle) return { ok: false as const, error: "Vehicle not found" };
+
+    const driverEmployeeId =
+      (await getDriverForVehicle(input.vehicleId))?.id ?? null;
+
+    await db.delete(assignments).where(eq(assignments.orderId, input.orderId));
+
+    await db.insert(assignments).values({
+      orderId: input.orderId,
+      vehicleId: input.vehicleId,
+      driverEmployeeId,
+      deliveryRound: round,
+      assignedAt: null,
+    });
+
+    if (driverEmployeeId) {
+      await assignEmployeeToOrder(
+        input.orderId,
+        driverEmployeeId,
+        "driver",
+        attributionOpts
+      );
+    }
+
+    await logActivity(
+      "assign",
+      "order",
+      input.orderId,
+      `${order.invoiceNumber}: truck ${vehicle.name} recorded (no step times)`,
+      {
+        category: "deliveries",
+        details: {
+          invoiceNumber: order.invoiceNumber,
+          vehicleId: input.vehicleId,
+          vehicleName: vehicle.name,
+          deliveryRound: round,
+          retroactive: true,
+        },
+      }
+    );
+  }
+
+  if (input.pickerId) {
+    const pickerResult = await assignEmployeeToOrder(
+      input.orderId,
+      input.pickerId,
+      "picker",
+      attributionOpts
+    );
+    if (!pickerResult.ok) return pickerResult;
+  }
+
+  return { ok: true as const };
+}
+
+export async function updateOrderStatusWithAttribution(input: {
+  orderId: number;
+  status: OrderStatus;
+  vehicleId?: number;
+  deliveryRound?: number;
+  pickerId?: number;
+}) {
+  const hasAttribution =
+    input.vehicleId != null ||
+    (input.pickerId != null && input.pickerId > 0);
+
+  if (hasAttribution) {
+    const attribution = await applyRetroactiveOrderAttribution({
+      orderId: input.orderId,
+      vehicleId: input.vehicleId,
+      deliveryRound: input.deliveryRound,
+      pickerId: input.pickerId,
+    });
+    if (!attribution.ok) return attribution;
+  }
+
+  const result = await updateOrderStatus(input.orderId, input.status);
+  if (!result) return { ok: false as const, error: "Order not found" };
+  return { ok: true as const, ...result };
+}
+
 export async function clearOrderAssignments(
   orderId: number,
   options?: {

@@ -131,6 +131,9 @@ export function ManualStaffPanel({
                   </option>
                 ))}
               </Select>
+              {current?.employeeName && !current?.assignedAt && (
+                <p className="text-[10px] text-zinc-500">No step time recorded</p>
+              )}
               {current?.assignedAt && (
                 <p className="text-[10px] text-zinc-500">
                   Since {current.assignedAt.slice(0, 16).replace("T", " ")}

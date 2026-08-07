@@ -120,7 +120,7 @@ export const assignments = sqliteTable("assignments", {
     .references(() => vehicles.id, { onDelete: "cascade" }),
   driverEmployeeId: integer("driver_employee_id"),
   deliveryRound: integer("delivery_round").notNull().default(1),
-  assignedAt: text("assigned_at").notNull(),
+  assignedAt: text("assigned_at"),
 });
 
 export const employees = sqliteTable("employees", {
@@ -165,7 +165,7 @@ export const orderEmployeeAssignments = sqliteTable(
       .notNull()
       .references(() => employees.id, { onDelete: "cascade" }),
     role: text("role").notNull(),
-    assignedAt: text("assigned_at").notNull(),
+    assignedAt: text("assigned_at"),
   }
 );
 

@@ -442,6 +442,14 @@ export function OrderListCard({
           <ManualOrderStatusSelect
             orderId={order.id}
             currentStatus={order.status}
+            vehicles={vehicles}
+            pickers={pickers}
+            currentVehicleId={order.assignment?.vehicleId}
+            currentDeliveryRound={order.assignment?.deliveryRound}
+            currentPickerId={
+              (order.staff?.picker as { employeeId?: number } | null | undefined)
+                ?.employeeId
+            }
             onUpdated={onSaved}
             onError={onError}
           />
