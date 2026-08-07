@@ -318,16 +318,16 @@ export function OrderInvoice({ order }: { order: OrderInvoiceData }) {
                       {itemDescription(item)}
                     </p>
                     <p className="text-xs capitalize text-zinc-400">
-                      {isInvoiceAdjustmentLine(item)
-                        ? "Prepaid credit (invoice only)"
-                        : ORDER_UNIT_LABELS[normalizeOrderUnit(item.unit ?? item.productType)]}
+                      {ORDER_UNIT_LABELS[normalizeOrderUnit(item.unit ?? item.productType)]}
                     </p>
                   </td>
                   <td className="py-3 pr-3 text-zinc-600">
                     {isInvoiceAdjustmentLine(item) ? "—" : itemDimensions(item)}
                   </td>
                   <td className="py-3 pr-3 text-right tabular-nums text-zinc-900">
-                    {normalizeOrderUnit(item.unit ?? item.productType) === "m2"
+                    {isInvoiceAdjustmentLine(item)
+                      ? "—"
+                      : normalizeOrderUnit(item.unit ?? item.productType) === "m2"
                       ? (item.quantityM2 ?? 0).toFixed(2)
                       : normalizeOrderUnit(item.unit ?? item.productType) === "kg"
                         ? item.weightKg != null
@@ -349,9 +349,7 @@ export function OrderInvoice({ order }: { order: OrderInvoiceData }) {
                   </td>
                   <td className="py-3 text-right tabular-nums text-zinc-900">
                     {isInvoiceAdjustmentLine(item)
-                      ? item.linePrice != null
-                        ? `${item.linePrice.toFixed(2)} €`
-                        : "—"
+                      ? "—"
                       : item.weightKg != null
                         ? `${item.weightKg.toFixed(1)} kg`
                         : "—"}

@@ -40,6 +40,13 @@ function DetailField({ label, value }: { label: string; value: string }) {
 
 function formatItemQty(item: OrderListCardOrder["items"][number]): string {
   const unit = normalizeOrderUnit(item.unit);
+  if (isInvoiceAdjustmentLine(item)) {
+    if (unit === "m2") return "m²";
+    if (unit === "kg") return "kg";
+    if (unit === "meter") return "m";
+    if (unit === "piece") return "pcs";
+    return unit;
+  }
   if (unit === "m2" && item.quantityM2 != null) {
     return `${formatM2(item.quantityM2)} m²`;
   }
@@ -197,10 +204,11 @@ export function OrderBoardDetail({ order }: { order: OrderListCardOrder }) {
                   {adjustment && (
                     <p className="text-xs text-amber-800">Prepaid credit (invoice only)</p>
                   )}
-                  {item.productEan && (
+                  {item.productEan && !adjustment && (
                     <p className="text-xs text-zinc-500">{item.productEan}</p>
                   )}
-                  {unit === "m2" &&
+                  {!adjustment &&
+                    unit === "m2" &&
                     item.tileWidthCm &&
                     item.tileHeightCm && (
                       <p className="text-xs text-zinc-500">
@@ -216,9 +224,6 @@ export function OrderBoardDetail({ order }: { order: OrderListCardOrder }) {
                 </div>
                 <div className="shrink-0 text-right tabular-nums text-zinc-600">
                   <p>{formatItemQty(item)}</p>
-                  {adjustment && item.linePrice != null && (
-                    <p className="text-xs text-zinc-500">{item.linePrice.toFixed(2)} €</p>
-                  )}
                   {!adjustment && lineWeight > 0 && (
                     <p className="text-xs text-zinc-500">
                       ~{lineWeight.toFixed(0)} kg

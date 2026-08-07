@@ -40,11 +40,38 @@ export function shouldSkipInvalidProductRow(
   return false;
 }
 
-export function withLineKind<T extends { productName?: string; lineKind?: OrderLineKind }>(
+export function withLineKind<T extends { productName?: string; lineKind?: OrderLineKind; unit?: string; productEan?: string; linePrice?: number }>(
   item: T
 ): T & { lineKind: OrderLineKind } {
+  const lineKind = item.lineKind ?? classifyOrderLineByName(item.productName);
+  if (lineKind === "invoice_adjustment") {
+    return sanitizeInvoiceAdjustmentItem({ ...item, lineKind }) as T & {
+      lineKind: OrderLineKind;
+    };
+  }
   return {
     ...item,
-    lineKind: item.lineKind ?? classifyOrderLineByName(item.productName),
+    lineKind,
+  };
+}
+
+/** Invoice-only credit lines — name, unit, optional EAN/price; no logistics fields. */
+export function sanitizeInvoiceAdjustmentItem<
+  T extends {
+    productName?: string;
+    unit?: string;
+    productEan?: string;
+    lineKind?: OrderLineKind;
+    linePrice?: number;
+  },
+>(item: T): Pick<T, "productName" | "unit" | "productEan" | "linePrice"> & {
+  lineKind: "invoice_adjustment";
+} {
+  return {
+    productName: item.productName,
+    unit: item.unit,
+    productEan: item.productEan,
+    linePrice: item.linePrice,
+    lineKind: "invoice_adjustment",
   };
 }

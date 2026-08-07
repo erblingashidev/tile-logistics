@@ -289,6 +289,19 @@ export function formatOrderProductSummary(
     .map((item) => {
       const unit = normalizeOrderUnit(item.unit ?? item.productType);
       const name = item.productName?.trim() || "Product";
+      if (isInvoiceAdjustmentLine(item)) {
+        const unitLabel =
+          unit === "m2"
+            ? "m²"
+            : unit === "kg"
+              ? "kg"
+              : unit === "meter"
+                ? "m"
+                : unit === "piece"
+                  ? "pcs"
+                  : unit;
+        return `${name} · ${unitLabel}`;
+      }
       const size =
         unit === "m2" && item.tileWidthCm && item.tileHeightCm
           ? ` ${item.tileWidthCm}×${item.tileHeightCm}`
@@ -319,14 +332,14 @@ export function enrichOrderItem(item: OrderItemInput): EnrichedOrderItem {
     return {
       unit,
       productName: item.productName?.trim() || null,
-      tileWidthCm: item.tileWidthCm ?? null,
-      tileHeightCm: item.tileHeightCm ?? null,
-      tileThicknessCm: item.tileThicknessCm ?? null,
-      quantityM2: unit === "m2" ? (item.quantityM2 ?? null) : null,
-      pieceCount: unit === "piece" ? (item.manualPieces ?? null) : null,
+      tileWidthCm: null,
+      tileHeightCm: null,
+      tileThicknessCm: null,
+      quantityM2: null,
+      pieceCount: null,
       palletCount: null,
-      weightKg: unit === "kg" ? (item.weightKg ?? null) : null,
-      lengthM: unit === "meter" ? (item.lengthM ?? null) : null,
+      weightKg: null,
+      lengthM: null,
       calculatedPieces: null,
       calculatedPallets: null,
     };

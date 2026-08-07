@@ -31,7 +31,10 @@ import {
   resolveOrderItemCatalog,
 } from "@/lib/services/products";
 import { getLearnedUnitForItem } from "@/lib/services/product-learning";
-import { isInvoiceAdjustmentLine } from "@/lib/order-lines/classification";
+import {
+  isInvoiceAdjustmentLine,
+  sanitizeInvoiceAdjustmentItem,
+} from "@/lib/order-lines/classification";
 import { validateTruckForOrder } from "@/lib/dispatch/validate-assignment";
 import { normalizeScannedInvoiceNumber } from "@/lib/invoices/scan-utils";
 import {
@@ -909,7 +912,13 @@ function mapStoredItemToPayload(item: {
   };
 
   if (isInvoiceAdjustmentLine(payload)) {
-    return payload;
+    return sanitizeInvoiceAdjustmentItem({
+      unit,
+      productName: payload.productName,
+      productEan: payload.productEan,
+      linePrice: payload.linePrice,
+      lineKind: "invoice_adjustment",
+    }) as OrderItemPayload;
   }
 
   if (unit === "m2") {
