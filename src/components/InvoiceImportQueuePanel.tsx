@@ -58,10 +58,11 @@ export function InvoiceImportQueuePanel({
   onWarning,
 }: InvoiceImportQueuePanelProps) {
   const [expanded, setExpanded] = useState(false);
-  const [tab, setTab] = useState<"pending" | "rejected">("pending");
+  const [tab, setTab] = useState<"pending" | "rejected" | "dismissed">("pending");
   const [items, setItems] = useState<QueueItem[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [rejectedCount, setRejectedCount] = useState(0);
+  const [dismissedCount, setDismissedCount] = useState(0);
   const [configured, setConfigured] = useState(false);
   const [scanAvailable, setScanAvailable] = useState(false);
   const [watchRoot, setWatchRoot] = useState("");
@@ -84,6 +85,7 @@ export function InvoiceImportQueuePanel({
     setItems(data.items ?? []);
       setPendingCount(data.pendingCount ?? 0);
       setRejectedCount(data.rejectedCount ?? 0);
+      setDismissedCount(data.dismissedCount ?? 0);
       setConfigured(Boolean(data.configured));
       setScanAvailable(Boolean(data.scanAvailable));
       setWatchRoot(typeof data.watchRoot === "string" ? data.watchRoot : "");
@@ -171,7 +173,7 @@ export function InvoiceImportQueuePanel({
       const label = item?.parsed.customerName || item?.sourceFileName || "this import";
       if (
         !window.confirm(
-          `Remove "${label}" from the queue? It will not be imported again unless the source file changes.`
+          `Remove "${label}" from the queue? You can restore it later from the Removed tab.`
         )
       ) {
         return;
@@ -227,6 +229,8 @@ export function InvoiceImportQueuePanel({
           <Badge tone="amber">{pendingCount} pending</Badge>
         ) : rejectedCount > 0 ? (
           <Badge tone="slate">{rejectedCount} declined</Badge>
+        ) : dismissedCount > 0 ? (
+          <Badge tone="slate">{dismissedCount} removed</Badge>
         ) : null
       }
     >
@@ -288,6 +292,7 @@ export function InvoiceImportQueuePanel({
         options={[
           { value: "pending", label: `Pending${pendingCount > 0 ? ` (${pendingCount})` : ""}` },
           { value: "rejected", label: `Declined${rejectedCount > 0 ? ` (${rejectedCount})` : ""}` },
+          { value: "dismissed", label: `Removed${dismissedCount > 0 ? ` (${dismissedCount})` : ""}` },
         ]}
       />
 
@@ -295,7 +300,9 @@ export function InvoiceImportQueuePanel({
         <p className="text-sm text-zinc-500">
           {tab === "pending"
             ? "No pending imports."
-            : "No declined imports."}
+            : tab === "rejected"
+              ? "No declined imports."
+              : "No removed imports."}
         </p>
       ) : (
         <div className="space-y-3">
@@ -324,8 +331,8 @@ export function InvoiceImportQueuePanel({
                           {new Date(item.submittedAt).toLocaleString()} ·{" "}
                           {item.parsed.items.length} product(s) ·{" "}
                           {agimiDocumentKindLabel(item.parsed.documentKind)}
-                          {item.reviewedAt && tab === "rejected"
-                            ? ` · declined ${new Date(item.reviewedAt).toLocaleString()}`
+                          {item.reviewedAt && tab !== "pending"
+                            ? ` · ${tab === "dismissed" ? "removed" : "declined"} ${new Date(item.reviewedAt).toLocaleString()}`
                             : ""}
                         </p>
                       </div>
@@ -381,55 +388,74 @@ export function InvoiceImportQueuePanel({
                     )}
 
                     <div className="flex flex-wrap gap-2 border-t border-zinc-100 pt-3">
-                      <Button
-                        disabled={busyId === item.id || !invoiceNumber.trim()}
-                        onClick={() =>
-                          void review(
-                            item.id,
-                            "approve",
-                            Boolean(item.duplicateOrderId)
-                          )
-                        }
-                      >
-                        {item.duplicateOrderId ? "Approve (merge)" : "Approve"}
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        disabled={busyId === item.id}
-                        onClick={() => {
-                          onOpenForm({
-                            ...item.form,
-                            invoiceNumber,
-                            importQueueId: item.id,
-                          });
-                        }}
-                      >
-                        Edit
-                      </Button>
                       {tab === "pending" ? (
-                        <Button
-                          variant="ghost"
-                          disabled={busyId === item.id}
-                          onClick={() => void review(item.id, "reject")}
-                        >
-                          Decline
-                        </Button>
+                        <>
+                          <Button
+                            disabled={busyId === item.id || !invoiceNumber.trim()}
+                            onClick={() =>
+                              void review(
+                                item.id,
+                                "approve",
+                                Boolean(item.duplicateOrderId)
+                              )
+                            }
+                          >
+                            {item.duplicateOrderId ? "Approve (merge)" : "Approve"}
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            disabled={busyId === item.id}
+                            onClick={() => {
+                              onOpenForm({
+                                ...item.form,
+                                invoiceNumber,
+                                importQueueId: item.id,
+                              });
+                            }}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            disabled={busyId === item.id}
+                            onClick={() => void review(item.id, "reject")}
+                          >
+                            Decline
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            disabled={busyId === item.id}
+                            onClick={() => void review(item.id, "delete")}
+                          >
+                            Remove
+                          </Button>
+                        </>
                       ) : (
-                        <Button
-                          variant="ghost"
-                          disabled={busyId === item.id}
-                          onClick={() => void review(item.id, "restore")}
-                        >
-                          Restore to pending
-                        </Button>
+                        <>
+                          <Button
+                            variant="ghost"
+                            disabled={busyId === item.id}
+                            onClick={() => void review(item.id, "restore")}
+                          >
+                            Restore to pending
+                          </Button>
+                          {tab === "rejected" ? (
+                            <Button
+                              variant="secondary"
+                              disabled={busyId === item.id}
+                              onClick={() => {
+                                onOpenForm({
+                                  ...item.form,
+                                  invoiceNumber,
+                                  importQueueId: item.id,
+                                });
+                              }}
+                            >
+                              Edit
+                            </Button>
+                          ) : null}
+                        </>
                       )}
-                      <Button
-                        variant="ghost"
-                        disabled={busyId === item.id}
-                        onClick={() => void review(item.id, "delete")}
-                      >
-                        Remove
-                      </Button>
                     </div>
                   </div>
                 );

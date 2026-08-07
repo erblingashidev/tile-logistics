@@ -364,7 +364,7 @@ export async function syncPendingImportQueueWithOrders(): Promise<number> {
 }
 
 export async function listImportQueue(
-  status: "pending" | "approved" | "rejected" | "all" = "pending"
+  status: "pending" | "approved" | "rejected" | "dismissed" | "all" = "pending"
 ): Promise<InvoiceImportQueueRow[]> {
   if (status === "pending" || status === "all") {
     await syncPendingImportQueueWithOrders();
@@ -384,7 +384,10 @@ export async function listImportQueue(
 
   const mapped: InvoiceImportQueueRow[] = [];
   for (const row of rows) {
-    const { snapshot } = await refreshImportQueueRowFromFile(row);
+    const snapshot =
+      row.status === "dismissed"
+        ? readSnapshot(row.parsedJson)
+        : (await refreshImportQueueRowFromFile(row)).snapshot;
     mapped.push({
       id: row.id,
       status: row.status,
@@ -503,13 +506,15 @@ export async function restoreImportQueueItem(
 ): Promise<{ ok: true } | { ok: false; error: string; status?: number }> {
   const db = await getDb();
   const row = await dbOne(
-    db.select({ id: invoiceImportQueue.id, status: invoiceImportQueue.status })
-      .from(invoiceImportQueue)
-      .where(eq(invoiceImportQueue.id, id))
+    db.select().from(invoiceImportQueue).where(eq(invoiceImportQueue.id, id))
   );
   if (!row) return { ok: false, error: "Queue item not found", status: 404 };
-  if (row.status !== "rejected") {
-    return { ok: false, error: `Cannot restore — status is ${row.status}`, status: 409 };
+  if (row.status !== "rejected" && row.status !== "dismissed") {
+    return {
+      ok: false,
+      error: `Cannot restore — status is ${row.status}`,
+      status: 409,
+    };
   }
 
   await db
@@ -521,6 +526,11 @@ export async function restoreImportQueueItem(
       errorMessage: null,
     })
     .where(eq(invoiceImportQueue.id, id));
+
+  await refreshImportQueueRowFromFile({
+    ...row,
+    status: "pending",
+  });
 
   return { ok: true };
 }
@@ -929,6 +939,17 @@ export async function rejectedImportQueueCount(): Promise<number> {
       .select({ id: invoiceImportQueue.id })
       .from(invoiceImportQueue)
       .where(eq(invoiceImportQueue.status, "rejected"))
+  );
+  return rows.length;
+}
+
+export async function dismissedImportQueueCount(): Promise<number> {
+  const db = await getDb();
+  const rows = await dbAll(
+    db
+      .select({ id: invoiceImportQueue.id })
+      .from(invoiceImportQueue)
+      .where(eq(invoiceImportQueue.status, "dismissed"))
   );
   return rows.length;
 }

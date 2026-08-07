@@ -7,6 +7,7 @@ import {
   listInvoiceDateFolders,
   pendingImportQueueCount,
   rejectedImportQueueCount,
+  dismissedImportQueueCount,
   resolveInvoiceScanPath,
   scanInvoiceWatchRoot,
 } from "@/lib/services/invoice-import-queue";
@@ -29,6 +30,7 @@ export async function GET(request: NextRequest) {
   const status =
     statusParam === "approved" ||
     statusParam === "rejected" ||
+    statusParam === "dismissed" ||
     statusParam === "all"
       ? statusParam
       : "pending";
@@ -40,16 +42,18 @@ export async function GET(request: NextRequest) {
       ? listInvoiceDateFolders(watchRoot)
       : { ok: false, folders: [] as string[], root: watchRoot, error: cloudBlock ?? undefined };
 
-  const [items, pendingCount, rejectedCount] = await Promise.all([
+  const [items, pendingCount, rejectedCount, dismissedCount] = await Promise.all([
     listImportQueue(status),
     pendingImportQueueCount(),
     rejectedImportQueueCount(),
+    dismissedImportQueueCount(),
   ]);
 
   return NextResponse.json({
     items,
     pendingCount,
     rejectedCount,
+    dismissedCount,
     watchRoot,
     configured: Boolean(watchRoot),
     scanAvailable: Boolean(watchRoot && !cloudBlock),
