@@ -218,8 +218,13 @@ type OrderListFilters = {
   vehicleScope: "workspace" | "on_truck" | "unassigned";
 };
 
-function appendOrderFilterParams(params: URLSearchParams, filters: OrderListFilters) {
+function appendOrderFilterParams(
+  params: URLSearchParams,
+  filters: OrderListFilters,
+  options?: { includeCompleted?: boolean }
+) {
   Object.entries(filters).forEach(([k, v]) => {
+    if (k === "hideDelivered" && options?.includeCompleted) return;
     if (k === "fleetRoundFilter") {
       if (v && !filters.vehicleId) params.set(k, "true");
       return;
@@ -1148,7 +1153,7 @@ export default function OrdersPage() {
               if (exportGroupBy !== "none") {
                 params.set("groupBy", exportGroupBy);
               }
-              appendOrderFilterParams(params, filters);
+              appendOrderFilterParams(params, filters, { includeCompleted: true });
               window.open(`/api/export?${params}`, "_blank");
             }}
           >
@@ -1459,6 +1464,9 @@ export default function OrdersPage() {
               className="rounded border-zinc-300"
             />
             Hide completed deliveries
+            <span className="text-zinc-400">
+              (search invoice to find one · export always includes completed)
+            </span>
           </label>
           <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-500">
             {ORDER_STAGE_LEGEND.map((item) => (

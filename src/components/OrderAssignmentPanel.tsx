@@ -610,7 +610,7 @@ export function OrderAssignmentPanel({
           Clear picker
         </Button>
         )}
-        {(hasAssignment || hasProgress) && !manualMode && (
+        {(hasAssignment || hasProgress || deliveryStage === "delivered") && (
           <Button
             variant="ghost"
             className="px-2 py-1 text-[11px] text-red-700"

@@ -430,6 +430,11 @@ export async function listOrders(filters?: {
       return false;
     }
     if (!filters?.hideDelivered) return true;
+    const search = filters.search?.trim().toLowerCase();
+    if (search) {
+      const haystack = `${order.invoiceNumber} ${order.customerName}`.toLowerCase();
+      if (haystack.includes(search)) return true;
+    }
     return order.deliveryStage !== "delivered";
     })
   );

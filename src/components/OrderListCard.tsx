@@ -189,6 +189,7 @@ export function OrderListCard({
   const stage = (order.deliveryStage ?? order.status) as OrderDisplayStage;
   const isDelivered = stage === "delivered";
   const isComplete = stage === "delivered" || stage === "arrived";
+  const showAssignmentPanel = manualMode || !isDelivered;
   const hasAnyAssignment = Boolean(
     order.assignment ||
       order.staff?.picker ||
@@ -454,9 +455,13 @@ export function OrderListCard({
             onError={onError}
           />
         )}
-        {isDelivered ? (
-          <p className="text-sm font-medium text-green-700">Delivery complete</p>
-        ) : (
+        {manualMode && isDelivered && (
+          <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            Marked delivered — change status, truck, or staff below if this was
+            a mistake or needs correction.
+          </p>
+        )}
+        {showAssignmentPanel ? (
           <OrderAssignmentPanel
             orderId={order.id!}
             invoiceNumber={order.invoiceNumber}
@@ -483,6 +488,8 @@ export function OrderListCard({
             onError={onError}
             onWarning={onWarning}
           />
+        ) : (
+          <p className="text-sm font-medium text-green-700">Delivery complete</p>
         )}
       </div>
 

@@ -163,6 +163,8 @@ function OrderRow({
     order.assignment?.deliveryRound === focusRound;
   const isDelivered = stage === "delivered";
   const isComplete = stage === "delivered" || stage === "arrived";
+  const showAssignControls = manualMode || !isComplete;
+  const showAssignPanel = assignOpen && (manualMode || !isDelivered);
 
   const shellClass = `overflow-hidden rounded-lg border border-zinc-200/80 transition ${orderListRowClass(stage)} ${deliveryLinkCardClass(order.deliveryLinks)} ${
     onFocusTruck ? "ring-2 ring-blue-400 ring-offset-1" : ""
@@ -217,13 +219,13 @@ function OrderRow({
                 → {focusVehicleName ?? "Truck"}
               </Button>
             )}
-            {!isComplete && (
+            {showAssignControls && (
               <Button
                 variant="secondary"
                 className="text-xs"
                 onClick={onToggleAssign}
               >
-                {assignOpen ? "Close" : "Assign"}
+                {assignOpen ? "Close" : manualMode && isDelivered ? "Correct" : "Assign"}
               </Button>
             )}
             <Button variant="ghost" className="text-xs" onClick={onEdit}>
@@ -236,8 +238,13 @@ function OrderRow({
             <OrderBoardDetail order={order} />
           </div>
         )}
-        {assignOpen && !isDelivered && (
+        {showAssignPanel && (
           <div className="border-t border-zinc-100 bg-zinc-50 p-3 space-y-3">
+            {manualMode && isDelivered && (
+              <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                Marked delivered — change status, truck, or staff below if needed.
+              </p>
+            )}
             {manualMode && order.id != null && (
               <ManualOrderStatusSelect
                 orderId={order.id}
@@ -339,13 +346,13 @@ function OrderRow({
               {focusDeliveryRound ? ` R${focusDeliveryRound}` : ""}
             </Button>
           )}
-          {!isComplete && (
+          {showAssignControls && (
             <Button
               variant="secondary"
               className="text-xs"
               onClick={onToggleAssign}
             >
-              {assignOpen ? "Close" : "Assign"}
+              {assignOpen ? "Close" : manualMode && isDelivered ? "Correct" : "Assign"}
             </Button>
           )}
           <Button variant="ghost" className="text-xs" onClick={onEdit}>
@@ -370,8 +377,13 @@ function OrderRow({
           <OrderBoardDetail order={order} />
         </div>
       )}
-      {assignOpen && !isDelivered && (
+      {showAssignPanel && (
         <div className="border-t border-zinc-100 bg-zinc-50 px-3 py-3 space-y-3">
+          {manualMode && isDelivered && (
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              Marked delivered — change status, truck, or staff below if needed.
+            </p>
+          )}
           {manualMode && order.id != null && (
             <ManualOrderStatusSelect
               orderId={order.id}

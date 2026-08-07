@@ -237,6 +237,7 @@ export async function buildDailyOperationsExcel(reportDate?: string) {
   const waitingOrders = orders.filter(
     (o) => o.status !== "delivered" && o.status !== "cancelled"
   );
+  const completedOrders = orders.filter((o) => o.status === "delivered");
   const completedTodayOrders = orders.filter((o) =>
     completedOnReportDate(o, date)
   );
@@ -284,6 +285,15 @@ export async function buildDailyOperationsExcel(reportDate?: string) {
       wb,
       sanitizeSheetName("Waiting", usedNames),
       buildDailyOrderRows(waitingOrders, date),
+      { rowStatus: classifyOrderExportRow, highlightColumn: "Pipeline" }
+    );
+  }
+
+  if (completedOrders.length > 0) {
+    addStyledDataSheet(
+      wb,
+      sanitizeSheetName("Completed", usedNames),
+      buildDailyOrderRows(completedOrders, date),
       { rowStatus: classifyOrderExportRow, highlightColumn: "Pipeline" }
     );
   }
