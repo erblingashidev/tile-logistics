@@ -154,6 +154,12 @@ Run `npm install` only if `package.json` changed. Then start the watcher again:
 npm run watch:invoices:turso
 ```
 
+To re-parse queued imports after a parser update (without re-adding files):
+
+```bash
+npm run refresh:import-queue:turso
+```
+
 **Never push from HP** — pull only. That keeps git simple.
 
 ---
