@@ -63,6 +63,9 @@ async function runScan() {
   if (result.scanned > 0 && result.skipped === result.scanned) {
     console.log("  → All files already in import queue (check Orders → Import queue)");
   }
+  if ("refreshed" in result && typeof result.refreshed === "number" && result.refreshed > 0) {
+    console.log(`  → Refreshed ${result.refreshed} queued import(s) with latest parser`);
+  }
   if (result.purged > 0) {
     console.log(
       `  → Removed ${result.purged} queue item(s) whose Excel file was deleted from disk`

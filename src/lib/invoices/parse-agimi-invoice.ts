@@ -2146,6 +2146,8 @@ export function parsedInvoiceToFormState(parsed: ParsedAgimiInvoice) {
             weightKg: item.weightKg ?? 0,
             lengthM: item.lengthM ?? 0,
             manualPieces: item.manualPieces ?? undefined,
+            lineKind: item.lineKind,
+            linePrice: item.linePrice,
           }))
         : [{ unit: "m2" as const, productName: "", tileWidthCm: 60, tileHeightCm: 120, quantityM2: 0 }],
   };

@@ -61,6 +61,77 @@ function writeSnapshot(snapshot: QueuedImportSnapshot): string {
   return JSON.stringify(snapshot);
 }
 
+function parseExcelFromPath(
+  absolutePath: string,
+  options?: { sourceFolderDate?: string | null }
+): ParsedAgimiInvoice {
+  const buffer = fs.readFileSync(absolutePath);
+  const parsed = parseAgimiExcel(buffer, {
+    sourceFileName: path.basename(absolutePath),
+  });
+  applyFolderDate(parsed, options?.sourceFolderDate ?? null);
+  return parsed;
+}
+
+function buildSnapshotFromParsed(parsed: ParsedAgimiInvoice): QueuedImportSnapshot {
+  return {
+    parsed,
+    form: parsedInvoiceToFormState(parsed),
+  };
+}
+
+/** Re-parse the source Excel with current parser logic and update stored snapshot when it changed. */
+async function refreshImportQueueRowFromFile(row: {
+  id: number;
+  sourceFilePath: string | null;
+  sourceFolderDate: string | null;
+  parsedJson: string;
+  status: string;
+}): Promise<{ updated: boolean; snapshot: QueuedImportSnapshot }> {
+  const current = readSnapshot(row.parsedJson);
+  const sourcePath = row.sourceFilePath?.trim();
+  if (!sourcePath || !fs.existsSync(sourcePath)) {
+    return { updated: false, snapshot: current };
+  }
+
+  try {
+    const parsed = parseExcelFromPath(sourcePath, {
+      sourceFolderDate: row.sourceFolderDate,
+    });
+    const snapshot = buildSnapshotFromParsed(parsed);
+    const nextJson = writeSnapshot(snapshot);
+    const changed = nextJson !== row.parsedJson;
+    if (row.status === "pending" || row.status === "rejected") {
+      const db = await getDb();
+      await db
+        .update(invoiceImportQueue)
+        .set({ parsedJson: nextJson })
+        .where(eq(invoiceImportQueue.id, row.id));
+    }
+    return { updated: changed, snapshot };
+  } catch {
+    return { updated: false, snapshot: current };
+  }
+}
+
+/** Re-parse all pending/rejected queue rows when the Excel file is still on disk. */
+export async function refreshPendingImportQueueSnapshots(): Promise<number> {
+  const db = await getDb();
+  const rows = await dbAll(
+    db
+      .select()
+      .from(invoiceImportQueue)
+      .where(inArray(invoiceImportQueue.status, ["pending", "rejected"]))
+  );
+
+  let refreshed = 0;
+  for (const row of rows) {
+    const result = await refreshImportQueueRowFromFile(row);
+    if (result.updated) refreshed += 1;
+  }
+  return refreshed;
+}
+
 export function fileFingerprint(filePath: string, stat: fs.Stats): string {
   return `${filePath}|${stat.size}|${stat.mtimeMs}`;
 }
@@ -93,6 +164,11 @@ export async function enqueueExcelFile(
     return { ok: false, error: "Only Excel files are queued from the watch folder" };
   }
 
+  const folderIso =
+    options?.folderDateIso ??
+    folderDateFromFilePath(absolutePath) ??
+    null;
+
   const fingerprint = fileFingerprint(absolutePath, stat);
   const db = await getDb();
 
@@ -109,6 +185,28 @@ export async function enqueueExcelFile(
         skipped: true,
         reason: "Removed from queue — will not re-import this file",
       };
+    }
+    if (existing.status === "pending" || existing.status === "rejected") {
+      try {
+        const parsed = parseExcelFromPath(absolutePath, {
+          sourceFolderDate: folderIso,
+        });
+        const snapshot = buildSnapshotFromParsed(parsed);
+        await db
+          .update(invoiceImportQueue)
+          .set({ parsedJson: writeSnapshot(snapshot) })
+          .where(eq(invoiceImportQueue.id, existing.id));
+        return {
+          ok: true,
+          id: existing.id,
+          duplicate: false,
+        };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : "Could not refresh queued import",
+        };
+      }
     }
     return {
       ok: true,
@@ -136,17 +234,9 @@ export async function enqueueExcelFile(
     };
   }
 
-  const folderIso =
-    options?.folderDateIso ??
-    folderDateFromFilePath(absolutePath) ??
-    null;
-
   let parsed: ParsedAgimiInvoice;
   try {
-    const buffer = fs.readFileSync(absolutePath);
-    parsed = parseAgimiExcel(buffer, {
-      sourceFileName: path.basename(absolutePath),
-    });
+    parsed = parseExcelFromPath(absolutePath, { sourceFolderDate: folderIso });
   } catch (err) {
     return {
       ok: false,
@@ -154,16 +244,11 @@ export async function enqueueExcelFile(
     };
   }
 
-  applyFolderDate(parsed, folderIso);
-
   if (!parsed.invoiceNumber && !parsed.customerName && parsed.items.length === 0) {
     return { ok: false, error: "Could not recognize invoice in Excel file" };
   }
 
-  const snapshot: QueuedImportSnapshot = {
-    parsed,
-    form: parsedInvoiceToFormState(parsed),
-  };
+  const snapshot: QueuedImportSnapshot = buildSnapshotFromParsed(parsed);
 
   const duplicateOrder = parsed.invoiceNumber
     ? await findOrderByInvoiceNumber(parsed.invoiceNumber)
@@ -297,9 +382,10 @@ export async function listImportQueue(
       ? await dbAll(query)
       : await dbAll(query.where(eq(invoiceImportQueue.status, status)));
 
-  return rows.map((row) => {
-    const snapshot = readSnapshot(row.parsedJson);
-    return {
+  const mapped: InvoiceImportQueueRow[] = [];
+  for (const row of rows) {
+    const { snapshot } = await refreshImportQueueRowFromFile(row);
+    mapped.push({
       id: row.id,
       status: row.status,
       sourceFileName: row.sourceFileName,
@@ -314,8 +400,9 @@ export async function listImportQueue(
       parsed: snapshot.parsed,
       form: snapshot.form,
       duplicateInvoiceNumber: snapshot.parsed.invoiceNumber || undefined,
-    };
-  });
+    });
+  }
+  return mapped;
 }
 
 export async function approveImportQueueItem(
@@ -334,7 +421,8 @@ export async function approveImportQueueItem(
     return { ok: false, error: `Already ${row.status}`, status: 409 };
   }
 
-  const snapshot = readSnapshot(row.parsedJson);
+  const refreshed = await refreshImportQueueRowFromFile(row);
+  const snapshot = refreshed.snapshot;
   if (options?.invoiceNumberOverride?.trim()) {
     snapshot.parsed.invoiceNumber = options.invoiceNumberOverride.trim();
     snapshot.form.invoiceNumber = options.invoiceNumberOverride.trim();
@@ -532,11 +620,12 @@ async function finalizeScanResult(
     dateFolders?: string[];
   }
 ) {
-  const [purged, autoLinked] = await Promise.all([
+  const [purged, autoLinked, refreshed] = await Promise.all([
     purgeImportQueueMissingFiles(absoluteRoot),
     syncPendingImportQueueWithOrders(),
+    refreshPendingImportQueueSnapshots(),
   ]);
-  return { ...result, purged, autoLinked };
+  return { ...result, purged, autoLinked, refreshed };
 }
 
 export async function scanInvoiceWatchRoot(
@@ -546,6 +635,7 @@ export async function scanInvoiceWatchRoot(
   queued: number;
   skipped: number;
   purged: number;
+  refreshed: number;
   errors: string[];
   hint?: string;
   watching?: string;
@@ -559,6 +649,7 @@ export async function scanInvoiceWatchRoot(
       queued: 0,
       skipped: 0,
       purged: 0,
+      refreshed: 0,
       errors: [`Folder not found on this computer: ${absoluteRoot}`],
       hint: isWinPath
         ? "Scan runs on the workstation where the invoice folder is located."
