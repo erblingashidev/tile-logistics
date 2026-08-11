@@ -191,6 +191,19 @@ export const ORDER_STATUSES = [
 
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
+/** Admin manual status dropdown (includes warehouse prep before in-transit). */
+export const MANUAL_ORDER_STATUSES = [
+  "pending",
+  "prepared",
+  "assigned",
+  "in_transit",
+  "partially_delivered",
+  "delivered",
+  "cancelled",
+] as const;
+
+export type ManualOrderStatus = (typeof MANUAL_ORDER_STATUSES)[number];
+
 /** Proof-of-delivery steps employees capture on the portal */
 export const DELIVERY_PROOF_PHASES = [
   {

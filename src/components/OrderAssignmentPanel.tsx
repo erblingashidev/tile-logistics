@@ -5,7 +5,6 @@ import { Button } from "@/components/ui";
 import { AdminManualProofPanel } from "@/components/AdminManualProofPanel";
 import { ManualStaffPanel } from "@/components/ManualStaffPanel";
 import { DeliveryLinkNotice } from "@/components/DeliveryLinkNotice";
-import { deliveryRoundSelectOptions } from "@/lib/delivery-rounds";
 import type { OrderDisplayStage } from "@/lib/order-display";
 import {
   TruckWorkspaceStatus,
@@ -402,23 +401,6 @@ export function OrderAssignmentPanel({
         <TruckWorkspaceStatus workspace={truckWorkspace} activeRound={round} compact />
       )}
 
-      <div>
-        <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
-          Delivery round
-        </p>
-        <div className="flex flex-wrap gap-1.5">
-          {deliveryRoundSelectOptions().map((option) => (
-            <ChoiceChip
-              key={option.value}
-              selected={draft.round === String(option.value)}
-              onClick={() => selectRound(String(option.value))}
-            >
-              {option.label}
-            </ChoiceChip>
-          ))}
-        </div>
-      </div>
-
       {!manualMode && (
       <div>
         <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
@@ -622,6 +604,7 @@ export function OrderAssignmentPanel({
         )}
       </div>
 
+      {!manualMode && (
       <AdminManualProofPanel
         orderId={orderId}
         invoiceNumber={invoiceNumber}
@@ -633,6 +616,7 @@ export function OrderAssignmentPanel({
         onSaved={onSaved}
         onError={onError}
       />
+      )}
     </div>
   );
 }

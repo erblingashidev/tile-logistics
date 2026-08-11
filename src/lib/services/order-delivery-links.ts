@@ -265,6 +265,33 @@ export async function unlinkOrders(orderIdA: number, orderIdB: number) {
   return true;
 }
 
+/** All order ids in the same linked-delivery group (including orderId). */
+export async function getLinkedOrderIdGroup(orderId: number): Promise<number[]> {
+  const db = await getDb();
+  const links = await dbAll(db.select().from(orderDeliveryLinks));
+  const adjacency = new Map<number, Set<number>>();
+
+  for (const link of links) {
+    if (!adjacency.has(link.orderIdA)) adjacency.set(link.orderIdA, new Set());
+    if (!adjacency.has(link.orderIdB)) adjacency.set(link.orderIdB, new Set());
+    adjacency.get(link.orderIdA)!.add(link.orderIdB);
+    adjacency.get(link.orderIdB)!.add(link.orderIdA);
+  }
+
+  const group = new Set<number>();
+  const queue = [orderId];
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    if (group.has(id)) continue;
+    group.add(id);
+    for (const neighbor of adjacency.get(id) ?? []) {
+      if (!group.has(neighbor)) queue.push(neighbor);
+    }
+  }
+
+  return [...group].sort((a, b) => a - b);
+}
+
 export async function unlinkOrdersInSelection(orderIds: number[]) {
   const unique = [...new Set(orderIds.filter((id) => Number.isFinite(id) && id > 0))];
   if (unique.length < 2) {

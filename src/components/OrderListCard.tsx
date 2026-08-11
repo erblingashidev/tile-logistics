@@ -443,14 +443,11 @@ export function OrderListCard({
           <ManualOrderStatusSelect
             orderId={order.id}
             currentStatus={order.status}
-            vehicles={vehicles}
-            pickers={pickers}
-            currentVehicleId={order.assignment?.vehicleId}
-            currentDeliveryRound={order.assignment?.deliveryRound}
-            currentPickerId={
-              (order.staff?.picker as { employeeId?: number } | null | undefined)
-                ?.employeeId
+            prepStatus={
+              (order as OrderListCardOrder & { prepStatus?: "pending" | "prepared" })
+                .prepStatus
             }
+            linkedOrders={order.deliveryLinks}
             onUpdated={onSaved}
             onError={onError}
           />

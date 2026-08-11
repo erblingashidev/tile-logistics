@@ -58,7 +58,6 @@ import {
   todayDateString,
   type WorkDayFilter,
 } from "@/lib/delivery-schedule";
-import { deliveryRoundSelectOptions, formatDeliveryRound } from "@/lib/delivery-rounds";
 import { isOrderUrgent } from "@/lib/order-priority";
 import { KOSOVO_MUNICIPALITIES } from "@/lib/locations";
 import type { ProductRecord } from "@/lib/services/products";
@@ -284,7 +283,7 @@ export default function OrdersPage() {
     driverId: "",
     search: "",
     hideDelivered: "true",
-    workDay: "all" as WorkDayFilter,
+    workDay: "today" as WorkDayFilter,
     workDayDate: todayDateString(),
     vehicleId: "",
     deliveryRound: "1",
@@ -311,7 +310,6 @@ export default function OrdersPage() {
     new Set()
   );
   const [transferVehicleId, setTransferVehicleId] = useState("");
-  const [transferRound, setTransferRound] = useState("1");
   const [transferPickerId, setTransferPickerId] = useState("");
   const [rescheduleDate, setRescheduleDate] = useState(() => todayDateString());
   const [error, setError] = useState("");
@@ -323,44 +321,67 @@ export default function OrdersPage() {
   >("region");
   const [truckWorkspace, setTruckWorkspace] =
     useState<TruckWorkspaceSnapshot | null>(null);
+  const [searchInput, setSearchInput] = useState("");
   const focusedVehicleRef = useRef("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const loadStatic = useCallback(async () => {
     try {
-      const params = new URLSearchParams();
-      appendOrderFilterParams(params, filters);
-      const [ordersRes, vehiclesRes, employeesRes] = await Promise.all([
-        fetch(`/api/orders?${params}`, { cache: "no-store" }),
+      const [vehiclesRes, employeesRes] = await Promise.all([
         fetch("/api/vehicles?for=transport", { cache: "no-store" }),
         fetch("/api/employees", { cache: "no-store" }),
       ]);
-
-      const ordersPayload = await readJsonListWithError<Order>(ordersRes);
       const vehiclesPayload = await readJsonListWithError<Vehicle>(vehiclesRes);
       const employeesPayload = await readJsonListWithError<EmployeeOption>(
         employeesRes
       );
-
-      setOrders(ordersPayload.data);
       setVehicles(vehiclesPayload.data);
       setEmployees(employeesPayload.data);
+      const staticError = vehiclesPayload.error ?? employeesPayload.error;
+      if (staticError) setError(staticError);
+    } catch {
+      setError("Could not load trucks or staff");
+    }
+  }, []);
 
-      const loadError =
-        ordersPayload.error ?? vehiclesPayload.error ?? employeesPayload.error;
-      setError(loadError ?? "");
-
+  const loadOrders = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      appendOrderFilterParams(params, filters);
+      const ordersRes = await fetch(`/api/orders?${params}`, { cache: "no-store" });
+      const ordersPayload = await readJsonListWithError<Order>(ordersRes);
+      setOrders(ordersPayload.data);
+      if (ordersPayload.error) setError(ordersPayload.error);
       setLastRefreshed(new Date());
     } finally {
       setLoading(false);
     }
   }, [filters]);
 
+  const load = useCallback(async () => {
+    await Promise.all([loadStatic(), loadOrders()]);
+  }, [loadStatic, loadOrders]);
+
   useEffect(() => {
-    load();
-    const interval = setInterval(load, 15000);
+    const handle = window.setTimeout(() => {
+      setFilters((current) =>
+        current.search === searchInput
+          ? current
+          : { ...current, search: searchInput }
+      );
+    }, 400);
+    return () => window.clearTimeout(handle);
+  }, [searchInput]);
+
+  useEffect(() => {
+    void loadStatic();
+  }, [loadStatic]);
+
+  useEffect(() => {
+    void loadOrders();
+    const interval = setInterval(loadOrders, 15000);
     return () => clearInterval(interval);
-  }, [load]);
+  }, [loadOrders]);
 
   useEffect(() => {
     fetch("/api/settings/features", { cache: "no-store" })
@@ -390,7 +411,6 @@ export default function OrdersPage() {
       focusedVehicleRef.current = "";
       return;
     }
-    const vehicleChanged = focusedVehicleRef.current !== filters.vehicleId;
     focusedVehicleRef.current = filters.vehicleId;
 
     let cancelled = false;
@@ -401,10 +421,6 @@ export default function OrdersPage() {
       .then((data: TruckWorkspaceSnapshot & { error?: string }) => {
         if (cancelled || data.error) return;
         setTruckWorkspace(data);
-        if (vehicleChanged) {
-          const nextRound = String(data.suggestedRound);
-          setFilters((f) => ({ ...f, deliveryRound: nextRound }));
-        }
       })
       .catch(() => {});
     return () => {
@@ -460,7 +476,6 @@ export default function OrdersPage() {
 
     if (filters.vehicleId) {
       setTransferVehicleId(filters.vehicleId);
-      setTransferRound(filters.deliveryRound || "1");
     }
   }, [orders, filters.vehicleId, filters.deliveryRound]);
 
@@ -695,7 +710,7 @@ export default function OrdersPage() {
       : null;
     if (
       !confirm(
-        `Transfer ${ids.length} order(s) to ${target?.name ?? "truck"} (round ${transferRound})?${
+        `Transfer ${ids.length} order(s) to ${target?.name ?? "truck"}?${
           picker
             ? `\n\nPicker: ${picker.name}`
             : "\n\nExisting picker assignments are kept when set."
@@ -713,7 +728,7 @@ export default function OrdersPage() {
         body: JSON.stringify({
           orderIds: ids,
           vehicleId: Number(transferVehicleId),
-          deliveryRound: Number(transferRound) || 1,
+          deliveryRound: 1,
           pickerId: transferPickerId ? Number(transferPickerId) : null,
           preservePicker: !transferPickerId,
           ignoreWeightWarning,
@@ -1213,24 +1228,12 @@ export default function OrdersPage() {
           <TruckFocusBar
             vehicles={vehicles}
             selectedVehicleId={filters.vehicleId}
-            deliveryRound={filters.deliveryRound}
-            fleetRoundFilter={filters.fleetRoundFilter}
             onSelectVehicle={(vehicleId) =>
               setFilters({
                 ...filters,
                 vehicleId,
                 vehicleScope: vehicleId ? filters.vehicleScope : "workspace",
               })
-            }
-            onSelectRound={(deliveryRound) =>
-              setFilters((f) => ({
-                ...f,
-                deliveryRound,
-                fleetRoundFilter: f.vehicleId ? f.fleetRoundFilter : true,
-              }))
-            }
-            onClearFleetRoundFilter={() =>
-              setFilters((f) => ({ ...f, fleetRoundFilter: false }))
             }
             onClear={() =>
               setFilters({
@@ -1279,8 +1282,7 @@ export default function OrdersPage() {
           {focusVehicle && (
             <div className="mt-4 rounded-lg border border-blue-100 bg-white/80 px-3 py-2 text-sm">
               <p className="font-medium text-zinc-900">
-                {focusVehicle.name} ({focusVehicle.plateNumber}) ·{" "}
-                {formatDeliveryRound(focusRound, "short")}
+                {focusVehicle.name} ({focusVehicle.plateNumber})
               </p>
               <p className="mt-1 text-zinc-600">
                 Load: {focusPalletsOnTruck.toFixed(1)} / {focusVehicle.maxPallets}{" "}
@@ -1444,10 +1446,8 @@ export default function OrdersPage() {
           <Input
             label="Search"
             placeholder="Invoice, name..."
-            value={filters.search}
-            onChange={(e) =>
-              setFilters({ ...filters, search: e.target.value })
-            }
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
           />
         </div>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-zinc-100 pt-4">
@@ -2066,18 +2066,6 @@ export default function OrdersPage() {
               {vehicles.map((v) => (
                 <option key={v.id} value={v.id}>
                   {v.name} ({v.plateNumber})
-                </option>
-              ))}
-            </select>
-            <select
-              className="rounded border border-violet-200 bg-white px-2 py-1 text-xs"
-              value={transferRound}
-              onChange={(e) => setTransferRound(e.target.value)}
-              aria-label="Delivery round"
-            >
-              {deliveryRoundSelectOptions().map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
                 </option>
               ))}
             </select>
