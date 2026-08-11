@@ -5,7 +5,10 @@ import { submitAdminDeliveryProof } from "@/lib/services/delivery-proofs";
 import { getOrderStaff } from "@/lib/services/employees";
 import { getOrderLoadStatus } from "@/lib/services/load-coordination";
 import { updateOrderStatus } from "@/lib/services/order-status";
-import { getOrder } from "@/lib/services/orders";
+import {
+  applyRetroactiveOrderAttribution,
+  getOrder,
+} from "@/lib/services/orders";
 
 export { manualStatusFromOrder };
 
@@ -46,10 +49,24 @@ export async function updateManualOrderStatus(input: {
   orderId: number;
   status: ManualOrderStatus;
   applyToLinked?: boolean;
+  vehicleId?: number;
+  pickerId?: number;
 }) {
   const applyToLinked = input.applyToLinked !== false;
+  const hasAttribution =
+    input.vehicleId != null ||
+    (input.pickerId != null && input.pickerId > 0);
 
   if (input.status === "prepared") {
+    if (hasAttribution) {
+      const attribution = await applyRetroactiveOrderAttribution({
+        orderId: input.orderId,
+        vehicleId: input.vehicleId,
+        deliveryRound: 1,
+        pickerId: input.pickerId,
+      });
+      if (!attribution.ok) return attribution;
+    }
     return markOrderManuallyPrepared(input.orderId);
   }
 
@@ -61,6 +78,16 @@ export async function updateManualOrderStatus(input: {
 
   const updatedOrderIds: number[] = [];
   for (const id of targetIds) {
+    if (hasAttribution) {
+      const attribution = await applyRetroactiveOrderAttribution({
+        orderId: id,
+        vehicleId: input.vehicleId,
+        deliveryRound: 1,
+        pickerId: input.pickerId,
+      });
+      if (!attribution.ok) return attribution;
+    }
+
     const result = await updateOrderStatus(id, orderStatus);
     if (!result) return { ok: false as const, error: "Order not found" };
     updatedOrderIds.push(id);

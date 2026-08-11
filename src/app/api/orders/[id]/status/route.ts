@@ -5,6 +5,12 @@ import { updateManualOrderStatus } from "@/lib/services/manual-order-status";
 
 export const runtime = "nodejs";
 
+function parseOptionalId(value: unknown): number | undefined {
+  if (value == null || value === "") return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -32,6 +38,8 @@ export async function PATCH(
       orderId,
       status,
       applyToLinked,
+      vehicleId: parseOptionalId(body.vehicleId),
+      pickerId: parseOptionalId(body.pickerId),
     });
     if (!result.ok) {
       return NextResponse.json(

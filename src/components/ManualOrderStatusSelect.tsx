@@ -5,6 +5,17 @@ import { Button, Select } from "@/components/ui";
 import { MANUAL_ORDER_STATUSES, type ManualOrderStatus } from "@/lib/constants";
 import { manualStatusFromOrder } from "@/lib/manual-order-status-display";
 
+interface VehicleOption {
+  id: number;
+  name: string;
+  plateNumber: string;
+}
+
+interface PickerOption {
+  id: number;
+  name: string;
+}
+
 interface LinkedOrder {
   id: number;
   invoiceNumber: string;
@@ -14,6 +25,10 @@ interface ManualOrderStatusSelectProps {
   orderId: number;
   currentStatus: string;
   prepStatus?: "pending" | "prepared";
+  vehicles?: VehicleOption[];
+  pickers?: PickerOption[];
+  currentVehicleId?: number | null;
+  currentPickerId?: number | null;
   linkedOrders?: LinkedOrder[];
   onUpdated: () => void;
   onError: (message: string) => void;
@@ -33,12 +48,22 @@ export function ManualOrderStatusSelect({
   orderId,
   currentStatus,
   prepStatus,
+  vehicles = [],
+  pickers = [],
+  currentVehicleId,
+  currentPickerId,
   linkedOrders = [],
   onUpdated,
   onError,
 }: ManualOrderStatusSelectProps) {
   const resolvedStatus = manualStatusFromOrder({ status: currentStatus, prepStatus });
   const [status, setStatus] = useState(resolvedStatus);
+  const [vehicleId, setVehicleId] = useState(
+    currentVehicleId ? String(currentVehicleId) : ""
+  );
+  const [pickerId, setPickerId] = useState(
+    currentPickerId ? String(currentPickerId) : ""
+  );
   const [applyToLinked, setApplyToLinked] = useState(true);
   const [busy, setBusy] = useState(false);
 
@@ -46,20 +71,30 @@ export function ManualOrderStatusSelect({
     setStatus(manualStatusFromOrder({ status: currentStatus, prepStatus }));
   }, [currentStatus, prepStatus]);
 
+  useEffect(() => {
+    setVehicleId(currentVehicleId ? String(currentVehicleId) : "");
+    setPickerId(currentPickerId ? String(currentPickerId) : "");
+  }, [currentVehicleId, currentPickerId]);
+
   const partners = linkedOrders.filter((link) => link.id !== orderId);
   const showLinkedOption = status === "delivered" && partners.length > 0;
+  const showAttribution = vehicles.length > 0 || pickers.length > 0;
 
   async function save() {
     setBusy(true);
     onError("");
 
+    const payload: Record<string, unknown> = {
+      status,
+      applyToLinked: showLinkedOption ? applyToLinked : undefined,
+    };
+    if (vehicleId) payload.vehicleId = Number(vehicleId);
+    if (pickerId) payload.pickerId = Number(pickerId);
+
     const res = await fetch(`/api/orders/${orderId}/status`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        status,
-        applyToLinked: showLinkedOption ? applyToLinked : undefined,
-      }),
+      body: JSON.stringify(payload),
     });
     const data = await res.json();
     setBusy(false);
@@ -70,7 +105,10 @@ export function ManualOrderStatusSelect({
     onUpdated();
   }
 
-  const unchanged = status === resolvedStatus;
+  const unchanged =
+    status === resolvedStatus &&
+    vehicleId === (currentVehicleId ? String(currentVehicleId) : "") &&
+    pickerId === (currentPickerId ? String(currentPickerId) : "");
 
   return (
     <div className="space-y-3 rounded-lg border border-dashed border-zinc-300 bg-white p-3">
@@ -97,6 +135,46 @@ export function ManualOrderStatusSelect({
           {busy ? "Saving…" : "Update status"}
         </Button>
       </div>
+
+      {showAttribution && (
+        <div className="grid gap-3 border-t border-zinc-100 pt-3 sm:grid-cols-2">
+          {vehicles.length > 0 && (
+            <Select
+              label="Transport truck"
+              value={vehicleId}
+              onChange={(e) => setVehicleId(e.target.value)}
+            >
+              <option value="">— Not set —</option>
+              {vehicles.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name} ({v.plateNumber})
+                </option>
+              ))}
+            </Select>
+          )}
+          {pickers.length > 0 && (
+            <Select
+              label="Prepared by (picker)"
+              value={pickerId}
+              onChange={(e) => setPickerId(e.target.value)}
+            >
+              <option value="">— Not set —</option>
+              {pickers.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </Select>
+          )}
+        </div>
+      )}
+
+      {showAttribution && (vehicleId || pickerId) && (
+        <p className="text-[11px] leading-snug text-zinc-500">
+          Truck and preparer are saved for reporting without step times. Change
+          them here when you update status.
+        </p>
+      )}
 
       {showLinkedOption && (
         <label className="flex cursor-pointer items-start gap-2 rounded-md border border-sky-100 bg-sky-50/80 px-3 py-2 text-xs text-sky-950">

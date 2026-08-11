@@ -378,6 +378,43 @@ export function OrderAssignmentPanel({
     onSaved();
   }
 
+  if (manualMode) {
+    return (
+      <div className="flex w-full flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-3">
+        {deliveryLinks.length > 0 && (
+          <DeliveryLinkNotice links={deliveryLinks} compact />
+        )}
+        {(hasAssignment || hasProgress || deliveryStage === "delivered") && (
+          <div className="flex flex-wrap gap-1">
+            <Button
+              variant="ghost"
+              className="px-2 py-1 text-[11px]"
+              disabled={busy}
+              onClick={() =>
+                clearScope({
+                  truck: true,
+                  picker: true,
+                  driver: true,
+                  helpers: true,
+                })
+              }
+            >
+              Clear truck & staff
+            </Button>
+            <Button
+              variant="ghost"
+              className="px-2 py-1 text-[11px] text-red-700"
+              disabled={busy}
+              onClick={resetDelivery}
+            >
+              Reset delivery
+            </Button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="flex w-full flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-3">
       {deliveryLinks.length > 0 && (

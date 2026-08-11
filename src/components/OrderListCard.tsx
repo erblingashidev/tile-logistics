@@ -447,6 +447,13 @@ export function OrderListCard({
               (order as OrderListCardOrder & { prepStatus?: "pending" | "prepared" })
                 .prepStatus
             }
+            vehicles={vehicles}
+            pickers={pickers}
+            currentVehicleId={order.assignment?.vehicleId}
+            currentPickerId={
+              (order.staff?.picker as { employeeId?: number } | null | undefined)
+                ?.employeeId
+            }
             linkedOrders={order.deliveryLinks}
             onUpdated={onSaved}
             onError={onError}
