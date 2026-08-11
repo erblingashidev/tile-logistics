@@ -214,7 +214,7 @@ function OrderRow({
             {order.totalPallets} plt · {formatM2(order.totalM2)} m²
           </p>
           <div className="flex flex-wrap gap-1">
-            {onQuickAssignToFocus && (
+            {onQuickAssignToFocus && !manualMode && (
               <Button className="text-xs" onClick={onQuickAssignToFocus}>
                 → {focusVehicleName ?? "Truck"}
               </Button>
@@ -225,7 +225,7 @@ function OrderRow({
                 className="text-xs"
                 onClick={onToggleAssign}
               >
-                {assignOpen ? "Close" : manualMode && isDelivered ? "Correct" : "Assign"}
+                {assignOpen ? "Close" : manualMode ? "Status" : "Assign"}
               </Button>
             )}
             <Button variant="ghost" className="text-xs" onClick={onEdit}>
@@ -240,11 +240,6 @@ function OrderRow({
         )}
         {showAssignPanel && (
           <div className="border-t border-zinc-100 bg-zinc-50 p-3 space-y-3">
-            {manualMode && isDelivered && (
-              <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                Marked delivered — change status, truck, or staff below if needed.
-              </p>
-            )}
             {manualMode && order.id != null && (
               <ManualOrderStatusSelect
                 orderId={order.id}
@@ -265,32 +260,33 @@ function OrderRow({
                 onError={onError}
               />
             )}
-            <OrderAssignmentPanel
-              orderId={order.id!}
-              invoiceNumber={order.invoiceNumber}
-              orderPallets={order.totalPallets}
-              hasAssignment={Boolean(order.assignment)}
-              hasProgress={(order.proofs?.length ?? 0) > 0}
-              proofPhases={(order.proofs ?? []).map((proof) => proof.phase)}
-              deliveryStage={stage}
-              prepStatus={
-                (order as OrderListCardOrder & { prepStatus?: "pending" | "prepared" })
-                  .prepStatus
-              }
-              loadStatus={order.loadStatus}
-              staffOptions={staffOptionsFromOrder(order)}
-              staffSnapshot={order.staff}
-              deliveryLinks={order.deliveryLinks}
-              draft={draft}
-              vehicles={vehicles}
-              pickers={pickers}
-              preferredVehicleId={preferredVehicleId}
-              manualMode={manualMode}
-              onDraftChange={onDraftChange}
-              onSaved={onSaved}
-              onError={onError}
-              onWarning={onWarning}
-            />
+            {!manualMode && (
+              <OrderAssignmentPanel
+                orderId={order.id!}
+                invoiceNumber={order.invoiceNumber}
+                orderPallets={order.totalPallets}
+                hasAssignment={Boolean(order.assignment)}
+                hasProgress={(order.proofs?.length ?? 0) > 0}
+                proofPhases={(order.proofs ?? []).map((proof) => proof.phase)}
+                deliveryStage={stage}
+                prepStatus={
+                  (order as OrderListCardOrder & { prepStatus?: "pending" | "prepared" })
+                    .prepStatus
+                }
+                loadStatus={order.loadStatus}
+                staffOptions={staffOptionsFromOrder(order)}
+                staffSnapshot={order.staff}
+                deliveryLinks={order.deliveryLinks}
+                draft={draft}
+                vehicles={vehicles}
+                pickers={pickers}
+                preferredVehicleId={preferredVehicleId}
+                onDraftChange={onDraftChange}
+                onSaved={onSaved}
+                onError={onError}
+                onWarning={onWarning}
+              />
+            )}
           </div>
         )}
       </div>
@@ -344,7 +340,7 @@ function OrderRow({
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap gap-1 sm:justify-end">
-          {onQuickAssignToFocus && (
+          {onQuickAssignToFocus && !manualMode && (
             <Button className="text-xs" onClick={onQuickAssignToFocus}>
               → {focusVehicleName ?? "Truck"}
               {focusDeliveryRound ? ` R${focusDeliveryRound}` : ""}
@@ -356,7 +352,7 @@ function OrderRow({
               className="text-xs"
               onClick={onToggleAssign}
             >
-              {assignOpen ? "Close" : manualMode && isDelivered ? "Correct" : "Assign"}
+              {assignOpen ? "Close" : manualMode ? "Status" : "Assign"}
             </Button>
           )}
           <Button variant="ghost" className="text-xs" onClick={onEdit}>
@@ -383,11 +379,6 @@ function OrderRow({
       )}
       {showAssignPanel && (
         <div className="border-t border-zinc-100 bg-zinc-50 px-3 py-3 space-y-3">
-          {manualMode && isDelivered && (
-            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-              Marked delivered — change status, truck, or staff below if needed.
-            </p>
-          )}
           {manualMode && order.id != null && (
             <ManualOrderStatusSelect
               orderId={order.id}
@@ -408,37 +399,39 @@ function OrderRow({
               onError={onError}
             />
           )}
-          <OrderAssignmentPanel
-            orderId={order.id!}
-            invoiceNumber={order.invoiceNumber}
-            orderPallets={order.totalPallets}
-            hasAssignment={Boolean(
-              order.assignment ||
-                order.staff?.picker ||
-                order.staff?.staff?.some((s) =>
-                  ["driver", "unloader"].includes(s.role)
-                )
-            )}
-            hasProgress={(order.proofs?.length ?? 0) > 0}
-            proofPhases={(order.proofs ?? []).map((proof) => proof.phase)}
-            deliveryStage={stage}
-            prepStatus={
-              (order as OrderListCardOrder & { prepStatus?: "pending" | "prepared" })
-                .prepStatus
-            }
-            loadStatus={order.loadStatus}
-            staffOptions={staffOptionsFromOrder(order)}
-            staffSnapshot={order.staff}
-            deliveryLinks={order.deliveryLinks}
-            draft={draft}
-            vehicles={vehicles}
-            pickers={pickers}
-            preferredVehicleId={preferredVehicleId}
-            onDraftChange={onDraftChange}
-            onSaved={onSaved}
-            onError={onError}
-            onWarning={onWarning}
-          />
+          {!manualMode && (
+            <OrderAssignmentPanel
+              orderId={order.id!}
+              invoiceNumber={order.invoiceNumber}
+              orderPallets={order.totalPallets}
+              hasAssignment={Boolean(
+                order.assignment ||
+                  order.staff?.picker ||
+                  order.staff?.staff?.some((s) =>
+                    ["driver", "unloader"].includes(s.role)
+                  )
+              )}
+              hasProgress={(order.proofs?.length ?? 0) > 0}
+              proofPhases={(order.proofs ?? []).map((proof) => proof.phase)}
+              deliveryStage={stage}
+              prepStatus={
+                (order as OrderListCardOrder & { prepStatus?: "pending" | "prepared" })
+                  .prepStatus
+              }
+              loadStatus={order.loadStatus}
+              staffOptions={staffOptionsFromOrder(order)}
+              staffSnapshot={order.staff}
+              deliveryLinks={order.deliveryLinks}
+              draft={draft}
+              vehicles={vehicles}
+              pickers={pickers}
+              preferredVehicleId={preferredVehicleId}
+              onDraftChange={onDraftChange}
+              onSaved={onSaved}
+              onError={onError}
+              onWarning={onWarning}
+            />
+          )}
         </div>
       )}
     </div>
