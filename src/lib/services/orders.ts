@@ -44,6 +44,7 @@ import {
   DELIVERY_TIME_PREFERENCE_LABELS,
   matchesWorkDay,
   todayDateString,
+  addDaysToDateString,
   type WorkDayFilter,
 } from "@/lib/delivery-schedule";
 import {
@@ -76,6 +77,7 @@ import {
   type RouteSuggestion,
 } from "@/lib/routes/planner";
 import { logActivity } from "@/lib/logger";
+import { enrichOrdersForList } from "@/lib/services/order-list-enrichment";
 import {
   assignRejectedMessage,
   formatLogMessage,
@@ -352,6 +354,37 @@ export async function listOrders(filters?: {
     );
   }
 
+  const workDateSql = sql`coalesce(nullif(trim(${orders.requestedDeliveryDate}), ''), ${orders.orderDate})`;
+  if (filters?.readyToShip) {
+    const shipAsOf = filters.shipAsOfDate ?? todayDateString();
+    conditions.push(
+      sql`(${orders.requestedDeliveryDate} IS NULL OR ${orders.requestedDeliveryDate} <= ${shipAsOf})`
+    );
+  }
+  if (filters?.workDay && filters.workDay !== "all") {
+    const asOf = todayDateString();
+    if (filters.workDay === "today") {
+      conditions.push(sql`${workDateSql} = ${asOf}`);
+    } else if (filters.workDay === "tomorrow") {
+      conditions.push(sql`${workDateSql} = ${addDaysToDateString(asOf, 1)}`);
+    } else if (filters.workDay === "date") {
+      const target = filters.shipAsOfDate?.trim();
+      if (target) conditions.push(sql`${workDateSql} = ${target}`);
+    } else if (filters.workDay === "yesterday") {
+      conditions.push(
+        sql`${workDateSql} = ${addDaysToDateString(asOf, -1)} AND ${orders.status} NOT IN ('delivered', 'cancelled')`
+      );
+    } else if (filters.workDay === "overdue") {
+      conditions.push(
+        sql`${workDateSql} < ${asOf} AND ${orders.status} NOT IN ('delivered', 'cancelled')`
+      );
+    }
+  }
+  const searchTrimmed = filters?.search?.trim();
+  if (filters?.hideDelivered !== false && !searchTrimmed) {
+    conditions.push(sql`${orders.status} NOT IN ('delivered', 'cancelled')`);
+  }
+
   const rows =
     conditions.length > 0
       ? await dbAll(
@@ -369,53 +402,7 @@ export async function listOrders(filters?: {
     await import("@/lib/services/order-delivery-links")
   ).getDeliveryLinksByOrderIds(rows.map((row) => row.id));
 
-  const mapped = await Promise.all(
-    rows.map(async (order) => {
-      try {
-        const proofs = await listDeliveryProofs(order.id);
-        const deliveryStage = computeOrderDisplayStage(
-          order.status,
-          proofs.map((p) => p.phase)
-        );
-        return {
-          ...order,
-          customerHasForklift: Boolean(order.customerHasForklift),
-          assignment: await getOrderAssignment(order.id),
-          staff: await getOrderStaff(order.id),
-          proofs,
-          deliveryStage,
-          deliveryStageLabel: ORDER_STAGE_LABELS[deliveryStage],
-          shipment: computeShipmentProgress(order, proofs),
-          ...(await getOrderLoadStatus(order.id)),
-          deliveryLinks: linkMap.get(order.id) ?? [],
-          items: await dbAll(
-            db
-              .select()
-              .from(orderItems)
-              .where(eq(orderItems.orderId, order.id))
-          ),
-        };
-      } catch (err) {
-        console.error("[listOrders] enrich failed for order", order.id, err);
-        const deliveryStage = computeOrderDisplayStage(order.status, []);
-        return {
-          ...order,
-          assignment: null,
-          staff: { staff: [], picker: null, driver: null, groupLeader: null },
-          proofs: [],
-          deliveryStage,
-          deliveryStageLabel: ORDER_STAGE_LABELS[deliveryStage],
-          prepStatus: "pending" as const,
-          loadStatus: "pending" as const,
-          loadNotes: null,
-          canMarkLoaded: false,
-          loadBlockedReason: null,
-          deliveryLinks: linkMap.get(order.id) ?? [],
-          items: [],
-        };
-      }
-    })
-  );
+  const mapped = await enrichOrdersForList(rows, linkMap);
 
   return dedupeOrdersByInvoiceNumber(
     mapped.filter((order) => {
@@ -2261,16 +2248,35 @@ export async function getReportData(filters: {
 }
 
 export async function getDashboardStats() {
-  const all = await listOrders();
-  const unassigned = all.filter((o) => !o.assignment);
   const db = await getDb();
-  const vehicleRows = await dbAll(db.select().from(vehicles));
+  const [totalsRow, unassignedRow, vehiclesAvailableRow] = await Promise.all([
+    dbOne(
+      db.select({ count: sql<number>`count(*)` }).from(orders)
+    ),
+    dbOne(
+      db
+        .select({
+          count: sql<number>`count(*)`,
+          pallets: sql<number>`coalesce(sum(${orders.totalPallets}), 0)`,
+        })
+        .from(orders)
+        .where(
+          sql`NOT EXISTS (SELECT 1 FROM assignments a WHERE a.order_id = ${orders.id})`
+        )
+    ),
+    dbOne(
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(vehicles)
+        .where(eq(vehicles.status, "available"))
+    ),
+  ]);
+
   return {
-    totalOrders: all.length,
-    unassignedOrders: unassigned.length,
-    totalPalletsPending: unassigned.reduce((s, o) => s + o.totalPallets, 0),
-    vehiclesAvailable: vehicleRows.filter((v) => v.status === "available")
-      .length,
+    totalOrders: Number(totalsRow?.count ?? 0),
+    unassignedOrders: Number(unassignedRow?.count ?? 0),
+    totalPalletsPending: Number(unassignedRow?.pallets ?? 0),
+    vehiclesAvailable: Number(vehiclesAvailableRow?.count ?? 0),
   };
 }
 

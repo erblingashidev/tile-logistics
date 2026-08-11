@@ -235,6 +235,45 @@ export async function listDeliveryProofs(orderId: number) {
   }
 }
 
+/** Batch-load delivery proofs for list views (avoids N+1 queries). */
+export async function listDeliveryProofsBatch(orderIds: number[]) {
+  const map = new Map<number, Awaited<ReturnType<typeof listDeliveryProofs>>>();
+  if (orderIds.length === 0) return map;
+
+  const db = await getDb();
+  const rows = await dbAll(
+    db
+      .select({
+        id: deliveryProofs.id,
+        orderId: deliveryProofs.orderId,
+        phase: deliveryProofs.phase,
+        photoPath: deliveryProofs.photoPath,
+        notes: deliveryProofs.notes,
+        sentPallets: deliveryProofs.sentPallets,
+        sentM2: deliveryProofs.sentM2,
+        sentPieces: deliveryProofs.sentPieces,
+        lat: deliveryProofs.lat,
+        lng: deliveryProofs.lng,
+        capturedAt: deliveryProofs.capturedAt,
+        createdAt: deliveryProofs.createdAt,
+        employeeId: deliveryProofs.employeeId,
+        employeeName: employees.name,
+      })
+      .from(deliveryProofs)
+      .innerJoin(employees, eq(deliveryProofs.employeeId, employees.id))
+      .where(inArray(deliveryProofs.orderId, orderIds))
+      .orderBy(deliveryProofs.capturedAt)
+  );
+
+  for (const id of orderIds) map.set(id, []);
+  for (const row of rows) {
+    const list = map.get(row.orderId) ?? [];
+    list.push({ ...row, photoUrl: proofPhotoUrl(row) });
+    map.set(row.orderId, list);
+  }
+  return map;
+}
+
 export async function getOrderShipmentProgress(
   orderId: number
 ): Promise<OrderShipmentProgress | null> {

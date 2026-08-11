@@ -123,9 +123,54 @@ export async function getDeliveryLinksByOrderIds(orderIds: number[]) {
   }
 
   const summaryById = new Map<number, LinkedOrderSummary>();
-  for (const id of partnerIds) {
-    const summary = await orderSummary(id);
-    if (summary) summaryById.set(id, summary);
+  const idsToLoad = [...partnerIds];
+  if (idsToLoad.length > 0) {
+    const orderRows = await dbAll(
+      db
+        .select({
+          id: orders.id,
+          invoiceNumber: orders.invoiceNumber,
+          customerName: orders.customerName,
+          location: orders.location,
+        })
+        .from(orders)
+        .where(inArray(orders.id, idsToLoad))
+    );
+    const assignmentRows = await dbAll(
+      db
+        .select({
+          orderId: assignments.orderId,
+          vehicleId: assignments.vehicleId,
+          vehicleName: vehicles.name,
+          deliveryRound: assignments.deliveryRound,
+        })
+        .from(assignments)
+        .innerJoin(vehicles, eq(assignments.vehicleId, vehicles.id))
+        .where(inArray(assignments.orderId, idsToLoad))
+    );
+    const assignmentByOrderId = new Map<
+      number,
+      {
+        vehicleId: number;
+        vehicleName: string;
+        deliveryRound: number;
+      }
+    >();
+    for (const row of assignmentRows) {
+      if (!assignmentByOrderId.has(row.orderId)) {
+        assignmentByOrderId.set(row.orderId, {
+          vehicleId: row.vehicleId,
+          vehicleName: row.vehicleName,
+          deliveryRound: row.deliveryRound,
+        });
+      }
+    }
+    for (const row of orderRows) {
+      summaryById.set(row.id, {
+        ...row,
+        assignment: assignmentByOrderId.get(row.id) ?? null,
+      });
+    }
   }
 
   for (const orderId of orderIds) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { LocationPicker } from "@/components/LocationPicker";
@@ -379,8 +379,37 @@ export default function OrdersPage() {
 
   useEffect(() => {
     void loadOrders();
-    const interval = setInterval(loadOrders, 15000);
-    return () => clearInterval(interval);
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    function startPolling() {
+      if (interval) return;
+      interval = setInterval(() => {
+        if (!document.hidden) void loadOrders();
+      }, 30000);
+    }
+
+    function stopPolling() {
+      if (interval) {
+        clearInterval(interval);
+        interval = null;
+      }
+    }
+
+    function onVisibilityChange() {
+      if (document.hidden) {
+        stopPolling();
+      } else {
+        void loadOrders();
+        startPolling();
+      }
+    }
+
+    startPolling();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      stopPolling();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [loadOrders]);
 
   useEffect(() => {
@@ -526,7 +555,7 @@ export default function OrdersPage() {
     setEditingId(null);
     setImportQueueId(null);
     setForm(createEmptyOrderForm());
-    load();
+    void loadOrders();
   }
 
   function openNewOrder() {
@@ -628,7 +657,7 @@ export default function OrdersPage() {
   async function deleteOrder(id: number) {
     if (!confirm("Delete this order?")) return;
     await fetch(`/api/orders/${id}`, { method: "DELETE" });
-    load();
+    void loadOrders();
   }
 
   async function bulkClearSelected(scope?: {
@@ -687,7 +716,7 @@ export default function OrdersPage() {
       setTimeout(() => setWarning(""), 3000);
     }
     setSelectedOrderIds(new Set());
-    load();
+    void loadOrders();
   }
 
   async function bulkTransferToTruck(
@@ -762,7 +791,7 @@ export default function OrdersPage() {
           );
           setTimeout(() => setWarning(""), 5000);
           setSelectedOrderIds(new Set());
-          load();
+          void loadOrders();
         }
         setError(
           data.error ??
@@ -776,7 +805,7 @@ export default function OrdersPage() {
       );
       setTimeout(() => setWarning(""), 4000);
       setSelectedOrderIds(new Set());
-      load();
+      void loadOrders();
     } catch {
       setError("Transfer request failed — check your connection and try again.");
     } finally {
@@ -823,7 +852,7 @@ export default function OrdersPage() {
     }
     setWarning(`Linked: ${(data.invoiceNumbers ?? labels).join(", ")}`);
     setTimeout(() => setWarning(""), 4000);
-    load();
+    void loadOrders();
   }
 
   async function bulkUnlinkDelivery() {
@@ -848,7 +877,7 @@ export default function OrdersPage() {
     }
     setWarning("Delivery link removed.");
     setTimeout(() => setWarning(""), 3000);
-    load();
+    void loadOrders();
   }
 
   async function bulkRescheduleSelected(targetDate?: string) {
@@ -882,7 +911,7 @@ export default function OrdersPage() {
     );
     setTimeout(() => setWarning(""), 4000);
     setSelectedOrderIds(new Set());
-    load();
+    void loadOrders();
   }
 
   async function bulkAssignToFocusTruck() {
@@ -939,7 +968,7 @@ export default function OrdersPage() {
           );
           setTimeout(() => setWarning(""), 5000);
           setSelectedOrderIds(new Set());
-          load();
+          void loadOrders();
         }
         setError(
           data.error ??
@@ -953,7 +982,7 @@ export default function OrdersPage() {
       );
       setTimeout(() => setWarning(""), 4000);
       setSelectedOrderIds(new Set());
-      load();
+      void loadOrders();
     } catch {
       setError("Assign request failed — check your connection and try again.");
     } finally {
@@ -995,49 +1024,75 @@ export default function OrdersPage() {
       }`
     );
     setTimeout(() => setWarning(""), 3000);
-    load();
+    void loadOrders();
   }
 
-  const pickers = employees.filter((e) => e.roles.includes("picker"));
-  const drivers = employees.filter((e) => e.roles.includes("driver"));
+  const pickers = useMemo(
+    () => employees.filter((e) => e.roles.includes("picker")),
+    [employees]
+  );
+  const drivers = useMemo(
+    () => employees.filter((e) => e.roles.includes("driver")),
+    [employees]
+  );
 
-  const focusVehicle = vehicles.find(
-    (v) => String(v.id) === filters.vehicleId
+  const focusVehicle = useMemo(
+    () => vehicles.find((v) => String(v.id) === filters.vehicleId),
+    [vehicles, filters.vehicleId]
   );
   const focusRound = Number(filters.deliveryRound) || 1;
   const focusLoad = focusVehicle?.loads?.find((l) => l.round === focusRound);
-  const ordersOnFocusTruck = orders.filter(
-    (o) =>
-      o.assignment?.vehicleId === Number(filters.vehicleId) &&
-      o.assignment?.deliveryRound === focusRound
+  const ordersOnFocusTruck = useMemo(
+    () =>
+      orders.filter(
+        (o) =>
+          o.assignment?.vehicleId === Number(filters.vehicleId) &&
+          o.assignment?.deliveryRound === focusRound
+      ),
+    [orders, filters.vehicleId, focusRound]
   );
-  const focusPalletsOnTruck = ordersOnFocusTruck.reduce(
-    (s, o) => s + o.totalPallets,
-    0
+  const focusPalletsOnTruck = useMemo(
+    () => ordersOnFocusTruck.reduce((s, o) => s + o.totalPallets, 0),
+    [ordersOnFocusTruck]
   );
   const focusPalletsRemaining = focusVehicle
     ? Math.max(0, focusVehicle.maxPallets - focusPalletsOnTruck)
     : 0;
 
-  const assignedCount = orders.filter((o) => o.assignment).length;
-  const unassignedCount = orders.length - assignedCount;
-  const preparedCount = orders.filter(
-    (o) => o.deliveryStage === "prepared" || o.deliveryStage === "loaded"
-  ).length;
-  const visibleOrders = orders.filter((order) => {
-    if (assignmentFilter === "assigned") return Boolean(order.assignment);
-    if (assignmentFilter === "unassigned") return !order.assignment;
-    return true;
-  });
-
-  const selectedOrders = orders.filter((order) => selectedOrderIds.has(order.id));
-  const selectedTotals = selectedOrders.reduce(
-    (acc, order) => ({
-      pallets: acc.pallets + order.totalPallets,
-      weightKg: acc.weightKg + order.totalWeightKg,
-    }),
-    { pallets: 0, weightKg: 0 }
+  const assignedCount = useMemo(
+    () => orders.filter((o) => o.assignment).length,
+    [orders]
   );
+  const unassignedCount = orders.length - assignedCount;
+  const preparedCount = useMemo(
+    () =>
+      orders.filter(
+        (o) => o.deliveryStage === "prepared" || o.deliveryStage === "loaded"
+      ).length,
+    [orders]
+  );
+  const visibleOrders = useMemo(
+    () =>
+      orders.filter((order) => {
+        if (assignmentFilter === "assigned") return Boolean(order.assignment);
+        if (assignmentFilter === "unassigned") return !order.assignment;
+        return true;
+      }),
+    [orders, assignmentFilter]
+  );
+
+  const selectedTotals = useMemo(() => {
+    const selectedOrders = orders.filter((order) =>
+      selectedOrderIds.has(order.id)
+    );
+    return selectedOrders.reduce(
+      (acc, order) => ({
+        pallets: acc.pallets + order.totalPallets,
+        weightKg: acc.weightKg + order.totalWeightKg,
+      }),
+      { pallets: 0, weightKg: 0 }
+    );
+  }, [orders, selectedOrderIds]);
 
   function openAssignPanel(orderId: number) {
     setExpandedAssignId((current) => {
@@ -1132,7 +1187,7 @@ export default function OrdersPage() {
       return;
     }
     setWarning(`Urgent ${order.invoiceNumber} → ${label}`);
-    load();
+    void loadOrders();
   }
 
   return (
@@ -2236,7 +2291,7 @@ export default function OrdersPage() {
                   onDraftChange={(next) =>
                     setAssignState((prev) => ({ ...prev, [order.id]: next }))
                   }
-                  onSaved={load}
+                  onSaved={loadOrders}
                   onError={setError}
                   onWarning={(msg) => {
                     setWarning(msg);
@@ -2289,7 +2344,7 @@ export default function OrdersPage() {
               onDraftChange={(orderId, next) =>
                 setAssignState((prev) => ({ ...prev, [orderId]: next }))
               }
-              onSaved={load}
+              onSaved={loadOrders}
               onError={setError}
               onWarning={(msg) => {
                 setWarning(msg);

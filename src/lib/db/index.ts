@@ -585,6 +585,18 @@ async function runMigrations(client: Client) {
   await client.execute(
     "CREATE INDEX IF NOT EXISTS idx_orders_requested_delivery ON orders(requested_delivery_date)"
   );
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_assignments_order ON assignments(order_id)"
+  );
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id)"
+  );
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)"
+  );
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_employees_assigned_vehicle ON employees(assigned_vehicle_id)"
+  );
 
   const orderCols2 = await tableColumns(client, "orders");
   await addColumnIfMissing(

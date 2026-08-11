@@ -67,7 +67,7 @@ export interface TruckLoadStatus {
   awaitingDepartCount: number;
 }
 
-function loadStatusFromProofs(
+export function loadStatusFromProofs(
   proofs: { phase: string; notes: string | null }[]
 ): {
   prepStatus: OrderPrepStatus;
