@@ -1,7 +1,7 @@
 import type { ManualOrderStatus, OrderStatus } from "@/lib/constants";
 import { manualStatusFromOrder } from "@/lib/manual-order-status-display";
 import { getLinkedOrderIdGroup } from "@/lib/services/order-delivery-links";
-import { submitAdminDeliveryProof } from "@/lib/services/delivery-proofs";
+import { deleteDeliveryProofsForOrder, submitAdminDeliveryProof } from "@/lib/services/delivery-proofs";
 import { getOrderStaff } from "@/lib/services/employees";
 import { getOrderLoadStatus } from "@/lib/services/load-coordination";
 import { updateOrderStatus } from "@/lib/services/order-status";
@@ -45,6 +45,27 @@ async function markOrderManuallyPrepared(orderId: number) {
   return { ok: true as const, orderId, status: "prepared" as const, changed: true };
 }
 
+function orderWasDelivered(order: {
+  status: string;
+  proofs?: Array<{ phase: string }>;
+}): boolean {
+  return (
+    order.status === "delivered" ||
+    Boolean(order.proofs?.some((proof) => proof.phase === "delivered"))
+  );
+}
+
+async function applyManualStatusToOrder(
+  orderId: number,
+  orderStatus: OrderStatus,
+  options: { clearProofsIfRevert: boolean }
+) {
+  if (options.clearProofsIfRevert) {
+    await deleteDeliveryProofsForOrder(orderId);
+  }
+  return updateOrderStatus(orderId, orderStatus);
+}
+
 export async function updateManualOrderStatus(input: {
   orderId: number;
   status: ManualOrderStatus;
@@ -71,10 +92,19 @@ export async function updateManualOrderStatus(input: {
   }
 
   const orderStatus = input.status as OrderStatus;
-  const targetIds =
-    input.status === "delivered" && applyToLinked
-      ? await getLinkedOrderIdGroup(input.orderId)
-      : [input.orderId];
+  const currentOrder = await getOrder(input.orderId);
+  if (!currentOrder) return { ok: false as const, error: "Order not found" };
+
+  const revertingFromDelivered =
+    orderWasDelivered(currentOrder) && input.status !== "delivered";
+
+  const useLinkedGroup =
+    applyToLinked &&
+    (input.status === "delivered" || revertingFromDelivered);
+
+  const targetIds = useLinkedGroup
+    ? await getLinkedOrderIdGroup(input.orderId)
+    : [input.orderId];
 
   const updatedOrderIds: number[] = [];
   for (const id of targetIds) {
@@ -88,7 +118,15 @@ export async function updateManualOrderStatus(input: {
       if (!attribution.ok) return attribution;
     }
 
-    const result = await updateOrderStatus(id, orderStatus);
+    const targetOrder = id === input.orderId ? currentOrder : await getOrder(id);
+    if (!targetOrder) return { ok: false as const, error: "Order not found" };
+
+    const clearProofsIfRevert =
+      input.status === "pending" && orderWasDelivered(targetOrder);
+
+    const result = await applyManualStatusToOrder(id, orderStatus, {
+      clearProofsIfRevert,
+    });
     if (!result) return { ok: false as const, error: "Order not found" };
     updatedOrderIds.push(id);
   }

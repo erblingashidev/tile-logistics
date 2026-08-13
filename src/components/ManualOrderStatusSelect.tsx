@@ -77,7 +77,10 @@ export function ManualOrderStatusSelect({
   }, [currentVehicleId, currentPickerId]);
 
   const partners = linkedOrders.filter((link) => link.id !== orderId);
-  const showLinkedOption = status === "delivered" && partners.length > 0;
+  const isCurrentlyDelivered = resolvedStatus === "delivered";
+  const isRevertFromDelivered = isCurrentlyDelivered && status !== "delivered";
+  const showLinkedOption =
+    partners.length > 0 && (status === "delivered" || isRevertFromDelivered);
   const showAttribution = vehicles.length > 0 || pickers.length > 0;
 
   async function save() {
@@ -185,8 +188,9 @@ export function ManualOrderStatusSelect({
             onChange={(e) => setApplyToLinked(e.target.checked)}
           />
           <span>
-            Mark linked orders delivered too (
-            {partners.map((p) => p.invoiceNumber).join(", ")})
+            {isRevertFromDelivered
+              ? `Set linked orders to ${STATUS_LABELS[status] ?? status} too (${partners.map((p) => p.invoiceNumber).join(", ")})`
+              : `Mark linked orders delivered too (${partners.map((p) => p.invoiceNumber).join(", ")})`}
           </span>
         </label>
       )}

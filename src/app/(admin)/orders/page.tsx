@@ -43,6 +43,7 @@ import {
   productToOrderItemDefaults,
   type ProductPalletSpec,
 } from "@/lib/product-pallet-spec";
+import { extractKosovoPhoneFromText } from "@/lib/phone/kosovo";
 import { readJsonListWithError } from "@/lib/api/read-json-list";
 import {
   ORDER_UNITS,
@@ -184,6 +185,10 @@ const emptyItem = (): OrderItem => ({
   quantityM2: 0,
 });
 
+function phoneFromOrderNotes(notes?: string | null): string {
+  return extractKosovoPhoneFromText(notes ?? "") ?? "";
+}
+
 function parseReferentiFromNotes(notes?: string | null): string {
   const match = notes?.match(/Referenti:\s*([^·\n]+)/i);
   return match?.[1]?.trim() ?? "";
@@ -316,6 +321,7 @@ export default function OrdersPage() {
   const [warning, setWarning] = useState("");
   const [bulkAssigning, setBulkAssigning] = useState(false);
   const [manualDispatchMode, setManualDispatchMode] = useState(true);
+  const [linkToOrderId, setLinkToOrderId] = useState<number | null>(null);
   const [exportGroupBy, setExportGroupBy] = useState<
     "none" | "region" | "truck" | "picker" | "driver"
   >("region");
@@ -551,9 +557,28 @@ export default function OrdersPage() {
       setError(data.error ?? "Failed to save order");
       return;
     }
+
+    const savedOrderId = editingId ?? (data as { id?: number }).id;
+    if (!editingId && linkToOrderId && savedOrderId) {
+      const linkRes = await fetch("/api/orders/delivery-links", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderIds: [savedOrderId, linkToOrderId] }),
+      });
+      const linkData = await linkRes.json().catch(() => ({}));
+      if (!linkRes.ok) {
+        setError(
+          linkData.error ??
+            "Order saved, but could not link it to the selected delivery."
+        );
+        return;
+      }
+    }
+
     setShowForm(false);
     setEditingId(null);
     setImportQueueId(null);
+    setLinkToOrderId(null);
     setForm(createEmptyOrderForm());
     void loadOrders();
   }
@@ -561,6 +586,7 @@ export default function OrdersPage() {
   function openNewOrder() {
     setEditingId(null);
     setImportQueueId(null);
+    setLinkToOrderId(null);
     setError("");
     setForm(createEmptyOrderForm());
     setShowForm(true);
@@ -570,7 +596,27 @@ export default function OrdersPage() {
     setShowForm(false);
     setEditingId(null);
     setImportQueueId(null);
+    setLinkToOrderId(null);
     setForm(createEmptyOrderForm());
+  }
+
+  function applyLinkPartnerOrder(order: Order) {
+    setLinkToOrderId(order.id);
+    setForm((current) => ({
+      ...current,
+      customerPhone: phoneFromOrderNotes(order.notes) || current.customerPhone,
+      region: order.region ?? current.region,
+      location: order.location ?? current.location,
+      locationId: order.locationId ?? current.locationId,
+      city: order.city ?? current.city,
+      lat: order.lat ?? current.lat,
+      lng: order.lng ?? current.lng,
+      requestedDeliveryDate:
+        order.requestedDeliveryDate ?? current.requestedDeliveryDate,
+      deliveryTimePreference:
+        (order.deliveryTimePreference as typeof current.deliveryTimePreference) ??
+        current.deliveryTimePreference,
+    }));
   }
 
   function startEdit(order: Order) {
@@ -578,8 +624,7 @@ export default function OrdersPage() {
     setForm({
       invoiceNumber: order.invoiceNumber,
       customerName: order.customerName,
-      customerPhone:
-        order.notes?.match(/Phone:\s*([^\s·]+)/)?.[1]?.trim() ?? "",
+      customerPhone: phoneFromOrderNotes(order.notes),
       salesAgent:
         order.salesAgentName?.trim() || parseReferentiFromNotes(order.notes),
       region: order.region ?? "",
@@ -1565,6 +1610,46 @@ export default function OrdersPage() {
           <h3 className="mb-4 text-sm font-semibold text-zinc-900">
             {editingId ? "Edit Order" : "New Order / Invoice"}
           </h3>
+          {!editingId && (
+            <div className="mb-4 space-y-2 rounded-lg border border-sky-100 bg-sky-50/60 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-sky-950">
+                Link deliveries
+              </p>
+              <p className="text-xs leading-snug text-sky-900">
+                Choose an existing order to copy phone, location, and requested
+                delivery. After save, both invoices are linked for the same trip.
+              </p>
+              <Select
+                label="Link to order"
+                value={linkToOrderId ? String(linkToOrderId) : ""}
+                onChange={(e) => {
+                  const id = Number(e.target.value);
+                  if (!id) {
+                    setLinkToOrderId(null);
+                    return;
+                  }
+                  const partner = orders.find((order) => order.id === id);
+                  if (partner) applyLinkPartnerOrder(partner);
+                }}
+              >
+                <option value="">— Not linked —</option>
+                {orders
+                  .filter((order) => order.status !== "cancelled")
+                  .map((order) => (
+                    <option key={order.id} value={order.id}>
+                      {order.invoiceNumber} · {order.customerName}
+                      {order.region ? ` · ${order.region}` : ""}
+                    </option>
+                  ))}
+              </Select>
+              {linkToOrderId && (
+                <p className="text-[11px] text-sky-900">
+                  Copied phone, location, and requested delivery from the linked
+                  order. You can still edit them below.
+                </p>
+              )}
+            </div>
+          )}
           <form onSubmit={saveOrder} className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <InvoiceNumberField

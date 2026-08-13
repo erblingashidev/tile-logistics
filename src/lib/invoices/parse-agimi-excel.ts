@@ -1,5 +1,10 @@
 import * as XLSX from "xlsx";
 import { resolveLocation } from "@/lib/locations";
+import {
+  isBusinessOrFiscalId,
+  isKosovoPhone,
+  normalizeKosovoPhone,
+} from "@/lib/phone/kosovo";
 import type { OrderItemPayload } from "@/lib/services/orders";
 import {
   findFurnizimProductName,
@@ -523,20 +528,11 @@ function findLabelColumn(rows: unknown[][], label: RegExp): { row: number; col: 
 }
 
 function isPhoneLine(text: string): boolean {
-  const trimmed = text.trim();
-  if (!trimmed || !/[\d]/.test(trimmed)) return false;
-  const digits = trimmed.replace(/\D/g, "");
-  if (digits.length < 8 || digits.length > 15) return false;
-  return /^(\+383|383|0)?[\d\s./-]+$/.test(trimmed.replace(/\s/g, ""));
+  return isKosovoPhone(text);
 }
 
 function isFiscalLine(text: string): boolean {
-  const digits = text.replace(/\D/g, "");
-  return (
-    digits.length >= 7 &&
-    digits.length <= 13 &&
-    /^[\d\s./-]+$/.test(text.trim())
-  );
+  return isBusinessOrFiscalId(text);
 }
 
 function isBuyerBlockStop(text: string): boolean {
@@ -608,7 +604,7 @@ function parseExcelBuyerBlock(rows: unknown[][]): {
 
   for (const line of lines) {
     if (isPhoneLine(line)) {
-      customerPhone = line.replace(/\s+/g, " ").trim();
+      customerPhone = normalizeKosovoPhone(line) ?? line.replace(/\s+/g, " ").trim();
       continue;
     }
     if (isFiscalLine(line)) continue;
@@ -633,14 +629,16 @@ function parseExcelBuyerBlock(rows: unknown[][]): {
 
   if (labeledAddress) address = labeledAddress;
   if (labeledCity) cityRaw = labeledCity;
-  if (labeledPhone) customerPhone = labeledPhone;
+  if (labeledPhone) {
+    customerPhone = normalizeKosovoPhone(labeledPhone) ?? labeledPhone;
+  }
 
   if (!customerPhone) {
     for (let r = bleresi.row + 1; r < stopRow; r++) {
       for (let c = 0; c < rows[r].length; c++) {
         const value = normalizeCell(rows[r][c]);
         if (value && isPhoneLine(value)) {
-          customerPhone = value;
+          customerPhone = normalizeKosovoPhone(value) ?? value;
           break;
         }
       }

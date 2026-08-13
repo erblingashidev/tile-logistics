@@ -1,5 +1,9 @@
 import { resolveLocation, type LocationEntry } from "@/lib/locations";
 import {
+  extractKosovoPhoneFromText,
+  normalizeKosovoPhone,
+} from "@/lib/phone/kosovo";
+import {
   parseUnitWeightKgFromName,
   type OrderUnit,
 } from "@/lib/calculations";
@@ -382,9 +386,7 @@ function parseCustomerName(text: string): string | null {
 }
 
 function parseCustomerPhone(text: string): string | null {
-  const match = text.match(/Telefoni:\s*([\d/\s.-]+)/i);
-  if (!match) return null;
-  return match[1].replace(/\s+/g, "").trim() || null;
+  return extractKosovoPhoneFromText(text);
 }
 
 function parseAddress(text: string): string | null {
@@ -444,7 +446,7 @@ function parseDestinationBlock(block?: string | null): ParsedDestination | null 
     name,
     address,
     city,
-    phone: subPhone?.replace(/\s+/g, "").trim(),
+    phone: subPhone ? normalizeKosovoPhone(subPhone) ?? undefined : undefined,
   };
 }
 
