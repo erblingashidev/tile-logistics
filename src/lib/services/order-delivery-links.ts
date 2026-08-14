@@ -415,6 +415,20 @@ export async function getLinkedOrderIdGroup(orderId: number): Promise<number[]> 
   return [...group].sort((a, b) => a - b);
 }
 
+/** Include every order in the same linked-delivery group(s) as the inputs. */
+export async function expandOrderIdsWithLinkedGroups(
+  orderIds: number[]
+): Promise<number[]> {
+  const expanded = new Set<number>();
+  for (const id of orderIds) {
+    if (!Number.isFinite(id) || id <= 0) continue;
+    for (const groupId of await getLinkedOrderIdGroup(id)) {
+      expanded.add(groupId);
+    }
+  }
+  return [...expanded];
+}
+
 /** Remove every delivery link in the group containing orderId (one action). */
 export async function unlinkDeliveryGroup(orderId: number) {
   const groupIds = await getLinkedOrderIdGroup(orderId);

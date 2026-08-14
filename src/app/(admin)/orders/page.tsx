@@ -960,7 +960,7 @@ export default function OrdersPage() {
     const date = targetDate ?? rescheduleDate;
     if (
       !confirm(
-        `Move ${ids.length} order(s) to delivery date ${date}?`
+        `Reschedule ${ids.length} selected order(s) and any linked deliveries to ${date}?`
       )
     ) {
       return;
@@ -978,8 +978,13 @@ export default function OrdersPage() {
       setError(data.error ?? "Could not reschedule orders");
       return;
     }
+    const linkedNote =
+      Array.isArray(data.linkedOrderIds) &&
+      data.linkedOrderIds.length > ids.length
+        ? " (including linked deliveries)"
+        : "";
     setWarning(
-      `Moved ${data.updated ?? ids.length} order(s) to ${date}${
+      `Moved ${data.updated ?? ids.length} order(s) to ${date}${linkedNote}${
         data.skipped?.length ? ` (${data.skipped.length} skipped)` : ""
       }`
     );
@@ -1769,6 +1774,14 @@ export default function OrdersPage() {
                   </option>
                 ))}
               </Select>
+              {editingId &&
+                (orders.find((order) => order.id === editingId)?.deliveryLinks
+                  ?.length ?? 0) > 0 && (
+                  <p className="sm:col-span-2 text-xs text-sky-900">
+                    Linked delivery — changing requested date or time updates
+                    all linked orders in this group.
+                  </p>
+                )}
               <label className="flex items-center gap-2 rounded border border-red-100 bg-red-50/50 px-3 py-2 text-sm">
                 <input
                   type="checkbox"

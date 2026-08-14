@@ -1066,6 +1066,78 @@ export async function updateOrder(id: number, payload: OrderPayload) {
     await db.insert(orderItems).values({ orderId: id, ...item });
   }
 
+  const dateChanged =
+    (requestedDeliveryDate ?? null) !== (existing.requestedDeliveryDate ?? null);
+  const timeChanged =
+    deliveryTimePreference !==
+    normalizeDeliveryTimePreference(existing.deliveryTimePreference);
+
+  if (dateChanged || timeChanged) {
+    const { getLinkedOrderIdGroup } = await import(
+      "@/lib/services/order-delivery-links"
+    );
+    const linkedIds = (await getLinkedOrderIdGroup(id)).filter(
+      (linkedId) => linkedId !== id
+    );
+    if (linkedIds.length > 0) {
+      const partnerRows = await dbAll(
+        db
+          .select({
+            id: orders.id,
+            invoiceNumber: orders.invoiceNumber,
+            orderDate: orders.orderDate,
+            status: orders.status,
+          })
+          .from(orders)
+          .where(inArray(orders.id, linkedIds))
+      );
+      const toSync = partnerRows.filter(
+        (row) => row.status !== "delivered" && row.status !== "cancelled"
+      );
+      if (dateChanged) {
+        for (const row of toSync) {
+          const dateError = validateRequestedDeliveryDate(
+            row.orderDate,
+            requestedDeliveryDate
+          );
+          if (dateError) {
+            throw new Error(`${row.invoiceNumber}: ${dateError}`);
+          }
+        }
+      }
+      if (toSync.length > 0) {
+        await db
+          .update(orders)
+          .set({
+            ...(dateChanged ? { requestedDeliveryDate } : {}),
+            ...(timeChanged ? { deliveryTimePreference } : {}),
+            updatedAt: now,
+          })
+          .where(inArray(orders.id, toSync.map((row) => row.id)));
+
+        const labels = toSync
+          .map((row) => row.invoiceNumber)
+          .sort((a, b) => a.localeCompare(b));
+        await logActivity(
+          "update",
+          "order",
+          id,
+          `Linked deliveries rescheduled with ${invoiceNumber}: ${labels.join(", ")}`,
+          {
+            category: "orders",
+            details: {
+              anchorOrderId: id,
+              linkedOrderIds: toSync.map((row) => row.id),
+              invoiceNumbers: labels,
+              requestedDeliveryDate: dateChanged ? requestedDeliveryDate : undefined,
+              deliveryTimePreference: timeChanged ? deliveryTimePreference : undefined,
+            },
+          }
+        );
+      }
+    }
+  }
+
   const changes: string[] = [];
   if (existing.invoiceNumber !== invoiceNumber) {
     changes.push(`invoice ${existing.invoiceNumber} → ${invoiceNumber}`);
@@ -2533,48 +2605,93 @@ export async function bulkRescheduleOrders(input: {
     return { ok: false as const, error: "Delivery date is required" };
   }
 
+  const { expandOrderIdsWithLinkedGroups } = await import(
+    "@/lib/services/order-delivery-links"
+  );
+  const expandedIds = await expandOrderIdsWithLinkedGroups(input.orderIds);
+  if (expandedIds.length === 0) {
+    return { ok: false as const, error: "Select at least one order" };
+  }
+
   const db = await getDb();
   const now = new Date().toISOString();
-  let updated = 0;
+  const rows = await dbAll(
+    db
+      .select({
+        id: orders.id,
+        invoiceNumber: orders.invoiceNumber,
+        orderDate: orders.orderDate,
+        status: orders.status,
+        requestedDeliveryDate: orders.requestedDeliveryDate,
+      })
+      .from(orders)
+      .where(inArray(orders.id, expandedIds))
+  );
+
+  const eligible: (typeof rows)[number][] = [];
   const skipped: number[] = [];
 
-  for (const orderId of input.orderIds) {
-    const order = await getOrder(orderId);
-    if (!order) {
-      skipped.push(orderId);
+  for (const row of rows) {
+    if (row.status === "delivered" || row.status === "cancelled") {
+      skipped.push(row.id);
       continue;
     }
-    if (order.deliveryStage === "delivered" || order.status === "cancelled") {
-      skipped.push(orderId);
-      continue;
-    }
-    const dateError = validateRequestedDeliveryDate(order.orderDate, date);
+    const dateError = validateRequestedDeliveryDate(row.orderDate, date);
     if (dateError) {
-      return { ok: false as const, error: `${order.invoiceNumber}: ${dateError}` };
+      return { ok: false as const, error: `${row.invoiceNumber}: ${dateError}` };
     }
+    eligible.push(row);
+  }
 
+  if (eligible.length > 0) {
     await db
       .update(orders)
       .set({ requestedDeliveryDate: date, updatedAt: now })
-      .where(eq(orders.id, orderId));
+      .where(inArray(orders.id, eligible.map((row) => row.id)));
+  }
 
+  if (eligible.length === 1) {
+    const row = eligible[0]!;
     await logActivity(
       "update",
       "order",
-      orderId,
-      `Rescheduled ${order.invoiceNumber} to ${date}`,
+      row.id,
+      `Rescheduled ${row.invoiceNumber} to ${date}`,
       {
         category: "orders",
         details: {
           requestedDeliveryDate: date,
-          previousRequestedDeliveryDate: order.requestedDeliveryDate ?? null,
+          previousRequestedDeliveryDate: row.requestedDeliveryDate ?? null,
         },
       }
     );
-    updated += 1;
+  } else if (eligible.length > 1) {
+    const labels = eligible
+      .map((row) => row.invoiceNumber)
+      .sort((a, b) => a.localeCompare(b));
+    await logActivity(
+      "update",
+      "order",
+      eligible[0]!.id,
+      `Linked delivery group (${eligible.length} orders) rescheduled to ${date}: ${labels.join(", ")}`,
+      {
+        category: "orders",
+        details: {
+          orderIds: eligible.map((row) => row.id),
+          invoiceNumbers: labels,
+          requestedDeliveryDate: date,
+          linkedGroup: true,
+        },
+      }
+    );
   }
 
-  return { ok: true as const, updated, skipped };
+  return {
+    ok: true as const,
+    updated: eligible.length,
+    skipped,
+    linkedOrderIds: expandedIds,
+  };
 }
 
 /** Move one or more orders to another truck (e.g. breakdown). Keeps picker by default. */
