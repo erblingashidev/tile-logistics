@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireApiSessionNoSalesWrite } from "@/lib/auth/api-guard";
 import {
   linkOrdersForSameDelivery,
+  unlinkDeliveryGroup,
   unlinkOrdersInSelection,
 } from "@/lib/services/order-delivery-links";
 
@@ -38,18 +39,27 @@ export async function DELETE(request: NextRequest) {
   if (!auth.ok) return auth.response;
 
   const body = await request.json().catch(() => ({}));
+  const orderId =
+    body.orderId != null && body.orderId !== ""
+      ? Number(body.orderId)
+      : undefined;
   const orderIds = Array.isArray(body.orderIds)
     ? body.orderIds.map(Number).filter((id: number) => Number.isFinite(id) && id > 0)
     : [];
 
-  if (orderIds.length < 2) {
-    return NextResponse.json(
-      { error: "Select at least two orders to unlink" },
-      { status: 400 }
-    );
-  }
-
   try {
+    if (orderId != null && Number.isFinite(orderId) && orderId > 0) {
+      const result = await unlinkDeliveryGroup(orderId);
+      return NextResponse.json(result);
+    }
+
+    if (orderIds.length < 1) {
+      return NextResponse.json(
+        { error: "Select a linked order or pass orderId to unlink" },
+        { status: 400 }
+      );
+    }
+
     const result = await unlinkOrdersInSelection(orderIds);
     return NextResponse.json(result);
   } catch (err) {

@@ -230,6 +230,16 @@ async function upsertDeliveryLink(
   return inserted!.id;
 }
 
+function allDeliveryLinkPairs(orderIds: number[]): Array<[number, number]> {
+  const pairs: Array<[number, number]> = [];
+  for (let i = 0; i < orderIds.length; i++) {
+    for (let j = i + 1; j < orderIds.length; j++) {
+      pairs.push(pairIds(orderIds[i]!, orderIds[j]!));
+    }
+  }
+  return pairs;
+}
+
 export async function linkOrdersForSameDelivery(
   orderIds: number[],
   note?: string
@@ -240,23 +250,74 @@ export async function linkOrdersForSameDelivery(
   }
 
   const db = await getDb();
-  const existing = await dbAll(
+  const existingOrders = await dbAll(
     db
       .select({ id: orders.id, invoiceNumber: orders.invoiceNumber })
       .from(orders)
       .where(inArray(orders.id, unique))
   );
-  if (existing.length !== unique.length) {
+  if (existingOrders.length !== unique.length) {
     throw new Error("One or more selected orders were not found");
   }
 
-  for (let i = 0; i < unique.length; i++) {
-    for (let j = i + 1; j < unique.length; j++) {
-      await upsertDeliveryLink(unique[i]!, unique[j]!, note);
-    }
+  const pairs = allDeliveryLinkPairs(unique);
+  const trimmedNote = note?.trim() || null;
+  const now = new Date().toISOString();
+
+  const existingLinks = await dbAll(
+    db
+      .select({
+        id: orderDeliveryLinks.id,
+        orderIdA: orderDeliveryLinks.orderIdA,
+        orderIdB: orderDeliveryLinks.orderIdB,
+      })
+      .from(orderDeliveryLinks)
+      .where(
+        or(
+          inArray(orderDeliveryLinks.orderIdA, unique),
+          inArray(orderDeliveryLinks.orderIdB, unique)
+        )
+      )
+  );
+
+  const existingByPair = new Map<string, number>();
+  for (const link of existingLinks) {
+    existingByPair.set(`${link.orderIdA}:${link.orderIdB}`, link.id);
   }
 
-  const labels = existing
+  const toInsert: Array<{
+    orderIdA: number;
+    orderIdB: number;
+    note: string | null;
+    createdAt: string;
+  }> = [];
+  const toUpdateNoteIds: number[] = [];
+
+  for (const [a, b] of pairs) {
+    const existingId = existingByPair.get(`${a}:${b}`);
+    if (existingId != null) {
+      if (trimmedNote) toUpdateNoteIds.push(existingId);
+      continue;
+    }
+    toInsert.push({
+      orderIdA: a,
+      orderIdB: b,
+      note: trimmedNote,
+      createdAt: now,
+    });
+  }
+
+  if (toInsert.length > 0) {
+    await db.insert(orderDeliveryLinks).values(toInsert);
+  }
+  if (trimmedNote && toUpdateNoteIds.length > 0) {
+    await db
+      .update(orderDeliveryLinks)
+      .set({ note: trimmedNote })
+      .where(inArray(orderDeliveryLinks.id, toUpdateNoteIds));
+  }
+
+  const labels = existingOrders
     .map((row) => row.invoiceNumber)
     .sort((a, b) => a.localeCompare(b));
   await logActivity(
@@ -266,11 +327,20 @@ export async function linkOrdersForSameDelivery(
     `Linked delivery: ${labels.join(", ")}`,
     {
       category: "orders",
-      details: { orderIds: unique, invoiceNumbers: labels, note: note?.trim() || null },
+      details: {
+        orderIds: unique,
+        invoiceNumbers: labels,
+        note: trimmedNote,
+        linksAdded: toInsert.length,
+      },
     }
   );
 
-  return { linkedOrderIds: unique, invoiceNumbers: labels };
+  return {
+    linkedOrderIds: unique,
+    invoiceNumbers: labels,
+    linksAdded: toInsert.length,
+  };
 }
 
 export async function unlinkOrders(orderIdA: number, orderIdB: number) {
@@ -313,34 +383,126 @@ export async function unlinkOrders(orderIdA: number, orderIdB: number) {
 /** All order ids in the same linked-delivery group (including orderId). */
 export async function getLinkedOrderIdGroup(orderId: number): Promise<number[]> {
   const db = await getDb();
-  const links = await dbAll(db.select().from(orderDeliveryLinks));
-  const adjacency = new Map<number, Set<number>>();
-
-  for (const link of links) {
-    if (!adjacency.has(link.orderIdA)) adjacency.set(link.orderIdA, new Set());
-    if (!adjacency.has(link.orderIdB)) adjacency.set(link.orderIdB, new Set());
-    adjacency.get(link.orderIdA)!.add(link.orderIdB);
-    adjacency.get(link.orderIdB)!.add(link.orderIdA);
-  }
-
-  const group = new Set<number>();
+  const group = new Set<number>([orderId]);
   const queue = [orderId];
+
   while (queue.length > 0) {
     const id = queue.shift()!;
-    if (group.has(id)) continue;
-    group.add(id);
-    for (const neighbor of adjacency.get(id) ?? []) {
-      if (!group.has(neighbor)) queue.push(neighbor);
+    const links = await dbAll(
+      db
+        .select({
+          orderIdA: orderDeliveryLinks.orderIdA,
+          orderIdB: orderDeliveryLinks.orderIdB,
+        })
+        .from(orderDeliveryLinks)
+        .where(
+          or(
+            eq(orderDeliveryLinks.orderIdA, id),
+            eq(orderDeliveryLinks.orderIdB, id)
+          )
+        )
+    );
+
+    for (const link of links) {
+      const neighbor = link.orderIdA === id ? link.orderIdB : link.orderIdA;
+      if (!group.has(neighbor)) {
+        group.add(neighbor);
+        queue.push(neighbor);
+      }
     }
   }
 
   return [...group].sort((a, b) => a - b);
 }
 
+/** Remove every delivery link in the group containing orderId (one action). */
+export async function unlinkDeliveryGroup(orderId: number) {
+  const groupIds = await getLinkedOrderIdGroup(orderId);
+  if (groupIds.length < 2) {
+    throw new Error("This order is not linked to another delivery");
+  }
+
+  const db = await getDb();
+  const groupSet = new Set(groupIds);
+  const links = await dbAll(
+    db
+      .select({
+        id: orderDeliveryLinks.id,
+        orderIdA: orderDeliveryLinks.orderIdA,
+        orderIdB: orderDeliveryLinks.orderIdB,
+      })
+      .from(orderDeliveryLinks)
+      .where(
+        or(
+          inArray(orderDeliveryLinks.orderIdA, groupIds),
+          inArray(orderDeliveryLinks.orderIdB, groupIds)
+        )
+      )
+  );
+
+  const linkIds = links
+    .filter(
+      (link) => groupSet.has(link.orderIdA) && groupSet.has(link.orderIdB)
+    )
+    .map((link) => link.id);
+
+  if (linkIds.length === 0) {
+    throw new Error("No delivery links found for this group");
+  }
+
+  await db
+    .delete(orderDeliveryLinks)
+    .where(inArray(orderDeliveryLinks.id, linkIds));
+
+  const orderRows = await dbAll(
+    db
+      .select({ id: orders.id, invoiceNumber: orders.invoiceNumber })
+      .from(orders)
+      .where(inArray(orders.id, groupIds))
+  );
+  const labels = orderRows
+    .map((row) => row.invoiceNumber)
+    .sort((a, b) => a.localeCompare(b));
+
+  await logActivity(
+    "unlink_delivery",
+    "order",
+    orderId,
+    `Unlinked delivery group: ${labels.join(", ")}`,
+    {
+      category: "orders",
+      details: {
+        orderIds: groupIds,
+        invoiceNumbers: labels,
+        linksRemoved: linkIds.length,
+      },
+    }
+  );
+
+  return {
+    removed: linkIds.length,
+    orderIds: groupIds,
+    invoiceNumbers: labels,
+  };
+}
+
 export async function unlinkOrdersInSelection(orderIds: number[]) {
   const unique = [...new Set(orderIds.filter((id) => Number.isFinite(id) && id > 0))];
+  if (unique.length < 1) {
+    throw new Error("Select a linked order to unlink");
+  }
+  if (unique.length === 1) {
+    return unlinkDeliveryGroup(unique[0]!);
+  }
+
+  const firstGroup = await getLinkedOrderIdGroup(unique[0]!);
+  const groupSet = new Set(firstGroup);
+  if (unique.every((id) => groupSet.has(id))) {
+    return unlinkDeliveryGroup(unique[0]!);
+  }
+
   if (unique.length < 2) {
-    throw new Error("Select at least two linked orders to unlink");
+    throw new Error("Select a linked order to unlink");
   }
 
   let removed = 0;
@@ -352,7 +514,7 @@ export async function unlinkOrdersInSelection(orderIds: number[]) {
   if (removed === 0) {
     throw new Error("No delivery link exists between the selected orders");
   }
-  return { removed };
+  return { removed, orderIds: unique, invoiceNumbers: [] as string[] };
 }
 
 export async function getLinkedTruckConflictMessage(

@@ -320,6 +320,7 @@ export default function OrdersPage() {
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
   const [bulkAssigning, setBulkAssigning] = useState(false);
+  const [linkingDeliveries, setLinkingDeliveries] = useState(false);
   const [manualDispatchMode, setManualDispatchMode] = useState(true);
   const [linkToOrderId, setLinkToOrderId] = useState<number | null>(null);
   const [exportGroupBy, setExportGroupBy] = useState<
@@ -858,14 +859,20 @@ export default function OrdersPage() {
     }
   }
 
-  function selectionHasDeliveryLink() {
+  function selectionHasAnyDeliveryLink() {
     for (const order of orders) {
       if (!selectedOrderIds.has(order.id)) continue;
-      for (const link of order.deliveryLinks ?? []) {
-        if (selectedOrderIds.has(link.id)) return true;
-      }
+      if (order.deliveryLinks && order.deliveryLinks.length > 0) return true;
     }
     return false;
+  }
+
+  function selectedLinkedAnchor(): Order | null {
+    for (const order of orders) {
+      if (!selectedOrderIds.has(order.id)) continue;
+      if (order.deliveryLinks && order.deliveryLinks.length > 0) return order;
+    }
+    return null;
   }
 
   async function bulkLinkForSameDelivery() {
@@ -885,44 +892,66 @@ export default function OrdersPage() {
       return;
     }
     setError("");
-    const res = await fetch("/api/orders/delivery-links", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderIds: ids }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setError(data.error ?? "Could not link orders");
-      return;
+    setLinkingDeliveries(true);
+    try {
+      const res = await fetch("/api/orders/delivery-links", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderIds: ids }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Could not link orders");
+        return;
+      }
+      setWarning(`Linked: ${(data.invoiceNumbers ?? labels).join(", ")}`);
+      setTimeout(() => setWarning(""), 4000);
+      setSelectedOrderIds(new Set());
+      void loadOrders();
+    } finally {
+      setLinkingDeliveries(false);
     }
-    setWarning(`Linked: ${(data.invoiceNumbers ?? labels).join(", ")}`);
-    setTimeout(() => setWarning(""), 4000);
-    void loadOrders();
   }
 
   async function bulkUnlinkDelivery() {
-    const ids = [...selectedOrderIds];
-    if (ids.length < 2) {
-      setError("Select the linked orders you want to unlink.");
+    const anchor = selectedLinkedAnchor();
+    if (!anchor) {
+      setError("Select a linked order to unlink the whole delivery group.");
       return;
     }
-    if (!confirm(`Remove the delivery link between the selected orders?`)) {
+    const partnerLabels = (anchor.deliveryLinks ?? []).map(
+      (link) => link.invoiceNumber
+    );
+    const groupLabel = [anchor.invoiceNumber, ...partnerLabels].join(", ");
+    if (
+      !confirm(
+        `Unlink the entire delivery group?\n\n${groupLabel}\n\nAll links between these orders will be removed.`
+      )
+    ) {
       return;
     }
     setError("");
-    const res = await fetch("/api/orders/delivery-links", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orderIds: ids }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setError(data.error ?? "Could not unlink orders");
-      return;
+    setLinkingDeliveries(true);
+    try {
+      const res = await fetch("/api/orders/delivery-links", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: anchor.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Could not unlink orders");
+        return;
+      }
+      setWarning(
+        `Unlinked delivery group: ${(data.invoiceNumbers ?? [groupLabel]).join(", ")}`
+      );
+      setTimeout(() => setWarning(""), 3000);
+      setSelectedOrderIds(new Set());
+      void loadOrders();
+    } finally {
+      setLinkingDeliveries(false);
     }
-    setWarning("Delivery link removed.");
-    setTimeout(() => setWarning(""), 3000);
-    void loadOrders();
   }
 
   async function bulkRescheduleSelected(targetDate?: string) {
@@ -2127,18 +2156,20 @@ export default function OrdersPage() {
               <Button
                 variant="secondary"
                 className="text-xs"
+                disabled={linkingDeliveries}
                 onClick={() => bulkLinkForSameDelivery()}
               >
-                Link deliveries
+                {linkingDeliveries ? "Linking…" : "Link deliveries"}
               </Button>
             )}
-            {selectedOrderIds.size >= 2 && selectionHasDeliveryLink() && (
+            {selectionHasAnyDeliveryLink() && (
               <Button
                 variant="ghost"
                 className="text-xs"
+                disabled={linkingDeliveries}
                 onClick={() => bulkUnlinkDelivery()}
               >
-                Unlink
+                {linkingDeliveries ? "Unlinking…" : "Unlink group"}
               </Button>
             )}
             {filters.vehicleId && (
