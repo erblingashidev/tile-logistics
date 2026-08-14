@@ -82,6 +82,8 @@ export function ManualOrderStatusSelect({
   const showLinkedOption =
     partners.length > 0 && (status === "delivered" || isRevertFromDelivered);
   const showAttribution = vehicles.length > 0 || pickers.length > 0;
+  const linkedUpdateCount =
+    showLinkedOption && applyToLinked ? partners.length + 1 : 1;
 
   async function save() {
     setBusy(true);
@@ -94,18 +96,21 @@ export function ManualOrderStatusSelect({
     if (vehicleId) payload.vehicleId = Number(vehicleId);
     if (pickerId) payload.pickerId = Number(pickerId);
 
-    const res = await fetch(`/api/orders/${orderId}/status`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    setBusy(false);
-    if (!res.ok) {
-      onError(data.error ?? "Could not update status");
-      return;
+    try {
+      const res = await fetch(`/api/orders/${orderId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        onError(data.error ?? "Could not update status");
+        return;
+      }
+      onUpdated();
+    } finally {
+      setBusy(false);
     }
-    onUpdated();
   }
 
   const unchanged =
@@ -135,9 +140,19 @@ export function ManualOrderStatusSelect({
           disabled={busy || unchanged}
           onClick={() => void save()}
         >
-          {busy ? "Saving…" : "Update status"}
+          {busy
+            ? linkedUpdateCount > 1
+              ? `Updating ${linkedUpdateCount} orders…`
+              : "Saving…"
+            : "Update status"}
         </Button>
       </div>
+
+      {busy && linkedUpdateCount > 1 && (
+        <p className="text-xs text-amber-800">
+          Updating {linkedUpdateCount} linked orders — please wait…
+        </p>
+      )}
 
       {showAttribution && (
         <div className="grid gap-3 border-t border-zinc-100 pt-3 sm:grid-cols-2">

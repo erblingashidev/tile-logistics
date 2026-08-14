@@ -1203,3 +1203,21 @@ export async function deleteDeliveryProofsForOrder(orderId: number): Promise<num
     .where(eq(deliveryProofs.orderId, orderId));
   return rows.length;
 }
+
+export async function deleteDeliveryProofsForOrders(
+  orderIds: number[]
+): Promise<number> {
+  if (orderIds.length === 0) return 0;
+  const db = await getDb();
+  const rows = await dbAll(
+    db
+      .select({ id: deliveryProofs.id })
+      .from(deliveryProofs)
+      .where(inArray(deliveryProofs.orderId, orderIds))
+  );
+  if (rows.length === 0) return 0;
+  await db
+    .delete(deliveryProofs)
+    .where(inArray(deliveryProofs.orderId, orderIds));
+  return rows.length;
+}

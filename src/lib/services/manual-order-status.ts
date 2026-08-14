@@ -1,12 +1,24 @@
+import { and, eq, inArray } from "drizzle-orm";
 import type { ManualOrderStatus, OrderStatus } from "@/lib/constants";
+import { getDb } from "@/lib/db";
+import { dbAll, dbOne } from "@/lib/db/query";
+import { deliveryProofs, orders } from "@/lib/db/schema";
 import { manualStatusFromOrder } from "@/lib/manual-order-status-display";
 import { getLinkedOrderIdGroup } from "@/lib/services/order-delivery-links";
-import { deleteDeliveryProofsForOrder, submitAdminDeliveryProof } from "@/lib/services/delivery-proofs";
+import {
+  deleteDeliveryProofsForOrder,
+  deleteDeliveryProofsForOrders,
+  submitAdminDeliveryProof,
+} from "@/lib/services/delivery-proofs";
 import { getOrderStaff } from "@/lib/services/employees";
 import { getOrderLoadStatus } from "@/lib/services/load-coordination";
-import { updateOrderStatus } from "@/lib/services/order-status";
+import {
+  updateOrderStatus,
+  updateOrderStatusBatch,
+} from "@/lib/services/order-status";
 import {
   applyRetroactiveOrderAttribution,
+  applyRetroactiveOrderAttributionBatch,
   getOrder,
 } from "@/lib/services/orders";
 
@@ -45,25 +57,39 @@ async function markOrderManuallyPrepared(orderId: number) {
   return { ok: true as const, orderId, status: "prepared" as const, changed: true };
 }
 
-function orderWasDelivered(order: {
-  status: string;
-  proofs?: Array<{ phase: string }>;
-}): boolean {
-  return (
-    order.status === "delivered" ||
-    Boolean(order.proofs?.some((proof) => proof.phase === "delivered"))
-  );
-}
+async function getOrdersDeliveredState(
+  orderIds: number[]
+): Promise<Map<number, boolean>> {
+  const map = new Map<number, boolean>();
+  if (orderIds.length === 0) return map;
 
-async function applyManualStatusToOrder(
-  orderId: number,
-  orderStatus: OrderStatus,
-  options: { clearProofsIfRevert: boolean }
-) {
-  if (options.clearProofsIfRevert) {
-    await deleteDeliveryProofsForOrder(orderId);
+  const db = await getDb();
+  const rows = await dbAll(
+    db
+      .select({ id: orders.id, status: orders.status })
+      .from(orders)
+      .where(inArray(orders.id, orderIds))
+  );
+  const deliveredProofs = await dbAll(
+    db
+      .select({ orderId: deliveryProofs.orderId })
+      .from(deliveryProofs)
+      .where(
+        and(
+          inArray(deliveryProofs.orderId, orderIds),
+          eq(deliveryProofs.phase, "delivered")
+        )
+      )
+  );
+  const proofSet = new Set(deliveredProofs.map((row) => row.orderId));
+
+  for (const row of rows) {
+    map.set(
+      row.id,
+      row.status === "delivered" || proofSet.has(row.id)
+    );
   }
-  return updateOrderStatus(orderId, orderStatus);
+  return map;
 }
 
 export async function updateManualOrderStatus(input: {
@@ -92,11 +118,19 @@ export async function updateManualOrderStatus(input: {
   }
 
   const orderStatus = input.status as OrderStatus;
-  const currentOrder = await getOrder(input.orderId);
-  if (!currentOrder) return { ok: false as const, error: "Order not found" };
+  const db = await getDb();
+  const anchor = await dbOne(
+    db
+      .select({ id: orders.id, status: orders.status })
+      .from(orders)
+      .where(eq(orders.id, input.orderId))
+  );
+  if (!anchor) return { ok: false as const, error: "Order not found" };
 
+  const anchorDeliveredState = await getOrdersDeliveredState([input.orderId]);
+  const anchorWasDelivered = anchorDeliveredState.get(input.orderId) ?? false;
   const revertingFromDelivered =
-    orderWasDelivered(currentOrder) && input.status !== "delivered";
+    anchorWasDelivered && input.status !== "delivered";
 
   const useLinkedGroup =
     applyToLinked &&
@@ -106,36 +140,52 @@ export async function updateManualOrderStatus(input: {
     ? await getLinkedOrderIdGroup(input.orderId)
     : [input.orderId];
 
-  const updatedOrderIds: number[] = [];
-  for (const id of targetIds) {
-    if (hasAttribution) {
-      const attribution = await applyRetroactiveOrderAttribution({
-        orderId: id,
-        vehicleId: input.vehicleId,
-        deliveryRound: 1,
-        pickerId: input.pickerId,
-      });
-      if (!attribution.ok) return attribution;
+  const deliveredState = await getOrdersDeliveredState(targetIds);
+
+  if (hasAttribution) {
+    const attribution =
+      targetIds.length > 1
+        ? await applyRetroactiveOrderAttributionBatch({
+            orderIds: targetIds,
+            vehicleId: input.vehicleId,
+            deliveryRound: 1,
+            pickerId: input.pickerId,
+          })
+        : await applyRetroactiveOrderAttribution({
+            orderId: input.orderId,
+            vehicleId: input.vehicleId,
+            deliveryRound: 1,
+            pickerId: input.pickerId,
+          });
+    if (!attribution.ok) return attribution;
+  }
+
+  if (orderStatus === "pending") {
+    const idsToClear = targetIds.filter((id) => deliveredState.get(id));
+    if (idsToClear.length > 1) {
+      await deleteDeliveryProofsForOrders(idsToClear);
+    } else if (idsToClear.length === 1) {
+      await deleteDeliveryProofsForOrder(idsToClear[0]!);
     }
+  }
 
-    const targetOrder = id === input.orderId ? currentOrder : await getOrder(id);
-    if (!targetOrder) return { ok: false as const, error: "Order not found" };
-
-    const clearProofsIfRevert =
-      input.status === "pending" && orderWasDelivered(targetOrder);
-
-    const result = await applyManualStatusToOrder(id, orderStatus, {
-      clearProofsIfRevert,
+  if (targetIds.length > 1) {
+    const results = await updateOrderStatusBatch(targetIds, orderStatus, {
+      linkedGroup: true,
     });
+    if (results.length !== targetIds.length) {
+      return { ok: false as const, error: "Order not found" };
+    }
+  } else {
+    const result = await updateOrderStatus(input.orderId, orderStatus);
     if (!result) return { ok: false as const, error: "Order not found" };
-    updatedOrderIds.push(id);
   }
 
   return {
     ok: true as const,
     orderId: input.orderId,
     status: input.status,
-    updatedOrderIds,
+    updatedOrderIds: targetIds,
     linked: targetIds.length > 1,
   };
 }

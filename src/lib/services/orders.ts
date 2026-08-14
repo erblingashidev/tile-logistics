@@ -17,6 +17,7 @@ import {
   assignEmployeeToOrder,
   unassignEmployeeFromOrder,
   getDriverForVehicle,
+  parseEmployeeRoles,
 } from "@/lib/services/employees";
 import { listDeliveryProofs } from "@/lib/services/delivery-proofs";
 import { computeShipmentProgress } from "@/lib/shipment-progress";
@@ -1596,6 +1597,173 @@ export async function applyRetroactiveOrderAttribution(input: {
       attributionOpts
     );
     if (!pickerResult.ok) return pickerResult;
+  }
+
+  return { ok: true as const };
+}
+
+async function upsertRetroactiveStaffBatch(
+  orderIds: number[],
+  employeeId: number,
+  role: EmployeeRole
+) {
+  if (orderIds.length === 0) return;
+  const db = await getDb();
+  const existing = await dbAll(
+    db
+      .select({
+        id: orderEmployeeAssignments.id,
+        orderId: orderEmployeeAssignments.orderId,
+      })
+      .from(orderEmployeeAssignments)
+      .where(
+        and(
+          inArray(orderEmployeeAssignments.orderId, orderIds),
+          eq(orderEmployeeAssignments.role, role)
+        )
+      )
+  );
+  const existingByOrder = new Map(
+    existing.map((row) => [row.orderId, row.id])
+  );
+  const toInsert = orderIds
+    .filter((orderId) => !existingByOrder.has(orderId))
+    .map((orderId) => ({
+      orderId,
+      employeeId,
+      role,
+      assignedAt: null as string | null,
+    }));
+  if (toInsert.length > 0) {
+    await db.insert(orderEmployeeAssignments).values(toInsert);
+  }
+  const toUpdateIds = orderIds
+    .map((orderId) => existingByOrder.get(orderId))
+    .filter((id): id is number => id != null);
+  if (toUpdateIds.length > 0) {
+    await db
+      .update(orderEmployeeAssignments)
+      .set({ employeeId, assignedAt: null })
+      .where(inArray(orderEmployeeAssignments.id, toUpdateIds));
+  }
+}
+
+export async function applyRetroactiveOrderAttributionBatch(input: {
+  orderIds: number[];
+  vehicleId?: number;
+  deliveryRound?: number;
+  pickerId?: number;
+}) {
+  const orderIds = [
+    ...new Set(input.orderIds.filter((id) => Number.isFinite(id) && id > 0)),
+  ];
+  if (orderIds.length === 0) return { ok: true as const };
+  if (orderIds.length === 1) {
+    return applyRetroactiveOrderAttribution({
+      orderId: orderIds[0]!,
+      vehicleId: input.vehicleId,
+      deliveryRound: input.deliveryRound,
+      pickerId: input.pickerId,
+    });
+  }
+
+  const db = await getDb();
+  const round = input.deliveryRound ?? 1;
+  if (round < 1 || round > MAX_DELIVERY_ROUNDS) {
+    return {
+      ok: false as const,
+      error: `Delivery round must be between 1 and ${MAX_DELIVERY_ROUNDS}`,
+    };
+  }
+
+  const orderRows = await dbAll(
+    db
+      .select({ id: orders.id, invoiceNumber: orders.invoiceNumber })
+      .from(orders)
+      .where(inArray(orders.id, orderIds))
+  );
+  if (orderRows.length !== orderIds.length) {
+    return { ok: false as const, error: "Order not found" };
+  }
+
+  if (input.vehicleId) {
+    const vehicle = await dbOne(
+      db.select().from(vehicles).where(eq(vehicles.id, input.vehicleId))
+    );
+    if (!vehicle) return { ok: false as const, error: "Vehicle not found" };
+
+    const driverEmployeeId =
+      (await getDriverForVehicle(input.vehicleId))?.id ?? null;
+
+    await db
+      .delete(assignments)
+      .where(inArray(assignments.orderId, orderIds));
+    await db.insert(assignments).values(
+      orderIds.map((orderId) => ({
+        orderId,
+        vehicleId: input.vehicleId!,
+        driverEmployeeId,
+        deliveryRound: round,
+        assignedAt: null,
+      }))
+    );
+
+    if (driverEmployeeId) {
+      await upsertRetroactiveStaffBatch(orderIds, driverEmployeeId, "driver");
+    }
+  }
+
+  if (input.pickerId) {
+    const picker = await dbOne(
+      db
+        .select({
+          id: employees.id,
+          name: employees.name,
+          roles: employees.roles,
+        })
+        .from(employees)
+        .where(eq(employees.id, input.pickerId))
+    );
+    if (!picker) return { ok: false as const, error: "Employee not found" };
+    if (!parseEmployeeRoles(picker.roles).includes("picker")) {
+      return {
+        ok: false as const,
+        error: `${picker.name} is not a picker`,
+      };
+    }
+    await upsertRetroactiveStaffBatch(orderIds, input.pickerId, "picker");
+  }
+
+  if (input.vehicleId || input.pickerId) {
+    const labels = orderRows
+      .map((row) => row.invoiceNumber)
+      .sort((a, b) => a.localeCompare(b));
+    const vehicle = input.vehicleId
+      ? await dbOne(
+          db
+            .select({ name: vehicles.name })
+            .from(vehicles)
+            .where(eq(vehicles.id, input.vehicleId))
+        )
+      : null;
+    await logActivity(
+      "assign",
+      "order",
+      orderIds[0]!,
+      `Linked group (${orderIds.length}): truck/staff recorded (no step times)`,
+      {
+        category: "deliveries",
+        details: {
+          orderIds,
+          invoiceNumbers: labels,
+          vehicleId: input.vehicleId ?? null,
+          vehicleName: vehicle?.name ?? null,
+          pickerId: input.pickerId ?? null,
+          deliveryRound: round,
+          retroactive: true,
+        },
+      }
+    );
   }
 
   return { ok: true as const };
