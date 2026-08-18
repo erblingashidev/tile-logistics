@@ -7,16 +7,21 @@ import { BRAND } from "@/lib/brand";
 import { Button } from "@/components/ui";
 import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 import { WAREHOUSE_SIDEBAR_LINKS } from "@/components/warehouse/WarehouseNav";
+import type { FeatureFlags } from "@/lib/features/catalog";
 
-function buildNavGroups(warehouseWms: boolean) {
+function buildNavGroups(flags: FeatureFlags) {
   return [
     {
       label: "Operations",
       items: [
         { href: "/", label: "Dashboard" },
         { href: "/orders", label: "Orders" },
-        { href: "/dispatch", label: "Dispatch" },
-        { href: "/map", label: "Map" },
+        ...(flags.operationsSuite
+          ? [
+              { href: "/dispatch", label: "Dispatch" },
+              { href: "/map", label: "Map" },
+            ]
+          : []),
       ],
     },
     {
@@ -33,7 +38,7 @@ function buildNavGroups(warehouseWms: boolean) {
         { href: "/admins", label: "Admins" },
       ],
     },
-    ...(warehouseWms
+    ...(flags.warehouseWms
       ? [
           {
             label: "Warehouse",
@@ -69,7 +74,7 @@ function NavLinks({
   mobile?: boolean;
 }) {
   const flags = useFeatureFlags();
-  const navGroups = buildNavGroups(flags.warehouseWms);
+  const navGroups = buildNavGroups(flags);
   return (
     <>
       {navGroups.map((group) => (

@@ -16,8 +16,12 @@ export default async function DashboardPage() {
   ]);
   const modules = [
     { href: "/orders", label: "Orders" },
-    { href: "/dispatch", label: "Dispatch" },
-    { href: "/map", label: "Map" },
+    ...(flags.operationsSuite
+      ? [
+          { href: "/dispatch", label: "Dispatch" },
+          { href: "/map", label: "Map" },
+        ]
+      : []),
     ...(flags.warehouseWms ? [{ href: "/warehouse", label: "Warehouse" }] : []),
     { href: "/vehicles", label: "Vehicles" },
     { href: "/employees", label: "Employees" },
@@ -29,7 +33,14 @@ export default async function DashboardPage() {
   const wh = BRAND.warehouse;
 
   return (
-    <AppShell title="Dashboard" description="Today’s open work">
+    <AppShell
+      title="Dashboard"
+      description={
+        flags.operationsSuite
+          ? "Today’s open work"
+          : "Orders, reports, and delivery records"
+      }
+    >
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <StatLink
           label="Pending imports"
@@ -61,7 +72,7 @@ export default async function DashboardPage() {
         <StatLink
           label="Pallets pending"
           value={stats.totalPalletsPending}
-          href="/dispatch"
+          href={flags.operationsSuite ? "/dispatch" : "/orders?workDay=today&assignment=unassigned"}
           hint="Unassigned today"
         />
         <StatLink

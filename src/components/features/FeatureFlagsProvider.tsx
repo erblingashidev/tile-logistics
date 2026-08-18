@@ -10,6 +10,7 @@ import {
 } from "react";
 import {
   FEATURE_FLAG_DEFAULTS,
+  effectiveFeatureFlags,
   parseFeatureFlags,
   type FeatureFlags,
 } from "@/lib/features/catalog";
@@ -26,7 +27,7 @@ export function FeatureFlagsProvider({
   initial?: FeatureFlags;
 }) {
   const [flags, setFlags] = useState<FeatureFlags>(
-    initial ?? FEATURE_FLAG_DEFAULTS
+    effectiveFeatureFlags(initial ?? FEATURE_FLAG_DEFAULTS)
   );
 
   useEffect(() => {
@@ -34,7 +35,9 @@ export function FeatureFlagsProvider({
     fetch("/api/settings/features", { cache: "no-store" })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (!cancelled && data) setFlags(parseFeatureFlags(data));
+        if (!cancelled && data) {
+          setFlags(effectiveFeatureFlags(parseFeatureFlags(data)));
+        }
       })
       .catch(() => {});
     return () => {
@@ -45,7 +48,7 @@ export function FeatureFlagsProvider({
   useEffect(() => {
     function onUpdate(event: Event) {
       const detail = (event as CustomEvent<FeatureFlags>).detail;
-      if (detail) setFlags(parseFeatureFlags(detail));
+      if (detail) setFlags(effectiveFeatureFlags(parseFeatureFlags(detail)));
     }
     window.addEventListener(FEATURE_FLAGS_EVENT, onUpdate);
     return () => window.removeEventListener(FEATURE_FLAGS_EVENT, onUpdate);

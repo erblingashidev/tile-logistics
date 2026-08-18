@@ -243,6 +243,19 @@ function appendOrderFilterParams(
   }
 }
 
+function withTruckFocus(
+  filters: OrderListFilters,
+  enabled: boolean
+): OrderListFilters {
+  if (enabled) return filters;
+  return {
+    ...filters,
+    vehicleId: "",
+    fleetRoundFilter: false,
+    vehicleScope: "workspace",
+  };
+}
+
 function buildDispatchPrintHref(filters: OrderListFilters) {
   const params = new URLSearchParams();
   appendOrderFilterParams(params, filters);
@@ -333,6 +346,12 @@ export default function OrdersPage() {
     useState<TruckWorkspaceSnapshot | null>(null);
   const [searchInput, setSearchInput] = useState("");
   const focusedVehicleRef = useRef("");
+  const truckFocusEnabled = flags.truckFocus;
+  const listFilters = useMemo(
+    () => withTruckFocus(filters, truckFocusEnabled),
+    [filters, truckFocusEnabled]
+  );
+  const focusVehicleId = listFilters.vehicleId;
 
   const loadStatic = useCallback(async () => {
     try {
@@ -357,7 +376,7 @@ export default function OrdersPage() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      appendOrderFilterParams(params, filters);
+      appendOrderFilterParams(params, listFilters);
       const ordersRes = await fetch(`/api/orders?${params}`, { cache: "no-store" });
       const ordersPayload = await readJsonListWithError<Order>(ordersRes);
       setOrders(ordersPayload.data);
@@ -366,7 +385,7 @@ export default function OrdersPage() {
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [listFilters]);
 
   const load = useCallback(async () => {
     await Promise.all([loadStatic(), loadOrders()]);
@@ -434,15 +453,15 @@ export default function OrdersPage() {
   }, [filters.workDay]);
 
   useEffect(() => {
-    if (!filters.vehicleId) {
+    if (!focusVehicleId) {
       setTruckWorkspace(null);
       focusedVehicleRef.current = "";
       return;
     }
-    focusedVehicleRef.current = filters.vehicleId;
+    focusedVehicleRef.current = focusVehicleId;
 
     let cancelled = false;
-    fetch(`/api/vehicles/${filters.vehicleId}/truck-workspace`, {
+    fetch(`/api/vehicles/${focusVehicleId}/truck-workspace`, {
       cache: "no-store",
     })
       .then((res) => res.json())
@@ -454,7 +473,7 @@ export default function OrdersPage() {
     return () => {
       cancelled = true;
     };
-  }, [filters.vehicleId, lastRefreshed]);
+  }, [focusVehicleId, lastRefreshed]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -490,13 +509,13 @@ export default function OrdersPage() {
   }, []);
 
   useEffect(() => {
-    if (filters.vehicleId) setTruckFocusOpen(true);
-  }, [filters.vehicleId]);
+    if (truckFocusEnabled && filters.vehicleId) setTruckFocusOpen(true);
+  }, [truckFocusEnabled, filters.vehicleId]);
 
   useEffect(() => {
     setAssignState((prev) => {
       const next = { ...prev };
-      const focusId = filters.vehicleId ? Number(filters.vehicleId) : null;
+      const focusId = focusVehicleId ? Number(focusVehicleId) : null;
       const focusRound = Number(filters.deliveryRound) || 1;
 
       for (const order of orders) {
@@ -516,7 +535,7 @@ export default function OrdersPage() {
           }
         } else if (focusId != null) {
           next[order.id] = {
-            vehicleId: filters.vehicleId,
+            vehicleId: focusVehicleId,
             round: filters.deliveryRound || "1",
             pickerId: prev[order.id]?.pickerId ?? "",
           };
@@ -525,10 +544,10 @@ export default function OrdersPage() {
       return next;
     });
 
-    if (filters.vehicleId) {
-      setTransferVehicleId(filters.vehicleId);
+    if (focusVehicleId) {
+      setTransferVehicleId(focusVehicleId);
     }
-  }, [orders, filters.vehicleId, filters.deliveryRound]);
+  }, [orders, focusVehicleId, filters.deliveryRound]);
 
   const preview = calculateOrderTotals(form.items as OrderItemInput[]);
 
@@ -1009,14 +1028,14 @@ export default function OrdersPage() {
   }
 
   async function bulkAssignToFocusTruck() {
-    if (!filters.vehicleId) {
+    if (!focusVehicleId) {
       setError("Choose a focus truck first.");
       return;
     }
     const ids = [...selectedOrderIds].filter((id) => {
       const order = orders.find((o) => o.id === id);
       if (!order) return false;
-      if (order.assignment?.vehicleId === Number(filters.vehicleId)) {
+      if (order.assignment?.vehicleId === Number(focusVehicleId)) {
         return false;
       }
       return true;
@@ -1025,7 +1044,7 @@ export default function OrdersPage() {
       setError("Select unassigned orders (or orders on another truck) to assign.");
       return;
     }
-    const truck = vehicles.find((v) => String(v.id) === filters.vehicleId);
+    const truck = vehicles.find((v) => String(v.id) === focusVehicleId);
     const picker = transferPickerId
       ? pickers.find((p) => p.id === Number(transferPickerId))
       : null;
@@ -1048,7 +1067,7 @@ export default function OrdersPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           orderIds: ids,
-          vehicleId: Number(filters.vehicleId),
+          vehicleId: Number(focusVehicleId),
           deliveryRound: Number(filters.deliveryRound) || 1,
           pickerId: transferPickerId ? Number(transferPickerId) : null,
           preservePicker: !transferPickerId,
@@ -1087,12 +1106,12 @@ export default function OrdersPage() {
   }
 
   async function quickAssignOrderToFocus(order: Order) {
-    if (!filters.vehicleId) {
+    if (!focusVehicleId) {
       setError("Choose a focus truck first.");
       return;
     }
     if (
-      order.assignment?.vehicleId === Number(filters.vehicleId) &&
+      order.assignment?.vehicleId === Number(focusVehicleId) &&
       (flags.deliveryRounds
         ? order.assignment?.deliveryRound === focusRound
         : true)
@@ -1104,7 +1123,7 @@ export default function OrdersPage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        vehicleId: Number(filters.vehicleId),
+        vehicleId: Number(focusVehicleId),
         deliveryRound: focusRound,
         pickerId: null,
         autoAssignTeam: true,
@@ -1137,8 +1156,8 @@ export default function OrdersPage() {
   );
 
   const focusVehicle = useMemo(
-    () => vehicles.find((v) => String(v.id) === filters.vehicleId),
-    [vehicles, filters.vehicleId]
+    () => vehicles.find((v) => String(v.id) === focusVehicleId),
+    [vehicles, focusVehicleId]
   );
   const focusRound = Number(filters.deliveryRound) || 1;
   const focusLoad = focusVehicle?.loads?.find((l) => l.round === focusRound);
@@ -1146,12 +1165,12 @@ export default function OrdersPage() {
     () =>
       orders.filter(
         (o) =>
-          o.assignment?.vehicleId === Number(filters.vehicleId) &&
+          o.assignment?.vehicleId === Number(focusVehicleId) &&
           (flags.deliveryRounds
             ? o.assignment?.deliveryRound === focusRound
             : true)
       ),
-    [orders, filters.vehicleId, focusRound]
+    [orders, focusVehicleId, focusRound, flags.deliveryRounds]
   );
   const focusPalletsOnTruck = useMemo(
     () => ordersOnFocusTruck.reduce((s, o) => s + o.totalPallets, 0),
@@ -1306,24 +1325,32 @@ export default function OrdersPage() {
   return (
     <AppShell
       title="Orders"
-      description="Today’s deliveries and truck assignments"
+      description={
+        flags.operationsSuite
+          ? "Today’s deliveries and truck assignments"
+          : "Invoices, customers, and delivery records"
+      }
       contentMaxWidth="wide"
     >
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <Button onClick={openNewOrder}>New order</Button>
-        <Link
-          href="/dispatch"
-          className="inline-flex items-center justify-center rounded border border-zinc-300 bg-white px-3.5 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
-        >
-          Dispatch
-        </Link>
-        <Link
-          href={buildDispatchPrintHref(filters)}
-          target="_blank"
-          className="inline-flex items-center justify-center rounded border border-zinc-300 bg-white px-3.5 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
-        >
-          Print
-        </Link>
+        {flags.operationsSuite && (
+          <>
+            <Link
+              href="/dispatch"
+              className="inline-flex items-center justify-center rounded border border-zinc-300 bg-white px-3.5 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
+            >
+              Dispatch
+            </Link>
+            <Link
+              href={buildDispatchPrintHref(listFilters)}
+              target="_blank"
+              className="inline-flex items-center justify-center rounded border border-zinc-300 bg-white px-3.5 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
+            >
+              Print
+            </Link>
+          </>
+        )}
         <Button
           variant="secondary"
           onClick={() => {
@@ -1331,7 +1358,7 @@ export default function OrdersPage() {
             if (exportGroupBy !== "none") {
               params.set("groupBy", exportGroupBy);
             }
-            appendOrderFilterParams(params, filters, { includeCompleted: true });
+              appendOrderFilterParams(params, listFilters, { includeCompleted: true });
             window.open(`/api/export?${params}`, "_blank");
           }}
         >
@@ -1591,6 +1618,7 @@ export default function OrdersPage() {
         )}
       </Card>
 
+      {truckFocusEnabled && (
       <CollapsibleCard
         className="mb-4"
         title="Truck focus"
@@ -1686,6 +1714,7 @@ export default function OrdersPage() {
           )}
         </div>
       </CollapsibleCard>
+      )}
 
       <InvoiceImportQueuePanel
         onOpenForm={openFormFromInvoice}
@@ -2247,7 +2276,7 @@ export default function OrdersPage() {
                 {linkingDeliveries ? "Unlinking…" : "Unlink group"}
               </Button>
             )}
-            {filters.vehicleId && (
+            {focusVehicleId && (
               <Button
                 variant="secondary"
                 className="text-xs"
@@ -2305,7 +2334,7 @@ export default function OrdersPage() {
               aria-label="Transfer to truck"
             >
               <option value="">
-                {filters.vehicleId
+                {focusVehicleId
                   ? `Transfer to other truck…`
                   : "Transfer to truck…"}
               </option>
@@ -2415,18 +2444,18 @@ export default function OrdersPage() {
             <div className="space-y-4">
             {visibleOrders.map((order) => {
               const draft: AssignmentDraft = assignState[order.id] ?? {
-                vehicleId: filters.vehicleId ?? "",
+                vehicleId: focusVehicleId ?? "",
                 round: filters.deliveryRound || "1",
                 pickerId: "",
               };
               const onFocusTruck =
-                Boolean(filters.vehicleId) &&
-                order.assignment?.vehicleId === Number(filters.vehicleId) &&
+                Boolean(focusVehicleId) &&
+                order.assignment?.vehicleId === Number(focusVehicleId) &&
                 (flags.deliveryRounds
                   ? order.assignment?.deliveryRound === focusRound
                   : true);
               const availableForFocus =
-                Boolean(filters.vehicleId) && !order.assignment;
+                Boolean(focusVehicleId) && !order.assignment;
 
               return (
                 <OrderListCard
@@ -2436,7 +2465,7 @@ export default function OrdersPage() {
                   expanded={expandedOrderId === order.id}
                   highlightFocus={onFocusTruck}
                   highlightAvailable={availableForFocus}
-                  preferredVehicleId={filters.vehicleId || undefined}
+                  preferredVehicleId={focusVehicleId || undefined}
                   focusVehicleName={focusVehicle?.name}
                   focusDeliveryRound={filters.deliveryRound}
                   draft={draft}
@@ -2466,10 +2495,10 @@ export default function OrdersPage() {
                   }}
                   onSuggestUrgentRoute={() => suggestUrgentRoute(order)}
                   onQuickAssignToFocus={
-                    filters.vehicleId &&
+                    focusVehicleId &&
                     !(
                       order.assignment?.vehicleId ===
-                        Number(filters.vehicleId) &&
+                        Number(focusVehicleId) &&
                       (flags.deliveryRounds
                         ? order.assignment?.deliveryRound === focusRound
                         : true)
@@ -2492,11 +2521,11 @@ export default function OrdersPage() {
               assignState={assignState}
               vehicles={vehicles}
               pickers={pickers}
-              preferredVehicleId={filters.vehicleId || undefined}
+              preferredVehicleId={focusVehicleId || undefined}
               focusVehicleName={focusVehicle?.name}
               focusDeliveryRound={filters.deliveryRound}
               focusRound={focusRound}
-              focusVehicleId={filters.vehicleId || undefined}
+              focusVehicleId={focusVehicleId || undefined}
               onSelectChange={(orderId, checked) => {
                 const next = new Set(selectedOrderIds);
                 if (checked) next.add(orderId);

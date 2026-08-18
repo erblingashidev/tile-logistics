@@ -1,5 +1,7 @@
 export const FEATURE_FLAG_IDS = [
+  "operationsSuite",
   "manualDispatchMode",
+  "truckFocus",
   "deliveryRounds",
   "smartDispatch",
   "warehouseWms",
@@ -10,17 +12,30 @@ export type FeatureFlagId = (typeof FEATURE_FLAG_IDS)[number];
 export type FeatureFlags = Record<FeatureFlagId, boolean>;
 
 export const FEATURE_FLAG_DEFAULTS: FeatureFlags = {
+  operationsSuite: false,
   manualDispatchMode: true,
+  truckFocus: false,
   deliveryRounds: false,
-  smartDispatch: true,
+  smartDispatch: false,
   warehouseWms: false,
 };
 
 export const FEATURE_FLAG_SETTING_KEYS: Record<FeatureFlagId, string> = {
+  operationsSuite: "operations_suite",
   manualDispatchMode: "manual_dispatch_mode",
+  truckFocus: "truck_focus",
   deliveryRounds: "delivery_rounds",
   smartDispatch: "smart_dispatch",
   warehouseWms: "wms_enabled",
+};
+
+/** Applied when switching from Records to Logistics so one toggle turns the system on. */
+export const LOGISTICS_PRESET: Partial<FeatureFlags> = {
+  operationsSuite: true,
+  manualDispatchMode: false,
+  truckFocus: true,
+  smartDispatch: true,
+  warehouseWms: true,
 };
 
 export type FeatureFlagGroup = "Operations" | "Dispatch" | "Warehouse";
@@ -32,15 +47,27 @@ export const FEATURE_FLAG_META: Array<{
   description: string;
   enabledLabel: string;
   disabledLabel: string;
+  /** UI switch is on when the stored flag is false (e.g. employee portal vs office-only). */
+  invert?: boolean;
 }> = [
   {
     id: "manualDispatchMode",
     group: "Operations",
-    title: "Manual dispatch mode",
+    title: "Employee delivery portal",
     description:
-      "Admins assign trucks and update order status on the Orders page. Employee portal steps (prepared, loaded, departed, delivered) stay paused.",
-    enabledLabel: "Office-led workflow",
-    disabledLabel: "Employee portal active",
+      "Loaders and drivers mark orders prepared, loaded, departed, and delivered. Turn off to keep status updates in the office only.",
+    enabledLabel: "Portal active",
+    disabledLabel: "Office updates only",
+    invert: true,
+  },
+  {
+    id: "truckFocus",
+    group: "Operations",
+    title: "Truck focus on Orders",
+    description:
+      "Work one truck’s load from the Orders page when assigning deliveries for the day.",
+    enabledLabel: "Truck workspace visible",
+    disabledLabel: "Hidden",
   },
   {
     id: "deliveryRounds",
@@ -111,4 +138,45 @@ export function parseFeatureFlagPatch(
     if (typeof value === "boolean") patch[id] = value;
   }
   return patch;
+}
+
+/** Runtime flags: Records mode pauses dispatch, WMS, and the employee portal. */
+export function effectiveFeatureFlags(stored: FeatureFlags): FeatureFlags {
+  if (stored.operationsSuite) return stored;
+  return {
+    ...stored,
+    operationsSuite: false,
+    manualDispatchMode: true,
+    truckFocus: false,
+    deliveryRounds: false,
+    smartDispatch: false,
+    warehouseWms: false,
+  };
+}
+
+export function expandFeatureFlagPatch(
+  current: FeatureFlags,
+  patch: Partial<FeatureFlags>
+): Partial<FeatureFlags> {
+  if (patch.operationsSuite === true && !current.operationsSuite) {
+    return { ...LOGISTICS_PRESET, ...patch };
+  }
+  return patch;
+}
+
+export function moduleSwitchChecked(
+  flags: FeatureFlags,
+  id: FeatureFlagId
+): boolean {
+  const meta = FEATURE_FLAG_META.find((item) => item.id === id);
+  const value = flags[id];
+  return meta?.invert ? !value : value;
+}
+
+export function moduleSwitchToFlagValue(
+  id: FeatureFlagId,
+  checked: boolean
+): boolean {
+  const meta = FEATURE_FLAG_META.find((item) => item.id === id);
+  return meta?.invert ? !checked : checked;
 }

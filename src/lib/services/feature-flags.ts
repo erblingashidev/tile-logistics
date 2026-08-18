@@ -2,6 +2,8 @@ import {
   FEATURE_FLAG_DEFAULTS,
   FEATURE_FLAG_IDS,
   FEATURE_FLAG_SETTING_KEYS,
+  effectiveFeatureFlags,
+  expandFeatureFlagPatch,
   parseFeatureFlagPatch,
   type FeatureFlagId,
   type FeatureFlags,
@@ -18,28 +20,44 @@ function parseStoredFlag(value: string | null, fallback: boolean): boolean {
   return fallback;
 }
 
-export async function getFeatureFlags(): Promise<FeatureFlags> {
+export async function getStoredFeatureFlags(): Promise<FeatureFlags> {
   const flags = { ...FEATURE_FLAG_DEFAULTS };
-  await Promise.all(
+  const storedValues = await Promise.all(
     FEATURE_FLAG_IDS.map(async (id) => {
       const stored = await getAppSetting(FEATURE_FLAG_SETTING_KEYS[id]);
       flags[id] = parseStoredFlag(stored, FEATURE_FLAG_DEFAULTS[id]);
+      return [id, stored] as const;
     })
   );
+  const suiteUnset = storedValues.some(
+    ([id, stored]) => id === "operationsSuite" && stored == null
+  );
+  if (suiteUnset) {
+    flags.operationsSuite =
+      flags.warehouseWms ||
+      flags.truckFocus ||
+      flags.deliveryRounds ||
+      !flags.manualDispatchMode;
+  }
   return flags;
+}
+
+export async function getFeatureFlags(): Promise<FeatureFlags> {
+  return effectiveFeatureFlags(await getStoredFeatureFlags());
 }
 
 export async function updateFeatureFlags(
   patch: Partial<FeatureFlags>
 ): Promise<FeatureFlags> {
-  const current = await getFeatureFlags();
+  const current = await getStoredFeatureFlags();
+  const applied = expandFeatureFlagPatch(current, patch);
   const next = { ...current };
   for (const id of FEATURE_FLAG_IDS) {
-    if (typeof patch[id] !== "boolean" || patch[id] === current[id]) continue;
-    next[id] = patch[id]!;
+    if (typeof applied[id] !== "boolean" || applied[id] === current[id]) continue;
+    next[id] = applied[id]!;
     await setAppSetting(
       FEATURE_FLAG_SETTING_KEYS[id],
-      patch[id] ? "true" : "false"
+      applied[id] ? "true" : "false"
     );
   }
 

@@ -9,6 +9,8 @@ import { broadcastFeatureFlags } from "@/components/features/FeatureFlagsProvide
 import {
   FEATURE_FLAG_META,
   FEATURE_RECOMMENDATIONS,
+  moduleSwitchChecked,
+  moduleSwitchToFlagValue,
   parseFeatureFlags,
   type FeatureFlagGroup,
   type FeatureFlagId,
@@ -114,17 +116,18 @@ export default function SettingsPage() {
       .finally(() => setFeaturesLoading(false));
   }, []);
 
-  async function saveFlag(id: FeatureFlagId, enabled: boolean) {
+  async function savePatch(patch: Partial<FeatureFlags>, successText?: string) {
     setFeaturesError("");
     setFeaturesSuccess("");
-    setFeaturesSaving(id);
+    const keys = Object.keys(patch) as FeatureFlagId[];
+    setFeaturesSaving(keys[0] ?? "operationsSuite");
     const previous = flags;
-    const optimistic = { ...flags, [id]: enabled };
+    const optimistic = { ...flags, ...patch };
     setFlags(optimistic);
     const res = await fetch("/api/settings/features", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ [id]: enabled }),
+      body: JSON.stringify(patch),
     });
     const data = await res.json().catch(() => ({}));
     setFeaturesSaving(null);
@@ -136,12 +139,25 @@ export default function SettingsPage() {
     const next = parseFeatureFlags(data);
     setFlags(next);
     broadcastFeatureFlags(next);
-    const meta = FEATURE_FLAG_META.find((item) => item.id === id);
     setFeaturesSuccess(
-      `${meta?.title ?? "Setting"} ${enabled ? "enabled" : "disabled"}`
+      successText ??
+        (patch.operationsSuite === true
+          ? "Logistics mode on"
+          : patch.operationsSuite === false
+            ? "Records mode on"
+            : "Setting saved")
     );
     router.refresh();
     setTimeout(() => setFeaturesSuccess(""), 4000);
+  }
+
+  async function saveFlag(id: FeatureFlagId, enabled: boolean) {
+    const value = moduleSwitchToFlagValue(id, enabled);
+    const meta = FEATURE_FLAG_META.find((item) => item.id === id);
+    await savePatch(
+      { [id]: value },
+      `${meta?.title ?? "Setting"} ${enabled ? "enabled" : "disabled"}`
+    );
   }
 
   async function saveProfile(e: React.FormEvent) {
@@ -178,7 +194,7 @@ export default function SettingsPage() {
   return (
     <AppShell
       title="Settings"
-      description="Account, security, and optional operations modules"
+      description="Account, security, and how this system is used"
     >
       {loading ? (
         <LoadingState title="Loading settings…" />
@@ -281,14 +297,14 @@ export default function SettingsPage() {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
-                  Operations
+                  System
                 </p>
                 <h2 className="mt-1 text-lg font-semibold text-zinc-900">
-                  Modules
+                  How you use Tile Logistics
                 </h2>
                 <p className="mt-1 max-w-2xl text-sm text-zinc-600">
-                  Built features stay in the system. Turn a module off to hide it
-                  from everyday work until you need it again.
+                  One switch for the whole warehouse and dispatch system. After
+                  Logistics is on, you can still turn individual modules off.
                 </p>
               </div>
             </div>
@@ -302,32 +318,105 @@ export default function SettingsPage() {
                   <Alert tone="info">{featuresSuccess}</Alert>
                 )}
 
-                {groupedFlags.map((section) => (
-                  <div key={section.group}>
-                    <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-                      {section.group}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    disabled={featuresSaving != null}
+                    onClick={() => {
+                      if (!flags.operationsSuite) return;
+                      void savePatch(
+                        { operationsSuite: false },
+                        "Records mode on"
+                      );
+                    }}
+                    className={`rounded-xl border p-4 text-left transition ${
+                      !flags.operationsSuite
+                        ? "border-zinc-900 bg-zinc-50 ring-1 ring-zinc-900"
+                        : "border-zinc-200 bg-white hover:border-zinc-400"
+                    } disabled:opacity-60`}
+                  >
+                    <p className="text-sm font-semibold text-zinc-900">
+                      Records
+                    </p>
+                    <p className="mt-1 text-sm leading-relaxed text-zinc-600">
+                      Keep invoices, delivery info, reports, and logs. Dispatch,
+                      warehouse tools, and the employee portal stay hidden.
+                    </p>
+                    <p className="mt-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                      {!flags.operationsSuite ? "Active" : "Office evidence"}
+                    </p>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={featuresSaving != null}
+                    onClick={() => {
+                      if (flags.operationsSuite) return;
+                      void savePatch(
+                        { operationsSuite: true },
+                        "Logistics mode on"
+                      );
+                    }}
+                    className={`rounded-xl border p-4 text-left transition ${
+                      flags.operationsSuite
+                        ? "border-zinc-900 bg-zinc-50 ring-1 ring-zinc-900"
+                        : "border-zinc-200 bg-white hover:border-zinc-400"
+                    } disabled:opacity-60`}
+                  >
+                    <p className="text-sm font-semibold text-zinc-900">
+                      Logistics & warehouse
+                    </p>
+                    <p className="mt-1 text-sm leading-relaxed text-zinc-600">
+                      Dispatch board, truck assignment, employee delivery steps,
+                      and WMS. Fine-tune the modules below if you do not need
+                      everything.
+                    </p>
+                    <p className="mt-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                      {flags.operationsSuite ? "Active" : "Full operations"}
+                    </p>
+                  </button>
+                </div>
+
+                <div className={!flags.operationsSuite ? "opacity-60" : ""}>
+                  <div className="mb-3">
+                    <h3 className="text-sm font-semibold text-zinc-900">
+                      Modules
                     </h3>
-                    <div className="space-y-2">
-                      {section.items.map((item) => (
-                        <Switch
-                          key={item.id}
-                          label={item.title}
-                          description={item.description}
-                          status={
-                            flags[item.id]
-                              ? item.enabledLabel
-                              : item.disabledLabel
-                          }
-                          checked={flags[item.id]}
-                          disabled={featuresSaving != null}
-                          onCheckedChange={(enabled) =>
-                            void saveFlag(item.id, enabled)
-                          }
-                        />
-                      ))}
-                    </div>
+                    <p className="mt-1 text-sm text-zinc-600">
+                      {flags.operationsSuite
+                        ? "Turn off anything you are not using yet. Dispatch and Map stay available while Logistics is on."
+                        : "Paused in Records mode. Switch to Logistics to use these — your choices are saved."}
+                    </p>
                   </div>
-                ))}
+
+                  {groupedFlags.map((section) => (
+                    <div key={section.group} className="mb-4 last:mb-0">
+                      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                        {section.group}
+                      </h4>
+                      <div className="space-y-2">
+                        {section.items.map((item) => (
+                          <Switch
+                            key={item.id}
+                            label={item.title}
+                            description={item.description}
+                            status={
+                              moduleSwitchChecked(flags, item.id)
+                                ? item.enabledLabel
+                                : item.disabledLabel
+                            }
+                            checked={moduleSwitchChecked(flags, item.id)}
+                            disabled={
+                              !flags.operationsSuite || featuresSaving != null
+                            }
+                            onCheckedChange={(enabled) =>
+                              void saveFlag(item.id, enabled)
+                            }
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </Card>
