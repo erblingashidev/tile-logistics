@@ -1,3 +1,4 @@
+import { FeatureFlagsProvider } from "@/components/features/FeatureFlagsProvider";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import {
@@ -26,5 +27,9 @@ export default async function SalesLayout({
     redirect(employeeLoginRedirect(session.roles));
   }
 
-  return <SalesSectionClient>{children}</SalesSectionClient>;
+  return (
+    <FeatureFlagsProvider>
+      <SalesSectionClient>{children}</SalesSectionClient>
+    </FeatureFlagsProvider>
+  );
 }

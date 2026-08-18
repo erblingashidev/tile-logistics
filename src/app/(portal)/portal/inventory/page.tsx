@@ -6,10 +6,12 @@ import { Alert, Badge, Button, Input, Select } from "@/components/ui";
 import { usePortalDepot } from "@/hooks/usePortalDepot";
 import { formatLocationOption } from "@/lib/warehouse-location-code";
 import { employeeShowDepotNav } from "@/lib/portal-depot-nav";
+import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 import { sq } from "@/lib/i18n/sq";
 
 export default function PortalInventoryPage() {
   const depot = usePortalDepot();
+  const { warehouseWms } = useFeatureFlags();
   const [form, setForm] = useState({ ean: "", quantityM2: "", locationId: "" });
 
   async function submitLine() {
@@ -45,7 +47,7 @@ export default function PortalInventoryPage() {
       subtitle={depot.employeeName}
       activeNav="inventory"
       showOrders
-      showDepotNav={employeeShowDepotNav(depot.roles)}
+      showDepotNav={employeeShowDepotNav(depot.roles, warehouseWms)}
       showReports={depot.showReports}
       onLogout={depot.logout}
       onRefresh={depot.refreshNow}

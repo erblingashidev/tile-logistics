@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { BRAND } from "@/lib/brand";
 import { sq } from "@/lib/i18n/sq";
-import { WMS_ENABLED } from "@/lib/features/wms-enabled";
+import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 
 type PortalNav =
   | "orders"
@@ -54,6 +54,7 @@ export function PortalShell({
   refreshing = false,
   children,
 }: PortalShellProps) {
+  const { warehouseWms } = useFeatureFlags();
   const navItems = [
     showOrders && { id: "orders" as const, href: "/portal", label: sq.ordersLink },
     showDepotNav && {
@@ -71,7 +72,7 @@ export function PortalShell({
       href: "/portal/inventory",
       label: sq.inventoryLink,
     },
-    showReports && WMS_ENABLED && {
+    showReports && warehouseWms && {
       id: "reports" as const,
       href: "/portal/reports",
       label: sq.reportsLink,

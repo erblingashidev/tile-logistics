@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import {
   employeeLoginRedirect,
 } from "@/lib/employee-categories";
+import { FeatureFlagsProvider } from "@/components/features/FeatureFlagsProvider";
 
 export const dynamic = "force-dynamic";
 
@@ -21,5 +22,5 @@ export default async function AdminLayout({
     redirect(employeeLoginRedirect(session.roles));
   }
 
-  return children;
+  return <FeatureFlagsProvider>{children}</FeatureFlagsProvider>;
 }

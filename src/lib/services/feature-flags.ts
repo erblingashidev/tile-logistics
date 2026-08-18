@@ -1,18 +1,91 @@
+import {
+  FEATURE_FLAG_DEFAULTS,
+  FEATURE_FLAG_IDS,
+  FEATURE_FLAG_SETTING_KEYS,
+  parseFeatureFlagPatch,
+  type FeatureFlagId,
+  type FeatureFlags,
+} from "@/lib/features/catalog";
 import { getAppSetting, setAppSetting } from "@/lib/services/app-settings";
+import { logActivity } from "@/lib/logger";
 
-export const MANUAL_DISPATCH_MODE_KEY = "manual_dispatch_mode";
+export const MANUAL_DISPATCH_MODE_KEY =
+  FEATURE_FLAG_SETTING_KEYS.manualDispatchMode;
 
-/** When true, employee portal proofs / picker workflow is disabled; admin works manually. */
+function parseStoredFlag(value: string | null, fallback: boolean): boolean {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return fallback;
+}
+
+export async function getFeatureFlags(): Promise<FeatureFlags> {
+  const flags = { ...FEATURE_FLAG_DEFAULTS };
+  await Promise.all(
+    FEATURE_FLAG_IDS.map(async (id) => {
+      const stored = await getAppSetting(FEATURE_FLAG_SETTING_KEYS[id]);
+      flags[id] = parseStoredFlag(stored, FEATURE_FLAG_DEFAULTS[id]);
+    })
+  );
+  return flags;
+}
+
+export async function updateFeatureFlags(
+  patch: Partial<FeatureFlags>
+): Promise<FeatureFlags> {
+  const current = await getFeatureFlags();
+  const next = { ...current };
+  for (const id of FEATURE_FLAG_IDS) {
+    if (typeof patch[id] !== "boolean" || patch[id] === current[id]) continue;
+    next[id] = patch[id]!;
+    await setAppSetting(
+      FEATURE_FLAG_SETTING_KEYS[id],
+      patch[id] ? "true" : "false"
+    );
+  }
+
+  const changed = FEATURE_FLAG_IDS.filter((id) => current[id] !== next[id]);
+  if (changed.length > 0) {
+    await logActivity(
+      "update",
+      "settings",
+      null,
+      `Operations modules updated: ${changed
+        .map((id) => `${id}=${next[id] ? "on" : "off"}`)
+        .join(", ")}`,
+      {
+        category: "system",
+        details: { previous: current, next },
+      }
+    );
+  }
+
+  return next;
+}
+
+export async function updateFeatureFlagsFromBody(
+  body: unknown
+): Promise<FeatureFlags> {
+  return updateFeatureFlags(parseFeatureFlagPatch(body));
+}
+
 export async function isManualDispatchMode(): Promise<boolean> {
-  const v = await getAppSetting(MANUAL_DISPATCH_MODE_KEY);
-  if (v === "false") return false;
-  if (v === "true") return true;
-  // Default ON — invoice-driven ops until employee workflow is re-enabled.
-  return true;
+  return (await getFeatureFlags()).manualDispatchMode;
 }
 
 export async function setManualDispatchMode(enabled: boolean): Promise<void> {
-  await setAppSetting(MANUAL_DISPATCH_MODE_KEY, enabled ? "true" : "false");
+  await updateFeatureFlags({ manualDispatchMode: enabled });
+}
+
+export async function isDeliveryRoundsEnabled(): Promise<boolean> {
+  return (await getFeatureFlags()).deliveryRounds;
+}
+
+export async function isSmartDispatchEnabled(): Promise<boolean> {
+  return (await getFeatureFlags()).smartDispatch;
+}
+
+export async function isWarehouseWmsEnabled(): Promise<boolean> {
+  return (await getFeatureFlags()).warehouseWms;
 }
 
 export async function assertEmployeeWorkflowEnabled(): Promise<
@@ -27,3 +100,26 @@ export async function assertEmployeeWorkflowEnabled(): Promise<
   }
   return { ok: true };
 }
+
+export async function assertWarehouseWmsEnabled(): Promise<
+  { ok: true } | { ok: false; error: string }
+> {
+  if (!(await isWarehouseWmsEnabled())) {
+    return {
+      ok: false,
+      error: "Warehouse module is turned off in Settings.",
+    };
+  }
+  return { ok: true };
+}
+
+/** New assignments use round 1 while multiple trips are disabled. */
+export async function resolveRequestedDeliveryRound(
+  requested?: number
+): Promise<number> {
+  if (!(await isDeliveryRoundsEnabled())) return 1;
+  const round = Number(requested);
+  return Number.isFinite(round) && round >= 1 ? round : 1;
+}
+
+export type { FeatureFlagId, FeatureFlags };

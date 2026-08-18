@@ -6,7 +6,8 @@ import {
 } from "@/components/OrderAssignmentPanel";
 import { Badge, Button } from "@/components/ui";
 import { formatM2 } from "@/lib/calculations";
-import { formatDeliveryRound } from "@/lib/delivery-rounds";
+import { assignmentTruckLabel } from "@/lib/delivery-rounds";
+import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 import {
   orderListRowClass,
   orderStageBadgeTone,
@@ -67,13 +68,17 @@ function StageBadge({ order }: { order: OrderListCardOrder }) {
 }
 
 function AssignmentBadge({ order }: { order: OrderListCardOrder }) {
+  const { deliveryRounds } = useFeatureFlags();
   if (!order.assignment) {
     return <Badge tone="amber">Unassigned</Badge>;
   }
   return (
     <Badge tone="green">
-      {order.assignment.vehicleName} ·{" "}
-      {formatDeliveryRound(order.assignment.deliveryRound, "short")}
+      {assignmentTruckLabel(
+        order.assignment.vehicleName,
+        order.assignment.deliveryRound,
+        deliveryRounds
+      )}
     </Badge>
   );
 }
@@ -156,11 +161,12 @@ function OrderRow({
   manualMode?: boolean;
   compact?: "list" | "grid";
 }) {
+  const { deliveryRounds } = useFeatureFlags();
   const stage = (order.deliveryStage ?? order.status) as OrderDisplayStage;
   const onFocusTruck =
     Boolean(focusVehicleId) &&
     order.assignment?.vehicleId === Number(focusVehicleId) &&
-    order.assignment?.deliveryRound === focusRound;
+    (deliveryRounds ? order.assignment?.deliveryRound === focusRound : true);
   const isDelivered = stage === "delivered";
   const isComplete = stage === "delivered" || stage === "arrived";
   const showAssignControls = manualMode || !isComplete;
@@ -343,7 +349,7 @@ function OrderRow({
           {onQuickAssignToFocus && !manualMode && (
             <Button className="text-xs" onClick={onQuickAssignToFocus}>
               → {focusVehicleName ?? "Truck"}
-              {focusDeliveryRound ? ` R${focusDeliveryRound}` : ""}
+              {deliveryRounds && focusDeliveryRound ? ` R${focusDeliveryRound}` : ""}
             </Button>
           )}
           {showAssignControls && (

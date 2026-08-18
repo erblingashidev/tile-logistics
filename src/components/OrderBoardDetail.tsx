@@ -13,7 +13,8 @@ import {
   formatDeliverySchedule,
   isOrderReadyToShip,
 } from "@/lib/delivery-schedule";
-import { formatDeliveryRound } from "@/lib/delivery-rounds";
+import { assignmentTruckLabel } from "@/lib/delivery-rounds";
+import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 import {
   orderStageBadgeTone,
   type OrderDisplayStage,
@@ -66,6 +67,7 @@ function formatItemQty(item: OrderListCardOrder["items"][number]): string {
 }
 
 export function OrderBoardDetail({ order }: { order: OrderListCardOrder }) {
+  const { deliveryRounds } = useFeatureFlags();
   const stage = (order.deliveryStage ?? order.status) as OrderDisplayStage;
   const referenti =
     order.salesAgentName?.trim() ||
@@ -126,12 +128,14 @@ export function OrderBoardDetail({ order }: { order: OrderListCardOrder }) {
       {order.assignment && (
         <div className="rounded-lg border border-emerald-100 bg-emerald-50/60 px-3 py-2 text-sm text-emerald-900">
           <span className="font-medium">Truck · </span>
-          {order.assignment.vehicleName}
+          {assignmentTruckLabel(
+            order.assignment.vehicleName,
+            order.assignment.deliveryRound,
+            deliveryRounds
+          )}
           {order.assignment.plateNumber
             ? ` (${order.assignment.plateNumber})`
             : ""}
-          {" · "}
-          {formatDeliveryRound(order.assignment.deliveryRound, "short")}
           {order.assignment.driverName
             ? ` · Driver: ${order.assignment.driverName}`
             : ""}

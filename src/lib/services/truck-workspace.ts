@@ -1,5 +1,6 @@
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { DELIVERY_ROUNDS, MAX_DELIVERY_ROUNDS } from "@/lib/constants";
+import { isDeliveryRoundsEnabled } from "@/lib/services/feature-flags";
 import { getDb } from "@/lib/db";
 import { dbAll, dbOne } from "@/lib/db/query";
 import {
@@ -355,6 +356,9 @@ export async function clearVehicleReturningIfPrepping(vehicleId: number) {
 export async function resolveAssignmentDeliveryRound(
   vehicleId: number
 ): Promise<{ round: number; reason: string }> {
+  if (!(await isDeliveryRoundsEnabled())) {
+    return { round: 1, reason: "Multiple trips are turned off — using a single load." };
+  }
   const db = await getDb();
   const vehicleRow = await dbOne(
     db

@@ -37,6 +37,16 @@ export function formatDeliveryRound(
   return `Round ${r} · ${text}`;
 }
 
+export function assignmentTruckLabel(
+  vehicleName: string,
+  deliveryRound: number,
+  showRound: boolean,
+  style: "short" | "compact" = "short"
+): string {
+  if (!showRound) return vehicleName;
+  return `${vehicleName} · ${formatDeliveryRound(deliveryRound, style)}`;
+}
+
 export function deliveryRoundSelectOptions(): Array<{
   value: DeliveryRound;
   label: string;

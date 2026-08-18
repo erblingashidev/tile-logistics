@@ -10,6 +10,7 @@ import {
   TruckWorkspaceStatus,
   type TruckWorkspaceSnapshot,
 } from "@/components/TruckWorkspaceStatus";
+import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 
 interface VehicleOption {
   id: number;
@@ -138,6 +139,7 @@ export function OrderAssignmentPanel({
   onWarning,
   manualMode = false,
 }: OrderAssignmentPanelProps) {
+  const { deliveryRounds } = useFeatureFlags();
   const [busy, setBusy] = useState(false);
   const [quickAssign, setQuickAssign] = useState(false);
   const [truckWorkspace, setTruckWorkspace] =
@@ -239,11 +241,15 @@ export function OrderAssignmentPanel({
     if (data.weightWarning) onWarning(data.weightWarning);
     if (data.scheduleWarning) onWarning(data.scheduleWarning);
     if (data.linkedWarning) onWarning(data.linkedWarning);
-    if (data.deliveryRoundReason && data.deliveryRound !== Number(active.round)) {
+    if (
+      deliveryRounds &&
+      data.deliveryRoundReason &&
+      data.deliveryRound !== Number(active.round)
+    ) {
       onWarning(
         `Assigned to round ${data.deliveryRound} (auto-adjusted). ${data.deliveryRoundReason}`
       );
-    } else if (data.deliveryRoundReason) {
+    } else if (deliveryRounds && data.deliveryRoundReason) {
       onWarning(
         data.deliveryRound
           ? `Assigned to round ${data.deliveryRound}. ${data.deliveryRoundReason}`

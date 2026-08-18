@@ -71,6 +71,7 @@ import {
   type OrderItemInput,
 } from "@/lib/calculations";
 import { MAX_DELIVERY_ROUNDS, normalizeOrderUnit, type OrderStatus, type EmployeeRole } from "@/lib/constants";
+import { isDeliveryRoundsEnabled } from "@/lib/services/feature-flags";
 import { getLocationById, resolveLocation } from "@/lib/locations";
 import {
   suggestRoutes,
@@ -314,11 +315,15 @@ export async function listOrders(filters?: {
     );
   }
   if (filters?.vehicleId != null) {
+    const roundsEnabled = await isDeliveryRoundsEnabled();
     const round = filters.deliveryRound ?? 1;
     const scope = filters.vehicleScope ?? "workspace";
+    const roundClause = roundsEnabled
+      ? sql`AND a.delivery_round = ${round}`
+      : sql``;
     if (scope === "on_truck") {
       conditions.push(
-        sql`EXISTS (SELECT 1 FROM assignments a WHERE a.order_id = ${orders.id} AND a.vehicle_id = ${filters.vehicleId} AND a.delivery_round = ${round})`
+        sql`EXISTS (SELECT 1 FROM assignments a WHERE a.order_id = ${orders.id} AND a.vehicle_id = ${filters.vehicleId} ${roundClause})`
       );
     } else if (scope === "unassigned") {
       conditions.push(
@@ -332,14 +337,15 @@ export async function listOrders(filters?: {
             SELECT 1 FROM assignments a
             WHERE a.order_id = ${orders.id}
               AND a.vehicle_id = ${filters.vehicleId}
-              AND a.delivery_round = ${round}
+              ${roundClause}
           )
         )`
       );
     }
   } else if (
     filters?.fleetRoundFilter &&
-    filters.deliveryRound != null
+    filters.deliveryRound != null &&
+    (await isDeliveryRoundsEnabled())
   ) {
     conditions.push(
       sql`EXISTS (SELECT 1 FROM assignments a WHERE a.order_id = ${orders.id} AND a.delivery_round = ${filters.deliveryRound})`
@@ -1240,9 +1246,12 @@ export async function assignOrderToVehicle(
 ) {
   const ignoreLinkedWarning = options?.ignoreLinkedWarning ?? false;
   const vehiclesToSync = new Set<number>();
+  const roundsEnabled = await isDeliveryRoundsEnabled();
   let round = deliveryRound;
   let roundReason: string | undefined;
-  if (options?.explicitRound === false) {
+  if (!roundsEnabled) {
+    round = 1;
+  } else if (options?.explicitRound === false) {
     const resolved = await resolveAssignmentDeliveryRound(vehicleId);
     round = resolved.round;
     roundReason = resolved.reason;
@@ -1315,11 +1324,16 @@ export async function assignOrderToVehicle(
           .from(assignments)
           .innerJoin(orders, eq(assignments.orderId, orders.id))
           .where(
-            and(
-              eq(assignments.vehicleId, vehicleId),
-              eq(assignments.deliveryRound, round),
-              sql`${assignments.orderId} != ${orderId}`
-            )
+            roundsEnabled
+              ? and(
+                  eq(assignments.vehicleId, vehicleId),
+                  eq(assignments.deliveryRound, round),
+                  sql`${assignments.orderId} != ${orderId}`
+                )
+              : and(
+                  eq(assignments.vehicleId, vehicleId),
+                  sql`${assignments.orderId} != ${orderId}`
+                )
           )
       )
     ).map((r) => ({
@@ -2341,7 +2355,11 @@ export async function getOrdersGroupedByLocation() {
   );
 }
 
-export async function getVehicleLoad(vehicleId: number, deliveryRound: number) {
+export async function getVehicleLoad(
+  vehicleId: number,
+  deliveryRound: number,
+  options?: { ignoreRound?: boolean }
+) {
   const db = await getDb();
   const assigned = await dbAll(
     db
@@ -2349,10 +2367,12 @@ export async function getVehicleLoad(vehicleId: number, deliveryRound: number) {
       .from(assignments)
       .innerJoin(orders, eq(assignments.orderId, orders.id))
       .where(
-        and(
-          eq(assignments.vehicleId, vehicleId),
-          eq(assignments.deliveryRound, deliveryRound)
-        )
+        options?.ignoreRound
+          ? eq(assignments.vehicleId, vehicleId)
+          : and(
+              eq(assignments.vehicleId, vehicleId),
+              eq(assignments.deliveryRound, deliveryRound)
+            )
       )
   );
 
@@ -2732,7 +2752,9 @@ export async function transferOrdersToVehicle(input: {
     }
   }
 
-  const deliveryRound = input.deliveryRound;
+  const deliveryRound = (await isDeliveryRoundsEnabled())
+    ? input.deliveryRound
+    : 1;
   if (deliveryRound < 1 || deliveryRound > MAX_DELIVERY_ROUNDS) {
     return {
       ok: false as const,

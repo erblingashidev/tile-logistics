@@ -13,6 +13,7 @@ import {
   type TruckWorkspaceSnapshot,
 } from "@/components/TruckWorkspaceStatus";
 import { SmartDispatchPanel } from "@/components/SmartDispatchPanel";
+import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 import { OrderListCard } from "@/components/OrderListCard";
 import {
   OrderBoardView,
@@ -272,6 +273,7 @@ function createEmptyOrderForm() {
 }
 
 export default function OrdersPage() {
+  const flags = useFeatureFlags();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -321,7 +323,6 @@ export default function OrdersPage() {
   const [warning, setWarning] = useState("");
   const [bulkAssigning, setBulkAssigning] = useState(false);
   const [linkingDeliveries, setLinkingDeliveries] = useState(false);
-  const [manualDispatchMode, setManualDispatchMode] = useState(true);
   const [linkToOrderId, setLinkToOrderId] = useState<number | null>(null);
   const [exportGroupBy, setExportGroupBy] = useState<
     "none" | "region" | "truck" | "picker" | "driver"
@@ -418,17 +419,6 @@ export default function OrdersPage() {
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [loadOrders]);
-
-  useEffect(() => {
-    fetch("/api/settings/features", { cache: "no-store" })
-      .then((res) => res.json())
-      .then((data: { manualDispatchMode?: boolean }) => {
-        if (typeof data.manualDispatchMode === "boolean") {
-          setManualDispatchMode(data.manualDispatchMode);
-        }
-      })
-      .catch(() => {});
-  }, []);
 
   useEffect(() => {
     const today = todayDateString();
@@ -1016,7 +1006,9 @@ export default function OrdersPage() {
       : null;
     if (
       !confirm(
-        `Assign ${ids.length} order(s) to ${truck?.name ?? "truck"} · round ${filters.deliveryRound}?${
+        `Assign ${ids.length} order(s) to ${truck?.name ?? "truck"}${
+          flags.deliveryRounds ? ` · round ${filters.deliveryRound}` : ""
+        }?${
           picker ? `\n\nPicker: ${picker.name}` : ""
         }`
       )
@@ -1076,7 +1068,9 @@ export default function OrdersPage() {
     }
     if (
       order.assignment?.vehicleId === Number(filters.vehicleId) &&
-      order.assignment?.deliveryRound === focusRound
+      (flags.deliveryRounds
+        ? order.assignment?.deliveryRound === focusRound
+        : true)
     ) {
       return;
     }
@@ -1099,7 +1093,9 @@ export default function OrdersPage() {
     }
     setWarning(
       `Assigned ${order.invoiceNumber} → ${focusVehicle?.name ?? "truck"}${
-        data.deliveryRound ? ` · R${data.deliveryRound}` : ""
+        flags.deliveryRounds && data.deliveryRound
+          ? ` · R${data.deliveryRound}`
+          : ""
       }`
     );
     setTimeout(() => setWarning(""), 3000);
@@ -1126,7 +1122,9 @@ export default function OrdersPage() {
       orders.filter(
         (o) =>
           o.assignment?.vehicleId === Number(filters.vehicleId) &&
-          o.assignment?.deliveryRound === focusRound
+          (flags.deliveryRounds
+            ? o.assignment?.deliveryRound === focusRound
+            : true)
       ),
     [orders, filters.vehicleId, focusRound]
   );
@@ -1241,9 +1239,9 @@ export default function OrdersPage() {
       reasons: string[];
       almostReady?: boolean;
     };
-    const label = `${best.vehicleName} · R${best.deliveryRound}${
-      best.almostReady ? " (almost ready)" : ""
-    }`;
+    const label = `${best.vehicleName}${
+      flags.deliveryRounds ? ` · R${best.deliveryRound}` : ""
+    }${best.almostReady ? " (almost ready)" : ""}`;
     if (
       !confirm(
         `Best match: ${label}\n\n${best.reasons[0] ?? ""}\n\nAssign now?`
@@ -1332,7 +1330,7 @@ export default function OrdersPage() {
         </div>
       </div>
 
-      {manualDispatchMode && (
+      {flags.manualDispatchMode && (
         <div className="mb-4">
           <Alert tone="info">
             Manual dispatch mode is on.
@@ -2253,7 +2251,7 @@ export default function OrdersPage() {
                 </option>
               ))}
             </select>
-            {!manualDispatchMode && (
+            {!flags.manualDispatchMode && (
               <select
                 className="rounded border border-violet-200 bg-white px-2 py-1 text-xs"
                 value={transferPickerId}
@@ -2386,7 +2384,9 @@ export default function OrdersPage() {
               const onFocusTruck =
                 Boolean(filters.vehicleId) &&
                 order.assignment?.vehicleId === Number(filters.vehicleId) &&
-                order.assignment?.deliveryRound === focusRound;
+                (flags.deliveryRounds
+                  ? order.assignment?.deliveryRound === focusRound
+                  : true);
               const availableForFocus =
                 Boolean(filters.vehicleId) && !order.assignment;
 
@@ -2432,12 +2432,14 @@ export default function OrdersPage() {
                     !(
                       order.assignment?.vehicleId ===
                         Number(filters.vehicleId) &&
-                      order.assignment?.deliveryRound === focusRound
+                      (flags.deliveryRounds
+                        ? order.assignment?.deliveryRound === focusRound
+                        : true)
                     )
                       ? () => quickAssignOrderToFocus(order)
                       : undefined
                   }
-                  manualMode={manualDispatchMode}
+                  manualMode={flags.manualDispatchMode}
                 />
               );
             })}
@@ -2483,13 +2485,13 @@ export default function OrdersPage() {
                 const full = visibleOrders.find((o) => o.id === boardOrder.id);
                 if (full) void quickAssignOrderToFocus(full);
               }}
-              manualMode={manualDispatchMode}
+              manualMode={flags.manualDispatchMode}
             />
           )}
         </div>
       </Card>
 
-      {!manualDispatchMode && (
+      {!flags.manualDispatchMode && flags.smartDispatch && (
         <SmartDispatchPanel
           regionFilter={filters.region || undefined}
           onApplied={load}

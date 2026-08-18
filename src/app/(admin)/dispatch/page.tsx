@@ -8,6 +8,7 @@ import { Badge, Button, Card, Alert, PageSection, StatCard, Select } from "@/com
 import { SmartDispatchPanel } from "@/components/SmartDispatchPanel";
 import { DispatchAssignBoard } from "@/components/dispatch/DispatchAssignBoard";
 import { deliveryRoundSelectOptions, formatDeliveryRound } from "@/lib/delivery-rounds";
+import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 import type {
   DispatchBoardOrder,
   DispatchBoardTruck,
@@ -54,6 +55,7 @@ function pickerBalanceHint(rows: PickerWorkloadRow[]): string | null {
 }
 
 export default function DispatchPage() {
+  const flags = useFeatureFlags();
   const [board, setBoard] = useState<BoardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -129,7 +131,11 @@ export default function DispatchPage() {
       setError(data.error ?? "Could not assign urgent order");
       return;
     }
-    setMessage(`Assigned to ${opt.vehicleName} · R${opt.deliveryRound}`);
+    setMessage(
+      `Assigned to ${opt.vehicleName}${
+        flags.deliveryRounds ? ` · R${opt.deliveryRound}` : ""
+      }`
+    );
     setTimeout(() => setMessage(""), 3000);
     setUrgentOptions((prev) => {
       const next = { ...prev };
@@ -187,6 +193,7 @@ export default function DispatchPage() {
             />
           </div>
 
+          {flags.smartDispatch && (
           <SmartDispatchPanel
             defaultExpanded
             onApplied={() => {
@@ -196,9 +203,11 @@ export default function DispatchPage() {
             onError={setError}
             onWarning={setMessage}
           />
+          )}
 
           <PageSection title="Dispatch map">
             <div className="mb-3 flex flex-wrap items-end gap-3">
+              {flags.deliveryRounds && (
               <Select
                 label="Delivery round"
                 value={mapDeliveryRound}
@@ -210,6 +219,7 @@ export default function DispatchPage() {
                   </option>
                 ))}
               </Select>
+              )}
               <label className="flex items-center gap-2 pb-2 text-sm text-zinc-700">
                 <input
                   type="checkbox"
@@ -298,8 +308,13 @@ export default function DispatchPage() {
                           >
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <p className="font-medium">
-                                {opt.vehicleName} ·{" "}
-                                {formatDeliveryRound(opt.deliveryRound, "short")}
+                                {opt.vehicleName}
+                                {flags.deliveryRounds && (
+                                  <>
+                                    {" · "}
+                                    {formatDeliveryRound(opt.deliveryRound, "short")}
+                                  </>
+                                )}
                                 {opt.almostReady && (
                                   <span className="ml-2 text-green-700">
                                     · almost ready

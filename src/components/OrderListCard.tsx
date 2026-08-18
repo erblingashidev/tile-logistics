@@ -20,7 +20,8 @@ import {
   deliveryScheduleBadgeTone,
   isOrderReadyToShip,
 } from "@/lib/delivery-schedule";
-import { formatDeliveryRound } from "@/lib/delivery-rounds";
+import { assignmentTruckLabel } from "@/lib/delivery-rounds";
+import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 import {
   orderListRowClass,
   orderStageBadgeTone,
@@ -186,6 +187,7 @@ export function OrderListCard({
   onQuickAssignToFocus,
   manualMode = false,
 }: OrderListCardProps) {
+  const { deliveryRounds } = useFeatureFlags();
   const stage = (order.deliveryStage ?? order.status) as OrderDisplayStage;
   const isDelivered = stage === "delivered";
   const isComplete = stage === "delivered" || stage === "arrived";
@@ -263,7 +265,9 @@ export function OrderListCard({
                   onClick={onQuickAssignToFocus}
                 >
                   → {focusVehicleName ?? "Focus truck"}
-                  {focusDeliveryRound ? ` R${focusDeliveryRound}` : ""}
+                  {deliveryRounds && focusDeliveryRound
+                    ? ` R${focusDeliveryRound}`
+                    : ""}
                 </Button>
               )}
             <Button variant="secondary" className="text-xs" onClick={onToggleExpand}>
@@ -386,9 +390,11 @@ export function OrderListCard({
             {order.assignment && (
               <p className="font-medium text-zinc-800">
                 <span className="text-zinc-500">Truck · </span>
-                {order.assignment.vehicleName}
-                {" · "}
-                {formatDeliveryRound(order.assignment.deliveryRound, "short")}
+                {assignmentTruckLabel(
+                  order.assignment.vehicleName,
+                  order.assignment.deliveryRound,
+                  deliveryRounds
+                )}
                 {order.assignment.driverName
                   ? ` · ${order.assignment.driverName}`
                   : ""}

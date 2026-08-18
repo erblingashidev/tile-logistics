@@ -13,6 +13,7 @@ import { sq } from "@/lib/i18n/sq";
 import type { EmployeeRole } from "@/lib/constants";
 import { WAREHOUSE_REPORT_ROLES } from "@/lib/employee-categories";
 import { employeeShowDepotNav } from "@/lib/portal-depot-nav";
+import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 
 interface MeUser {
   name?: string;
@@ -54,9 +55,11 @@ export default function PortalProfilePage() {
     router.push("/login");
   }
 
+  const { warehouseWms } = useFeatureFlags();
   const roles = user?.roles ?? [];
-  const showDepotNav = employeeShowDepotNav(roles);
-  const showReports = roles.some((r) => WAREHOUSE_REPORT_ROLES.includes(r));
+  const showDepotNav = employeeShowDepotNav(roles, warehouseWms);
+  const showReports =
+    warehouseWms && roles.some((r) => WAREHOUSE_REPORT_ROLES.includes(r));
 
   return (
     <PortalShell

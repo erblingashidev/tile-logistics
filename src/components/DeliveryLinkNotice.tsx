@@ -1,3 +1,7 @@
+"use client";
+
+import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
+
 export type DeliveryLinkInfo = {
   id: number;
   invoiceNumber: string;
@@ -9,9 +13,11 @@ export type DeliveryLinkInfo = {
   } | null;
 };
 
-function partnerLine(link: DeliveryLinkInfo) {
+function partnerLine(link: DeliveryLinkInfo, showRound: boolean) {
   const truck = link.assignment
-    ? `${link.assignment.vehicleName} · R${link.assignment.deliveryRound}`
+    ? showRound
+      ? `${link.assignment.vehicleName} · R${link.assignment.deliveryRound}`
+      : link.assignment.vehicleName
     : "Unassigned";
   return `${link.invoiceNumber} · ${truck}`;
 }
@@ -50,6 +56,7 @@ export function DeliveryLinkNotice({
   links: DeliveryLinkInfo[] | undefined | null;
   compact?: boolean;
 }) {
+  const { deliveryRounds } = useFeatureFlags();
   if (!hasDeliveryLinks(links)) return null;
 
   return (
@@ -68,7 +75,7 @@ export function DeliveryLinkNotice({
           Linked delivery
         </p>
         <p className={`mt-0.5 text-sky-900 ${compact ? "text-[11px]" : "text-xs"}`}>
-          {links.map(partnerLine).join(" · ")}
+          {links.map((link) => partnerLine(link, deliveryRounds)).join(" · ")}
         </p>
       </div>
     </div>

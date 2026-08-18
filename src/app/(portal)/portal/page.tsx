@@ -21,7 +21,7 @@ import {
   type EmployeeRole,
 } from "@/lib/constants";
 import { WAREHOUSE_REPORT_ROLES } from "@/lib/employee-categories";
-import { WMS_ENABLED } from "@/lib/features/wms-enabled";
+import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 import { employeeShowDepotNav } from "@/lib/portal-depot-nav";
 import {
   orderStatusLabelSq,
@@ -149,6 +149,7 @@ function driverPhaseLabel(phase: DeliveryProofPhase): string {
 
 export default function PortalPage() {
   const router = useRouter();
+  const flags = useFeatureFlags();
   const [employee, setEmployee] = useState<PortalEmployee | null>(null);
   const [myStatus, setMyStatus] = useState("available");
   const [orders, setOrders] = useState<PortalOrder[]>([]);
@@ -385,9 +386,12 @@ export default function PortalPage() {
   const isLoader =
     employee?.roles.some((r) => r === "picker" || r === "unloader") ?? false;
   const isDriver = employee?.roles.includes("driver") ?? false;
-  const showDepotNav = employeeShowDepotNav(employee?.roles ?? []);
+  const showDepotNav = employeeShowDepotNav(
+    employee?.roles ?? [],
+    flags.warehouseWms
+  );
   const showReportsLink =
-    WMS_ENABLED &&
+    flags.warehouseWms &&
     (employee?.roles.some((r) => WAREHOUSE_REPORT_ROLES.includes(r)) ?? false);
 
   function loaderNeedsAction(order: PortalOrder) {
@@ -505,8 +509,10 @@ export default function PortalPage() {
           >
               <div className="flex items-start justify-between gap-2">
                 <p className="text-sm font-semibold text-zinc-900">
-                  {truck.vehicleName} ({truck.plateNumber}) ·{" "}
-                  {sq.roundLabel(truck.deliveryRound)}
+                  {truck.vehicleName} ({truck.plateNumber})
+                  {flags.deliveryRounds
+                    ? ` · ${sq.roundLabel(truck.deliveryRound)}`
+                    : ""}
                 </p>
                 {!isActiveRound && (
                   <Badge tone="slate">{sq.driverInfoOnly}</Badge>
@@ -595,10 +601,12 @@ export default function PortalPage() {
                 const showDetails = Boolean(detailsOpen[order.id]);
                 const showSkip = Boolean(skipOpen[order.id]);
                 const truckLine = order.assignment
-                  ? sq.truckRound(
-                      order.assignment.vehicleName,
-                      order.assignment.deliveryRound
-                    )
+                  ? flags.deliveryRounds
+                    ? sq.truckRound(
+                        order.assignment.vehicleName,
+                        order.assignment.deliveryRound
+                      )
+                    : order.assignment.vehicleName
                   : null;
 
                 return (

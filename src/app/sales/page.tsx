@@ -10,6 +10,7 @@ import {
 import { Alert, Badge, EmptyState, Input, Select } from "@/components/ui";
 import { readJsonListWithError } from "@/lib/api/read-json-list";
 import { formatDeliverySchedule } from "@/lib/delivery-schedule";
+import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 import {
   isOrderOnTheWay,
   isOrderWaitingToSend,
@@ -76,6 +77,7 @@ function matchesFilter(order: SalesOrder, filter: SalesFilter): boolean {
 }
 
 export default function SalesOrdersPage() {
+  const { deliveryRounds } = useFeatureFlags();
   const [orders, setOrders] = useState<SalesOrder[]>([]);
   const [agents, setAgents] = useState<SalesAgent[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -283,8 +285,10 @@ export default function SalesOrdersPage() {
                         </p>
                         {order.assignment && (
                           <p className="mt-1 text-xs text-zinc-600">
-                            Truck: {order.assignment.vehicleName} (round{" "}
-                            {order.assignment.deliveryRound})
+                            Truck: {order.assignment.vehicleName}
+                            {deliveryRounds
+                              ? ` (round ${order.assignment.deliveryRound})`
+                              : ""}
                           </p>
                         )}
                       </div>

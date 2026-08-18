@@ -25,8 +25,7 @@ interface TruckFocusBarProps {
 
 function palletsOnTruck(vehicle: VehicleChip): number {
   return (
-    vehicle.loads?.find((load) => load.round === 1)?.totals.pallets ??
-    vehicle.loads?.[0]?.totals.pallets ??
+    vehicle.loads?.reduce((sum, load) => sum + (load.totals.pallets ?? 0), 0) ??
     0
   );
 }

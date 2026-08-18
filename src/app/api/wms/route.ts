@@ -23,11 +23,16 @@ import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { dbAll } from "@/lib/db/query";
 import { warehouseLocations } from "@/lib/db/schema";
+import { assertWarehouseWmsEnabled } from "@/lib/services/feature-flags";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
+    const wms = await assertWarehouseWmsEnabled();
+    if (!wms.ok) {
+      return NextResponse.json({ error: wms.error }, { status: 403 });
+    }
     const session = await requireEmployee();
     if (!employeeCanUseWms(session)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -92,6 +97,10 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const wms = await assertWarehouseWmsEnabled();
+    if (!wms.ok) {
+      return NextResponse.json({ error: wms.error }, { status: 403 });
+    }
     const session = await requireEmployee();
     if (!employeeCanUseWms(session)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });

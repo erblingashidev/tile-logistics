@@ -5,6 +5,7 @@ import type {
   TruckWorkspaceSnapshot,
 } from "@/lib/services/truck-workspace";
 import { formatDeliveryRound } from "@/lib/delivery-rounds";
+import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 
 function statusClass(status: TruckRoundStatus, active: boolean) {
   if (active) return "border-blue-600 bg-blue-600 text-white";
@@ -31,7 +32,38 @@ export function TruckWorkspaceStatus({
   activeRound,
   compact = false,
 }: TruckWorkspaceStatusProps) {
+  const { deliveryRounds } = useFeatureFlags();
   const suggested = workspace.suggestedRound;
+
+  if (!deliveryRounds) {
+    return (
+      <div className={compact ? "space-y-2" : "space-y-3"}>
+        <div
+          className={`rounded-lg border px-3 py-2 text-sm ${
+            workspace.onTheRoad
+              ? "border-blue-200 bg-blue-50/80 text-blue-950"
+              : workspace.returningToWarehouse
+                ? "border-amber-300 bg-amber-50 text-amber-950"
+                : "border-zinc-200 bg-zinc-50/80 text-zinc-800"
+          }`}
+        >
+          <p className="font-medium">
+            {workspace.returningToWarehouse
+              ? "Returning to warehouse"
+              : workspace.onTheRoad
+                ? "On the road"
+                : "At warehouse"}
+            {workspace.driverName ? (
+              <span className="font-normal text-zinc-600">
+                {" "}
+                · Driver: {workspace.driverName}
+              </span>
+            ) : null}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={compact ? "space-y-2" : "space-y-3"}>

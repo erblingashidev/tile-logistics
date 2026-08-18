@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Badge, Card, Input } from "@/components/ui";
 import { formatDeliveryRound } from "@/lib/delivery-rounds";
+import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 import { truckColorForVehicle } from "@/lib/dispatch/truck-colors";
 import { groupOrdersByRegion } from "@/lib/orders/group-by-region";
 import type {
@@ -58,6 +59,7 @@ export function DispatchAssignBoard({
   onError,
   onMessage,
 }: DispatchAssignBoardProps) {
+  const { deliveryRounds } = useFeatureFlags();
   const [search, setSearch] = useState("");
   const [draggingOrderId, setDraggingOrderId] = useState<number | null>(null);
   const [activeDrop, setActiveDrop] = useState<string | null>(null);
@@ -163,7 +165,11 @@ export function DispatchAssignBoard({
       const vehicleName =
         data.vehicleName ?? truck?.name ?? `Truck ${vehicleId}`;
       onMessage(
-        `Assigned to ${vehicleName} · ${formatDeliveryRound(deliveryRound, "compact")}`
+        `Assigned to ${vehicleName}${
+          deliveryRounds
+            ? ` · ${formatDeliveryRound(deliveryRound, "compact")}`
+            : ""
+        }`
       );
       setTimeout(() => onMessage(""), 4000);
       onAssigned();
@@ -317,7 +323,9 @@ export function DispatchAssignBoard({
       </div>
 
       <aside className="min-w-0 space-y-3 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:self-start lg:overflow-y-auto">
-        <p className="text-sm font-medium text-zinc-900">Trucks & rounds</p>
+        <p className="text-sm font-medium text-zinc-900">
+          {deliveryRounds ? "Trucks & rounds" : "Trucks"}
+        </p>
 
         {trucks.length === 0 ? (
           <Card className="p-4 text-sm text-zinc-500">No trucks available.</Card>
@@ -402,7 +410,9 @@ export function DispatchAssignBoard({
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <p className="text-xs font-semibold text-zinc-900">
-                            {formatDeliveryRound(round.round, "short")}
+                            {deliveryRounds
+                              ? formatDeliveryRound(round.round, "short")
+                              : "Load"}
                           </p>
                           <Badge tone={roundTone(round.status)}>
                             {round.statusLabel}

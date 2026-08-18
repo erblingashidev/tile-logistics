@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Badge, Button, Card, Input, PageSection, Select, StatCard, tableClass } from "@/components/ui";
+import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 
 interface ReportOrder {
   id: number;
@@ -32,6 +33,7 @@ interface ReportData {
 }
 
 export default function ReportsPage() {
+  const { deliveryRounds } = useFeatureFlags();
   const [report, setReport] = useState<ReportData | null>(null);
   const [filters, setFilters] = useState({
     dateFrom: new Date().toISOString().slice(0, 10),
@@ -252,7 +254,9 @@ export default function ReportsPage() {
                       </td>
                       <td className="px-2 py-2">
                         {o.assignment
-                          ? `${o.assignment.vehicleName} (R${o.assignment.deliveryRound})`
+                          ? deliveryRounds
+                            ? `${o.assignment.vehicleName} (R${o.assignment.deliveryRound})`
+                            : o.assignment.vehicleName
                           : "—"}
                       </td>
                     </tr>

@@ -14,6 +14,7 @@ import {
   StatCard,
   tableClass,
 } from "@/components/ui";
+import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 
 type Trip = {
   proofId: number;
@@ -75,6 +76,7 @@ function fmtWhen(iso: string | null) {
 }
 
 export default function PartialDeliveriesReportPage() {
+  const { deliveryRounds } = useFeatureFlags();
   const [report, setReport] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(false);
   const [regions, setRegions] = useState<string[]>([]);
@@ -302,7 +304,9 @@ export default function PartialDeliveriesReportPage() {
                                 <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
                                   Delivery trips
                                   {o.assignment
-                                    ? ` · now on ${o.assignment.vehicleName} R${o.assignment.deliveryRound}`
+                                    ? deliveryRounds
+                                      ? ` · now on ${o.assignment.vehicleName} R${o.assignment.deliveryRound}`
+                                      : ` · now on ${o.assignment.vehicleName}`
                                     : " · unassigned"}
                                 </p>
                                 <div className="overflow-x-auto rounded border border-zinc-200 bg-white">

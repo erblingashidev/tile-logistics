@@ -8,6 +8,7 @@ import {
   orders,
 } from "@/lib/db/schema";
 import { MAX_DELIVERY_ROUNDS } from "@/lib/constants";
+import { isDeliveryRoundsEnabled } from "@/lib/services/feature-flags";
 import { groupSpreadKm } from "@/lib/dispatch/route-cluster-utils";
 import { isOrderReadyToShip } from "@/lib/delivery-schedule";
 import { isOrderUrgent, normalizeOrderPriority } from "@/lib/order-priority";
@@ -141,6 +142,8 @@ function roundStatus(
 export async function getDispatchBoard(
   maxRounds = MAX_DELIVERY_ROUNDS
 ): Promise<DispatchBoard> {
+  const roundsEnabled = await isDeliveryRoundsEnabled();
+  const effectiveMaxRounds = roundsEnabled ? maxRounds : 1;
   const db = await getDb();
   const fleet = await listTransportVehicles();
 
@@ -229,8 +232,10 @@ export async function getDispatchBoard(
   for (const v of fleet) {
     const driver = await getDriverForVehicle(v.id);
 
-    for (let round = 1; round <= maxRounds; round++) {
-      const load = await getVehicleLoad(v.id, round);
+    for (let round = 1; round <= effectiveMaxRounds; round++) {
+      const load = await getVehicleLoad(v.id, round, {
+        ignoreRound: !roundsEnabled,
+      });
       const activeOrders = load.assignedOrders.filter(
         (o) => o.status !== "delivered" && o.status !== "cancelled"
       );

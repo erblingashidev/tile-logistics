@@ -4,15 +4,19 @@ import {
   generateFullDayDispatchPlan,
   recommendOrderAssignment,
 } from "@/lib/dispatch/recommendations";
+import {
+  isDeliveryRoundsEnabled,
+  resolveRequestedDeliveryRound,
+} from "@/lib/services/feature-flags";
 
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
   const sp = request.nextUrl.searchParams;
   const orderId = sp.get("orderId") ? Number(sp.get("orderId")) : undefined;
-  const deliveryRound = sp.get("deliveryRound")
-    ? Number(sp.get("deliveryRound"))
-    : 1;
+  const deliveryRound = await resolveRequestedDeliveryRound(
+    sp.get("deliveryRound") ? Number(sp.get("deliveryRound")) : 1
+  );
 
   if (orderId) {
     const recommendation = await recommendOrderAssignment(orderId, {
@@ -27,7 +31,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: true, recommendation });
   }
 
-  if (sp.get("allRounds") === "true") {
+  if (sp.get("allRounds") === "true" && (await isDeliveryRoundsEnabled())) {
     const plan = await generateFullDayDispatchPlan({
       region: sp.get("region") ?? undefined,
       maxOrdersPerRoute: sp.get("maxOrders")

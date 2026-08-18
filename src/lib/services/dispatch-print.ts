@@ -1,4 +1,5 @@
 import { MAX_DELIVERY_ROUNDS } from "@/lib/constants";
+import { isDeliveryRoundsEnabled } from "@/lib/services/feature-flags";
 import {
   parseWorkDayFilter,
   workDayFilterLabel,
@@ -157,6 +158,7 @@ export function parseDispatchPrintFilters(
 export async function getDispatchPrintSheet(
   filters: DispatchPrintFilters = {}
 ): Promise<DispatchPrintSheet> {
+  const roundsEnabled = await isDeliveryRoundsEnabled();
   const workDay = filters.workDay ?? "today";
   const orders = await listOrders({
     workDay,
@@ -178,11 +180,15 @@ export async function getDispatchPrintSheet(
   for (const vehicle of fleet) {
     const rounds: DispatchPrintRound[] = [];
 
-    for (let round = 1; round <= MAX_DELIVERY_ROUNDS; round++) {
+    const maxRounds = roundsEnabled ? MAX_DELIVERY_ROUNDS : 1;
+
+    for (let round = 1; round <= maxRounds; round++) {
       const roundAssigned = assigned.filter(
         (order) =>
           order.assignment?.vehicleId === vehicle.id &&
-          order.assignment?.deliveryRound === round
+          (roundsEnabled
+            ? order.assignment?.deliveryRound === round
+            : true)
       );
 
       if (roundAssigned.length === 0) continue;
@@ -286,7 +292,9 @@ export async function getDispatchPrintSheet(
   let suggestedRoutes: DispatchPrintPlanRoute[] = [];
   if (filters.includePlan !== false && unassignedOrders.length > 0) {
     try {
-      const plan = await generateFullDayDispatchPlan({ maxRounds: 3 });
+      const plan = await generateFullDayDispatchPlan({
+        maxRounds: roundsEnabled ? 3 : 1,
+      });
       suggestedRoutes = plan.rounds.flatMap((roundPlan) =>
         roundPlan.recommendations.map((rec) => ({
           id: rec.id,

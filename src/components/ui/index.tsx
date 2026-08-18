@@ -386,3 +386,62 @@ export function CollapsibleCard({
 
 export const tableClass =
   "min-w-full text-sm [&_th]:border-b [&_th]:border-zinc-200 [&_th]:px-3 [&_th]:py-2.5 [&_th]:text-left [&_th]:text-xs [&_th]:font-medium [&_th]:text-zinc-500 [&_td]:border-b [&_td]:border-zinc-100 [&_td]:px-3 [&_td]:py-2.5 [&_tbody_tr:last-child_td]:border-0";
+
+export function Switch({
+  checked,
+  onCheckedChange,
+  disabled,
+  label,
+  description,
+  status,
+}: {
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  disabled?: boolean;
+  label: string;
+  description?: string;
+  status?: string;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4 rounded-xl border border-zinc-200 bg-white p-4">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-sm font-semibold text-zinc-900">{label}</p>
+          {status ? (
+            <span
+              className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                checked
+                  ? "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200"
+                  : "bg-zinc-100 text-zinc-600 ring-1 ring-zinc-200"
+              }`}
+            >
+              {status}
+            </span>
+          ) : null}
+        </div>
+        {description ? (
+          <p className="mt-1 text-sm leading-relaxed text-zinc-600">
+            {description}
+          </p>
+        ) : null}
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        disabled={disabled}
+        onClick={() => onCheckedChange(!checked)}
+        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
+          checked ? "bg-zinc-900" : "bg-zinc-300"
+        }`}
+      >
+        <span
+          className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transition ${
+            checked ? "translate-x-5" : "translate-x-0"
+          }`}
+        />
+      </button>
+    </div>
+  );
+}

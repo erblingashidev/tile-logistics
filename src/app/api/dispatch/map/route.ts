@@ -11,6 +11,7 @@ import { WAREHOUSE_LOCATION, resolveOrderGeo } from "@/lib/locations";
 import { isOrderUrgent } from "@/lib/order-priority";
 import { getDispatchBoard } from "@/lib/services/dispatch-board";
 import { listOrders, getVehicleLoad } from "@/lib/services/orders";
+import { isDeliveryRoundsEnabled } from "@/lib/services/feature-flags";
 import { getDriverForVehicle } from "@/lib/services/employees";
 import { listTransportVehicles } from "@/lib/services/vehicles";
 import { getTruckLoadStatus } from "@/lib/services/load-coordination";
@@ -76,7 +77,8 @@ export async function GET(request: NextRequest) {
   if (!auth.ok) return auth.response;
 
   const sp = request.nextUrl.searchParams;
-  const deliveryRound = sp.get("deliveryRound")
+  const roundsEnabled = await isDeliveryRoundsEnabled();
+  const deliveryRound = roundsEnabled && sp.get("deliveryRound")
     ? Number(sp.get("deliveryRound"))
     : 1;
   const includePlan = sp.get("includePlan") === "true";
@@ -150,7 +152,9 @@ export async function GET(request: NextRequest) {
 
   for (const v of fleet) {
     const driver = await getDriverForVehicle(v.id);
-    const load = await getVehicleLoad(v.id, deliveryRound);
+    const load = await getVehicleLoad(v.id, deliveryRound, {
+      ignoreRound: !roundsEnabled,
+    });
     const activeOrders = load.assignedOrders.filter(
       (o) => o.status !== "delivered" && o.status !== "cancelled"
     );

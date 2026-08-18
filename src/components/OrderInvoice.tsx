@@ -1,6 +1,9 @@
+"use client";
+
 import { Badge } from "@/components/ui";
 import { formatDeliverySchedule } from "@/lib/delivery-schedule";
 import { formatDeliveryRound } from "@/lib/delivery-rounds";
+import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 import { OrderAssignmentTimeline } from "@/components/OrderAssignmentTimeline";
 import { BRAND } from "@/lib/brand";
 import {
@@ -146,6 +149,7 @@ const statusTone: Record<string, "green" | "amber" | "blue" | "red" | "slate"> =
   };
 
 export function OrderInvoice({ order }: { order: OrderInvoiceData }) {
+  const { deliveryRounds } = useFeatureFlags();
   const driverName =
     order.staff?.driver?.employeeName ?? order.assignment?.driverName ?? null;
   const pickerName = order.staff?.picker?.employeeName ?? null;
@@ -256,10 +260,14 @@ export function OrderInvoice({ order }: { order: OrderInvoiceData }) {
                     ? ` (${order.assignment.plateNumber})`
                     : ""}
                 </dd>
-                <dt className="text-zinc-500">Delivery round</dt>
-                <dd className="font-medium text-zinc-900">
-                  {formatDeliveryRound(order.assignment.deliveryRound)}
-                </dd>
+                {deliveryRounds && (
+                  <>
+                    <dt className="text-zinc-500">Delivery round</dt>
+                    <dd className="font-medium text-zinc-900">
+                      {formatDeliveryRound(order.assignment.deliveryRound)}
+                    </dd>
+                  </>
+                )}
               </>
             )}
           </dl>

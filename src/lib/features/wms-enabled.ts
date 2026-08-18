@@ -1,5 +1,4 @@
-/** Flip to true when outdoor WMS (admin + portal depot) should be visible again. */
-export const WMS_ENABLED = false;
+/** Path helpers for warehouse (WMS) routes. Visibility is controlled in Settings. */
 
 const WMS_ADMIN_PREFIX = "/warehouse";
 

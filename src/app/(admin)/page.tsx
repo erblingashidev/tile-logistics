@@ -1,30 +1,31 @@
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { BRAND } from "@/lib/brand";
-import { WMS_ENABLED } from "@/lib/features/wms-enabled";
+import { getFeatureFlags } from "@/lib/services/feature-flags";
 import { getDashboardStats } from "@/lib/services/orders";
 import { pendingImportQueueCount } from "@/lib/services/invoice-import-queue";
 import { Badge, Card, StatLink } from "@/components/ui";
 
-const modules = [
-  { href: "/orders", label: "Orders" },
-  { href: "/dispatch", label: "Dispatch" },
-  { href: "/map", label: "Map" },
-  ...(WMS_ENABLED ? [{ href: "/warehouse", label: "Warehouse" }] : []),
-  { href: "/vehicles", label: "Vehicles" },
-  { href: "/employees", label: "Employees" },
-  { href: "/admins", label: "Admins" },
-  { href: "/reports", label: "Reports" },
-  { href: "/logs", label: "Logs" },
-];
-
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const [stats, pendingImports] = await Promise.all([
+  const [stats, pendingImports, flags] = await Promise.all([
     getDashboardStats(),
     pendingImportQueueCount(),
+    getFeatureFlags(),
   ]);
+  const modules = [
+    { href: "/orders", label: "Orders" },
+    { href: "/dispatch", label: "Dispatch" },
+    { href: "/map", label: "Map" },
+    ...(flags.warehouseWms ? [{ href: "/warehouse", label: "Warehouse" }] : []),
+    { href: "/vehicles", label: "Vehicles" },
+    { href: "/employees", label: "Employees" },
+    { href: "/admins", label: "Admins" },
+    { href: "/reports", label: "Reports" },
+    { href: "/logs", label: "Logs" },
+    { href: "/settings", label: "Settings" },
+  ];
   const wh = BRAND.warehouse;
 
   return (

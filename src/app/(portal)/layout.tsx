@@ -1,3 +1,4 @@
+import { FeatureFlagsProvider } from "@/components/features/FeatureFlagsProvider";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 
@@ -18,5 +19,5 @@ export default async function PortalLayout({
     redirect("/");
   }
 
-  return children;
+  return <FeatureFlagsProvider>{children}</FeatureFlagsProvider>;
 }

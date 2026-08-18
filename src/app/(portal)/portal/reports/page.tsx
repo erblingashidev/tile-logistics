@@ -14,6 +14,7 @@ import { sq } from "@/lib/i18n/sq";
 import { WAREHOUSE_INCIDENT_CATEGORIES } from "@/lib/constants";
 import type { EmployeeRole } from "@/lib/constants";
 import { employeeShowDepotNav } from "@/lib/portal-depot-nav";
+import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 
 interface EditRequest {
   id: number;
@@ -69,6 +70,7 @@ function formatReportDate(value: string) {
 
 export default function PortalReportsPage() {
   const router = useRouter();
+  const { warehouseWms } = useFeatureFlags();
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
   const [ctx, setCtx] = useState<PortalContext | null>(null);
@@ -220,7 +222,8 @@ export default function PortalReportsPage() {
       activeNav="reports"
       showOrders
       showDepotNav={employeeShowDepotNav(
-        (ctx?.employee.roles ?? []) as EmployeeRole[]
+        (ctx?.employee.roles ?? []) as EmployeeRole[],
+        warehouseWms
       )}
       showReports
       onLogout={logout}

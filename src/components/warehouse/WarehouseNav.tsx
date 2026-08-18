@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { WMS_ENABLED } from "@/lib/features/wms-enabled";
+import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 
 const links = [
   { href: "/warehouse", label: "Overview", exact: true },
@@ -22,8 +22,9 @@ function isActive(pathname: string, href: string, exact?: boolean) {
 
 export function WarehouseNav() {
   const pathname = usePathname();
+  const { warehouseWms } = useFeatureFlags();
 
-  if (!WMS_ENABLED) return null;
+  if (!warehouseWms) return null;
 
   return (
     <nav

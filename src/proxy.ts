@@ -10,11 +10,14 @@ import {
   WAREHOUSE_REPORT_ROLES,
 } from "@/lib/employee-categories";
 import {
-  WMS_ENABLED,
   isWmsAdminPath,
   isWmsApiPath,
   isWmsPortalPath,
 } from "@/lib/features/wms-enabled";
+import {
+  FEATURE_FLAGS_COOKIE,
+  parseFeatureFlagsCookie,
+} from "@/lib/features/cookie";
 
 const PUBLIC_PREFIXES = [
   "/login",
@@ -25,7 +28,11 @@ const PUBLIC_PREFIXES = [
 
 const SALES_PREFIXES = ["/sales", "/api/sales"];
 
-function employeePathAllowed(pathname: string, roles: EmployeeRole[]) {
+function employeePathAllowed(
+  pathname: string,
+  roles: EmployeeRole[],
+  wmsEnabled: boolean
+) {
   if (pathname.startsWith("/api/auth")) return true;
 
   if (pathname.startsWith("/portal/no-access")) {
@@ -42,7 +49,7 @@ function employeePathAllowed(pathname: string, roles: EmployeeRole[]) {
     pathname.startsWith("/portal/inventory") ||
     pathname.startsWith("/portal/wms");
 
-  if (!WMS_ENABLED && (isDepotPage || pathname.startsWith("/api/wms"))) {
+  if (!wmsEnabled && (isDepotPage || pathname.startsWith("/api/wms"))) {
     return false;
   }
 
@@ -56,7 +63,7 @@ function employeePathAllowed(pathname: string, roles: EmployeeRole[]) {
   if (
     (pathname.startsWith("/portal/reports") ||
       pathname.startsWith("/api/portal/warehouse-reports")) &&
-    WMS_ENABLED &&
+    wmsEnabled &&
     roles.some((r) => WAREHOUSE_REPORT_ROLES.includes(r))
   ) {
     return true;
@@ -102,6 +109,9 @@ export async function proxy(request: NextRequest) {
   }
 
   const session = await verifySessionToken(token);
+  const wmsEnabled = parseFeatureFlagsCookie(
+    request.cookies.get(FEATURE_FLAGS_COOKIE)?.value
+  ).warehouseWms;
 
   if (!session) {
     const response = pathname.startsWith("/api/")
@@ -123,7 +133,7 @@ export async function proxy(request: NextRequest) {
   }
 
   if (session.role === "employee") {
-    if (!employeePathAllowed(pathname, session.roles)) {
+    if (!employeePathAllowed(pathname, session.roles, wmsEnabled)) {
       if (pathname.startsWith("/api/")) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
@@ -137,7 +147,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 
-  if (!WMS_ENABLED) {
+  if (!wmsEnabled) {
     if (session.role === "admin" && isWmsAdminPath(pathname)) {
       return NextResponse.redirect(new URL("/orders", request.url));
     }
@@ -145,7 +155,7 @@ export async function proxy(request: NextRequest) {
       return NextResponse.redirect(new URL("/portal", request.url));
     }
     if (pathname.startsWith("/api/") && isWmsApiPath(pathname)) {
-      return NextResponse.json({ error: "WMS is disabled" }, { status: 403 });
+      return NextResponse.json({ error: "Warehouse module is turned off" }, { status: 403 });
     }
   }
 

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { EmployeeRole } from "@/lib/constants";
 import { WAREHOUSE_REPORT_ROLES } from "@/lib/employee-categories";
-import { WMS_ENABLED } from "@/lib/features/wms-enabled";
+import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 import { sq } from "@/lib/i18n/sq";
 
 export interface PortalLocation {
@@ -55,8 +55,9 @@ export function usePortalDepot() {
     return outdoorLocations.filter((l) => l.zone === mappingZone);
   }, [outdoorLocations, mappingZone]);
 
+  const { warehouseWms } = useFeatureFlags();
   const showReports =
-    WMS_ENABLED && roles.some((r) => WAREHOUSE_REPORT_ROLES.includes(r));
+    warehouseWms && roles.some((r) => WAREHOUSE_REPORT_ROLES.includes(r));
 
   const loadZoneLocations = useCallback(async (zone: string) => {
     const locRes = await fetch(`/api/wms?zone=${encodeURIComponent(zone)}`);

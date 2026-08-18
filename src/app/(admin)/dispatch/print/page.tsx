@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui";
 import { formatDeliveryRound } from "@/lib/delivery-rounds";
+import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 import type {
   DispatchPrintEmployeeGroup,
   DispatchPrintOrder,
@@ -80,6 +81,7 @@ function OrderTable({
 }
 
 function TruckSection({ truck }: { truck: DispatchPrintTruck }) {
+  const { deliveryRounds } = useFeatureFlags();
   return (
     <section className="dispatch-print-group break-inside-avoid">
       <header className="dispatch-print-group-header">
@@ -98,8 +100,7 @@ function TruckSection({ truck }: { truck: DispatchPrintTruck }) {
       {truck.rounds.map((round) => (
         <div key={round.round} className="mb-4">
           <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-zinc-700">
-            {formatDeliveryRound(round.round, "short")}
-            {" · "}
+            {deliveryRounds ? `${formatDeliveryRound(round.round, "short")} · ` : ""}
             {round.totalPallets.toFixed(1)} plt · {Math.round(round.totalWeightKg)} kg
             {round.driverName ? ` · Driver: ${round.driverName}` : ""}
             {round.pickerNames.length > 0
@@ -117,10 +118,12 @@ function TruckSection({ truck }: { truck: DispatchPrintTruck }) {
 }
 
 function SuggestedRouteSection({ route }: { route: DispatchPrintPlanRoute }) {
+  const { deliveryRounds } = useFeatureFlags();
   return (
     <div className="mb-3 rounded border border-dashed border-blue-200 bg-blue-50/40 p-3 break-inside-avoid">
       <h4 className="text-sm font-semibold text-blue-900">
-        {route.roundLabel} · {route.vehicleName} ({route.plateNumber})
+        {deliveryRounds ? `${route.roundLabel} · ` : ""}
+        {route.vehicleName} ({route.plateNumber})
       </h4>
       <p className="mt-1 text-xs text-blue-800">
         {route.routeCluster} · {route.orderCount} stops · {route.totalPallets.toFixed(1)} plt · ~

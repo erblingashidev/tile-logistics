@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Alert, Badge, Button, Card, Input, Select } from "@/components/ui";
 import { deliveryRoundSelectOptions } from "@/lib/delivery-rounds";
+import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 import { readJsonList } from "@/lib/api/read-json-list";
 
 interface DispatchOrderStop {
@@ -88,6 +89,7 @@ export function SmartDispatchPanel({
   onError,
   onWarning,
 }: SmartDispatchPanelProps) {
+  const flags = useFeatureFlags();
   const [deliveryRound, setDeliveryRound] = useState("1");
   const [maxOrders, setMaxOrders] = useState("6");
   const [maxDistanceKm, setMaxDistanceKm] = useState("30");
@@ -153,10 +155,11 @@ export function SmartDispatchPanel({
   }, []);
 
   const loadPlan = useCallback(async () => {
+    if (!flags.smartDispatch) return;
     setLoading(true);
     onError("");
     const params = new URLSearchParams({
-      deliveryRound,
+      deliveryRound: flags.deliveryRounds ? deliveryRound : "1",
       maxOrders,
       maxDistanceKm,
     });
@@ -182,6 +185,8 @@ export function SmartDispatchPanel({
       setLoading(false);
     }
   }, [
+    flags.smartDispatch,
+    flags.deliveryRounds,
     city,
     deliveryRound,
     effectiveRegion,
@@ -360,6 +365,8 @@ export function SmartDispatchPanel({
         ? "No open orders"
         : "No routes matched";
 
+  if (!flags.smartDispatch) return null;
+
   return (
     <section className="mb-8">
       <Card className="overflow-hidden">
@@ -438,6 +445,7 @@ export function SmartDispatchPanel({
                   ))}
                 </Select>
               )}
+              {flags.deliveryRounds && (
               <Select
                 label="Delivery round"
                 value={deliveryRound}
@@ -449,6 +457,7 @@ export function SmartDispatchPanel({
                   </option>
                 ))}
               </Select>
+              )}
               <Select
                 label="Max stops per route"
                 value={maxOrders}

@@ -5,50 +5,52 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { BRAND } from "@/lib/brand";
 import { Button } from "@/components/ui";
-import { WMS_ENABLED } from "@/lib/features/wms-enabled";
+import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 import { WAREHOUSE_SIDEBAR_LINKS } from "@/components/warehouse/WarehouseNav";
 
-const navGroups = [
-  {
-    label: "Operations",
-    items: [
-      { href: "/", label: "Dashboard" },
-      { href: "/orders", label: "Orders" },
-      { href: "/dispatch", label: "Dispatch" },
-      { href: "/map", label: "Map" },
-    ],
-  },
-  {
-    label: "Fleet",
-    items: [
-      { href: "/vehicles", label: "Vehicles" },
-      { href: "/vehicles/maintenance", label: "Maintenance" },
-    ],
-  },
-  {
-    label: "People",
-    items: [
-      { href: "/employees", label: "Employees" },
-      { href: "/admins", label: "Admins" },
-    ],
-  },
-  ...(WMS_ENABLED
-    ? [
-        {
-          label: "Warehouse",
-          items: WAREHOUSE_SIDEBAR_LINKS,
-        },
-      ]
-    : []),
-  {
-    label: "System",
-    items: [
-      { href: "/reports", label: "Reports" },
-      { href: "/logs", label: "Logs" },
-      { href: "/settings", label: "Profile" },
-    ],
-  },
-];
+function buildNavGroups(warehouseWms: boolean) {
+  return [
+    {
+      label: "Operations",
+      items: [
+        { href: "/", label: "Dashboard" },
+        { href: "/orders", label: "Orders" },
+        { href: "/dispatch", label: "Dispatch" },
+        { href: "/map", label: "Map" },
+      ],
+    },
+    {
+      label: "Fleet",
+      items: [
+        { href: "/vehicles", label: "Vehicles" },
+        { href: "/vehicles/maintenance", label: "Maintenance" },
+      ],
+    },
+    {
+      label: "People",
+      items: [
+        { href: "/employees", label: "Employees" },
+        { href: "/admins", label: "Admins" },
+      ],
+    },
+    ...(warehouseWms
+      ? [
+          {
+            label: "Warehouse",
+            items: WAREHOUSE_SIDEBAR_LINKS,
+          },
+        ]
+      : []),
+    {
+      label: "System",
+      items: [
+        { href: "/reports", label: "Reports" },
+        { href: "/logs", label: "Logs" },
+        { href: "/settings", label: "Settings" },
+      ],
+    },
+  ];
+}
 
 function isActive(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
@@ -66,6 +68,8 @@ function NavLinks({
   onNavigate?: () => void;
   mobile?: boolean;
 }) {
+  const flags = useFeatureFlags();
+  const navGroups = buildNavGroups(flags.warehouseWms);
   return (
     <>
       {navGroups.map((group) => (

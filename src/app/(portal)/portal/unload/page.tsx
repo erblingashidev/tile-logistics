@@ -5,10 +5,12 @@ import { PortalCard, PortalShell } from "@/components/portal/PortalShell";
 import { Alert, Button, Input } from "@/components/ui";
 import { usePortalDepot } from "@/hooks/usePortalDepot";
 import { employeeShowDepotNav } from "@/lib/portal-depot-nav";
+import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 import { sq } from "@/lib/i18n/sq";
 
 export default function PortalUnloadPage() {
   const depot = usePortalDepot();
+  const { warehouseWms } = useFeatureFlags();
   const [ean, setEan] = useState("");
   const [quantityM2, setQuantityM2] = useState("");
 
@@ -45,7 +47,7 @@ export default function PortalUnloadPage() {
       subtitle={depot.employeeName}
       activeNav="unload"
       showOrders
-      showDepotNav={employeeShowDepotNav(depot.roles)}
+      showDepotNav={employeeShowDepotNav(depot.roles, warehouseWms)}
       showReports={depot.showReports}
       onLogout={depot.logout}
       onRefresh={depot.refreshNow}

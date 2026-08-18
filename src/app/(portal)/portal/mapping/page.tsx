@@ -5,10 +5,12 @@ import { Alert } from "@/components/ui";
 import { OutdoorPutawayForm } from "@/components/wms/OutdoorPutawayForm";
 import { usePortalDepot } from "@/hooks/usePortalDepot";
 import { employeeShowDepotNav } from "@/lib/portal-depot-nav";
+import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 import { sq } from "@/lib/i18n/sq";
 
 export default function PortalMappingPage() {
   const depot = usePortalDepot();
+  const { warehouseWms } = useFeatureFlags();
   const sectorChoices =
     depot.warehouseZones.length > 0
       ? depot.warehouseZones
@@ -20,7 +22,7 @@ export default function PortalMappingPage() {
       subtitle={depot.employeeName}
       activeNav="mapping"
       showOrders
-      showDepotNav={employeeShowDepotNav(depot.roles)}
+      showDepotNav={employeeShowDepotNav(depot.roles, warehouseWms)}
       showReports={depot.showReports}
       onLogout={depot.logout}
       onRefresh={depot.refreshNow}

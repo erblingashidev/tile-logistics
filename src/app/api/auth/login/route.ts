@@ -8,6 +8,8 @@ import {
   loginEmployee,
   employeeLoginRedirect,
 } from "@/lib/auth";
+import { applyFeatureFlagsCookie } from "@/lib/features/cookie";
+import { getFeatureFlags } from "@/lib/services/feature-flags";
 
 export const runtime = "nodejs";
 
@@ -50,6 +52,7 @@ export async function POST(request: NextRequest) {
     token,
     sessionCookieOptions()
   );
+  applyFeatureFlagsCookie(response, await getFeatureFlags());
 
   return response;
 }
