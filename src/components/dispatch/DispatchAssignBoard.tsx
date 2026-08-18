@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Badge, Card, Input } from "@/components/ui";
 import { formatDeliveryRound } from "@/lib/delivery-rounds";
@@ -62,14 +62,38 @@ export function DispatchAssignBoard({
   const { deliveryRounds } = useFeatureFlags();
   const [search, setSearch] = useState("");
   const [draggingOrderId, setDraggingOrderId] = useState<number | null>(null);
+  const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const [activeDrop, setActiveDrop] = useState<string | null>(null);
   const [busyOrderId, setBusyOrderId] = useState<number | null>(null);
   const [busyDrop, setBusyDrop] = useState<string | null>(null);
+  const didDragRef = useRef(false);
 
   const draggingOrder = useMemo(
     () => unassignedOrders.find((o) => o.id === draggingOrderId),
     [draggingOrderId, unassignedOrders]
   );
+  const selectedOrder = useMemo(
+    () => unassignedOrders.find((o) => o.id === selectedOrderId),
+    [selectedOrderId, unassignedOrders]
+  );
+  const activeOrder = draggingOrder ?? selectedOrder;
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setSelectedOrderId(null);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    if (
+      selectedOrderId != null &&
+      !unassignedOrders.some((o) => o.id === selectedOrderId)
+    ) {
+      setSelectedOrderId(null);
+    }
+  }, [selectedOrderId, unassignedOrders]);
 
   const filteredOrders = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -172,6 +196,7 @@ export function DispatchAssignBoard({
         }`
       );
       setTimeout(() => onMessage(""), 4000);
+      setSelectedOrderId(null);
       onAssigned();
     } catch {
       onError("Could not assign order");
@@ -204,6 +229,20 @@ export function DispatchAssignBoard({
     void assignOrder(orderId, vehicleId, deliveryRound);
   }
 
+  function handleLoadClick(
+    vehicleId: number,
+    deliveryRound: number,
+    round: DispatchBoardRound
+  ) {
+    if (!selectedOrder) return;
+    const acceptance = canAcceptDrop(round, selectedOrder);
+    if (!acceptance.ok) {
+      onError(acceptance.reason ?? "Cannot assign here");
+      return;
+    }
+    void assignOrder(selectedOrder.id, vehicleId, deliveryRound);
+  }
+
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
       <div className="min-w-0 space-y-3">
@@ -213,7 +252,21 @@ export function DispatchAssignBoard({
               Unassigned orders
             </p>
             <p className="text-xs text-zinc-500">
-              Drag an order onto a truck round to assign.
+              {selectedOrder
+                ? `${selectedOrder.invoiceNumber} selected — tap a truck to assign, or drag.`
+                : "Select an order, then tap a truck — or drag onto a load."}
+              {selectedOrder && (
+                <>
+                  {" "}
+                  <button
+                    type="button"
+                    className="text-blue-600 underline"
+                    onClick={() => setSelectedOrderId(null)}
+                  >
+                    Clear
+                  </button>
+                </>
+              )}
             </p>
           </div>
           <Input
@@ -258,25 +311,49 @@ export function DispatchAssignBoard({
                   <div className="divide-y divide-zinc-100">
                     {regionOrders.map((order) => {
               const isDragging = draggingOrderId === order.id;
+              const isSelected = selectedOrderId === order.id;
               const isBusy = busyOrderId === order.id;
 
               return (
                 <div
                   key={order.id}
+                  role="button"
+                  tabIndex={0}
                   draggable={!isBusy}
+                  onClick={() => {
+                    if (didDragRef.current) {
+                      didDragRef.current = false;
+                      return;
+                    }
+                    if (isBusy) return;
+                    setSelectedOrderId(isSelected ? null : order.id);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      if (isBusy) return;
+                      setSelectedOrderId(isSelected ? null : order.id);
+                    }
+                  }}
                   onDragStart={(e) => {
+                    didDragRef.current = true;
                     e.dataTransfer.setData(DRAG_MIME, String(order.id));
                     e.dataTransfer.effectAllowed = "move";
                     setDraggingOrderId(order.id);
+                    setSelectedOrderId(order.id);
                   }}
                   onDragEnd={() => {
                     setDraggingOrderId(null);
                     setActiveDrop(null);
                   }}
-                  className={`cursor-grab border-l-4 border-zinc-200 bg-white p-3 transition active:cursor-grabbing ${
+                  className={`cursor-pointer border-l-4 border-zinc-200 bg-white p-3 transition active:cursor-grabbing ${
                     isDragging ? "opacity-50" : ""
-                  } ${isBusy ? "opacity-60" : "hover:bg-zinc-50/80"}`}
-                  style={{ borderLeftColor: order.priority === "urgent" ? "#dc2626" : "#71717a" }}
+                  } ${isBusy ? "opacity-60" : "hover:bg-zinc-50/80"} ${
+                    isSelected
+                      ? "bg-blue-50 ring-2 ring-inset ring-blue-500"
+                      : ""
+                  }`}
+                  style={{ borderLeftColor: order.priority === "urgent" ? "#dc2626" : isSelected ? "#2563eb" : "#71717a" }}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -305,6 +382,9 @@ export function DispatchAssignBoard({
                       )}
                       {order.pickerName && (
                         <p className="mt-1 text-zinc-500">Picker: {order.pickerName}</p>
+                      )}
+                      {isSelected && !isBusy && (
+                        <p className="mt-1 font-medium text-blue-600">Selected</p>
                       )}
                       {isBusy && (
                         <p className="mt-1 font-medium text-blue-600">Assigning…</p>
@@ -371,14 +451,27 @@ export function DispatchAssignBoard({
                       deliveryRound: round.round,
                     };
                     const key = dropZoneKey(target);
-                    const acceptance = canAcceptDrop(round, draggingOrder);
+                    const acceptance = canAcceptDrop(round, activeOrder);
                     const isActive = activeDrop === key;
                     const isBusy = busyDrop === key;
-                    const isDisabled = !acceptance.ok;
+                    const isDisabled = Boolean(activeOrder) && !acceptance.ok;
+                    const clickReady = Boolean(selectedOrder) && !draggingOrder && !isDisabled;
 
                     return (
                       <div
                         key={round.round}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => {
+                          if (draggingOrder) return;
+                          handleLoadClick(truck.vehicleId, round.round, round);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            handleLoadClick(truck.vehicleId, round.round, round);
+                          }
+                        }}
                         onDragOver={(e) => {
                           if (isDisabled && !draggingOrder) return;
                           e.preventDefault();
@@ -400,13 +493,23 @@ export function DispatchAssignBoard({
                           handleDrop(e, truck.vehicleId, round.round, round);
                         }}
                         className={`p-3 transition ${
-                          isActive && !isDisabled
+                          clickReady ? "cursor-pointer" : ""
+                        } ${
+                          (isActive || clickReady) && !isDisabled
                             ? "bg-blue-50 ring-2 ring-inset ring-blue-400"
-                            : isDisabled && draggingOrder
+                            : isDisabled && activeOrder
                               ? "bg-zinc-50 opacity-60"
-                              : ""
+                              : selectedOrder
+                                ? "hover:bg-zinc-50"
+                                : ""
                         } ${isBusy ? "opacity-70" : ""}`}
-                        title={isDisabled ? acceptance.reason : undefined}
+                        title={
+                          isDisabled
+                            ? acceptance.reason
+                            : selectedOrder
+                              ? "Click to assign selected order"
+                              : undefined
+                        }
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <p className="text-xs font-semibold text-zinc-900">
@@ -427,7 +530,7 @@ export function DispatchAssignBoard({
                             {round.regions.join(" · ")}
                           </p>
                         )}
-                        {isDisabled && draggingOrder && (
+                        {isDisabled && activeOrder && (
                           <p className="mt-1 text-xs text-amber-700">
                             {acceptance.reason}
                           </p>
@@ -457,6 +560,11 @@ export function DispatchAssignBoard({
                         {!isDisabled && draggingOrder && !isActive && (
                           <p className="mt-2 text-xs text-blue-600">
                             Drop here to assign
+                          </p>
+                        )}
+                        {clickReady && !isActive && (
+                          <p className="mt-2 text-xs text-blue-600">
+                            Click to assign
                           </p>
                         )}
                       </div>

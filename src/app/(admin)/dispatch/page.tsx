@@ -1,10 +1,20 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
-import { Badge, Button, Card, Alert, PageSection, StatCard, Select } from "@/components/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  Alert,
+  PageSection,
+  StatCard,
+  Select,
+  LoadingState,
+  CollapsibleCard,
+} from "@/components/ui";
 import { SmartDispatchPanel } from "@/components/SmartDispatchPanel";
 import { DispatchAssignBoard } from "@/components/dispatch/DispatchAssignBoard";
 import { deliveryRoundSelectOptions, formatDeliveryRound } from "@/lib/delivery-rounds";
@@ -58,6 +68,7 @@ export default function DispatchPage() {
   const flags = useFeatureFlags();
   const [board, setBoard] = useState<BoardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [mapRefreshKey, setMapRefreshKey] = useState(0);
@@ -67,9 +78,15 @@ export default function DispatchPage() {
     Record<number, UrgentOption[]>
   >({});
   const [busyOrderId, setBusyOrderId] = useState<number | null>(null);
+  const loadedOnceRef = useRef(false);
+  const inFlightRef = useRef(false);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
+    const silent = loadedOnceRef.current;
+    if (silent) setRefreshing(true);
+    else setLoading(true);
     setError("");
     try {
       const res = await fetch("/api/dispatch/board", { cache: "no-store" });
@@ -79,16 +96,19 @@ export default function DispatchPage() {
         return;
       }
       setBoard(data);
+      loadedOnceRef.current = true;
     } catch {
       setError("Could not load dispatch board");
     } finally {
+      inFlightRef.current = false;
       setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
-    load();
-    const t = setInterval(load, 15000);
+    void load();
+    const t = setInterval(() => void load(), 15000);
     return () => clearInterval(t);
   }, [load]);
 
@@ -142,16 +162,20 @@ export default function DispatchPage() {
       delete next[orderId];
       return next;
     });
-    load();
+    void load();
   }
 
+  const showPickers = !flags.manualDispatchMode;
   const balanceHint = board ? pickerBalanceHint(board.pickerWorkload) : null;
   const maxPickerOrders = board
     ? Math.max(0, ...board.pickerWorkload.map((p) => p.orderCount))
     : 0;
 
   return (
-    <AppShell title="Dispatch">
+    <AppShell
+      title="Dispatch"
+      description="Assign today’s open orders to trucks"
+    >
       {message && (
         <div className="mb-4">
           <Alert tone="warning">{message}</Alert>
@@ -163,12 +187,12 @@ export default function DispatchPage() {
         </div>
       )}
 
-      <div className="mb-4 flex flex-wrap gap-2">
-        <Button variant="secondary" onClick={load} disabled={loading}>
-          Refresh
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <Button variant="secondary" onClick={() => void load()} disabled={loading}>
+          {refreshing ? "Updating…" : "Refresh"}
         </Button>
         <Link href="/orders">
-          <Button variant="ghost">Orders · assign</Button>
+          <Button variant="ghost">Orders</Button>
         </Link>
         <Link href="/map">
           <Button variant="ghost">Delivery map</Button>
@@ -176,105 +200,42 @@ export default function DispatchPage() {
         <Link href="/dispatch/print?workDay=today" target="_blank">
           <Button variant="secondary">Print sheet</Button>
         </Link>
+        {refreshing && (
+          <span className="text-xs text-zinc-400">Live board</span>
+        )}
       </div>
+
+      {loading && !board && <LoadingState title="Loading dispatch board…" />}
 
       {board && (
         <>
-          <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard label="Unassigned orders" value={board.unassignedCount} />
+          <div
+            className={`mb-6 grid gap-3 sm:grid-cols-2 ${
+              showPickers ? "lg:grid-cols-4" : "lg:grid-cols-3"
+            }`}
+          >
             <StatCard
-              label="Urgent waiting"
+              label="Unassigned"
+              value={board.unassignedCount}
+              hint="Need a truck"
+            />
+            <StatCard
+              label="Urgent"
               value={board.unassignedUrgent.length}
+              hint="Assign first"
             />
-            <StatCard label="Trucks on board" value={board.trucks.length} />
             <StatCard
-              label="Pickers active"
-              value={board.pickerWorkload.length}
+              label="Trucks"
+              value={board.trucks.length}
+              hint="On this board"
             />
-          </div>
-
-          {flags.smartDispatch && (
-          <SmartDispatchPanel
-            defaultExpanded
-            onApplied={() => {
-              load();
-              setMapRefreshKey((k) => k + 1);
-            }}
-            onError={setError}
-            onWarning={setMessage}
-          />
-          )}
-
-          <PageSection title="Dispatch map">
-            <div className="mb-3 flex flex-wrap items-end gap-3">
-              {flags.deliveryRounds && (
-              <Select
-                label="Delivery round"
-                value={mapDeliveryRound}
-                onChange={(e) => setMapDeliveryRound(e.target.value)}
-              >
-                {deliveryRoundSelectOptions().map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </Select>
-              )}
-              <label className="flex items-center gap-2 pb-2 text-sm text-zinc-700">
-                <input
-                  type="checkbox"
-                  checked={showPlanOnMap}
-                  onChange={(e) => setShowPlanOnMap(e.target.checked)}
-                  className="rounded border-zinc-300"
-                />
-                Show suggested routes on map
-              </label>
-            </div>
-            <DispatchMap
-              deliveryRound={Number(mapDeliveryRound)}
-              showPlan={showPlanOnMap}
-              includePlan={showPlanOnMap}
-              refreshKey={mapRefreshKey}
-            />
-          </PageSection>
-
-          <PageSection title="Picker workload">
-            {balanceHint && (
-              <Alert tone="warning">
-                {balanceHint}
-              </Alert>
+            {showPickers && (
+              <StatCard
+                label="Pickers active"
+                value={board.pickerWorkload.length}
+              />
             )}
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {board.pickerWorkload.map((p) => (
-                <Card key={p.id} className="p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="font-medium text-zinc-900">{p.name}</p>
-                    <Badge tone={p.status === "available" ? "green" : "amber"}>
-                      {p.status.replace(/_/g, " ")}
-                    </Badge>
-                  </div>
-                  <p className="mt-2 text-sm text-zinc-600">
-                    {p.orderCount} active orders · {p.palletCount} pallets
-                  </p>
-                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-zinc-100">
-                    <div
-                      className="h-full rounded-full bg-blue-500"
-                      style={{
-                        width: `${
-                          maxPickerOrders > 0
-                            ? Math.min(100, (p.orderCount / maxPickerOrders) * 100)
-                            : 0
-                        }%`,
-                      }}
-                    />
-                  </div>
-                </Card>
-              ))}
-              {board.pickerWorkload.length === 0 && (
-                <p className="text-sm text-zinc-500">No pickers in system.</p>
-              )}
-            </div>
-          </PageSection>
+          </div>
 
           {board.unassignedUrgent.length > 0 && (
             <PageSection title="Urgent — needs a route">
@@ -355,13 +316,101 @@ export default function DispatchPage() {
               unassignedOrders={board.unassignedOrders}
               trucks={board.trucks}
               onAssigned={() => {
-                load();
+                void load();
                 setMapRefreshKey((k) => k + 1);
               }}
               onError={setError}
               onMessage={setMessage}
             />
           </PageSection>
+
+          {flags.smartDispatch && (
+            <SmartDispatchPanel
+              onApplied={() => {
+                void load();
+                setMapRefreshKey((k) => k + 1);
+              }}
+              onError={setError}
+              onWarning={setMessage}
+            />
+          )}
+
+          <CollapsibleCard
+            className="mb-6"
+            title="Dispatch map"
+            subtitle="Live truck positions and suggested routes"
+            headerTone="muted"
+          >
+            <div className="mb-3 flex flex-wrap items-end gap-3">
+              {flags.deliveryRounds && (
+                <Select
+                  label="Delivery round"
+                  value={mapDeliveryRound}
+                  onChange={(e) => setMapDeliveryRound(e.target.value)}
+                >
+                  {deliveryRoundSelectOptions().map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </Select>
+              )}
+              <label className="flex items-center gap-2 pb-2 text-sm text-zinc-700">
+                <input
+                  type="checkbox"
+                  checked={showPlanOnMap}
+                  onChange={(e) => setShowPlanOnMap(e.target.checked)}
+                  className="rounded border-zinc-300"
+                />
+                Show suggested routes on map
+              </label>
+            </div>
+            <DispatchMap
+              deliveryRound={Number(mapDeliveryRound)}
+              showPlan={showPlanOnMap}
+              includePlan={showPlanOnMap}
+              refreshKey={mapRefreshKey}
+            />
+          </CollapsibleCard>
+
+          {showPickers && (
+            <PageSection title="Picker workload">
+              {balanceHint && <Alert tone="warning">{balanceHint}</Alert>}
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {board.pickerWorkload.map((p) => (
+                  <Card key={p.id} className="p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-medium text-zinc-900">{p.name}</p>
+                      <Badge tone={p.status === "available" ? "green" : "amber"}>
+                        {p.status.replace(/_/g, " ")}
+                      </Badge>
+                    </div>
+                    <p className="mt-2 text-sm text-zinc-600">
+                      {p.orderCount} active orders · {p.palletCount} pallets
+                    </p>
+                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-zinc-100">
+                      <div
+                        className="h-full rounded-full bg-blue-500"
+                        style={{
+                          width: `${
+                            maxPickerOrders > 0
+                              ? Math.min(
+                                  100,
+                                  (p.orderCount / maxPickerOrders) * 100
+                                )
+                              : 0
+                          }%`,
+                        }}
+                      />
+                    </div>
+                  </Card>
+                ))}
+                {board.pickerWorkload.length === 0 && (
+                  <p className="text-sm text-zinc-500">No pickers in system.</p>
+                )}
+              </div>
+            </PageSection>
+          )}
         </>
       )}
     </AppShell>

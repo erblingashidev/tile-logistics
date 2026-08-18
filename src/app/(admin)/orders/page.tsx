@@ -12,7 +12,6 @@ import {
   TruckWorkspaceStatus,
   type TruckWorkspaceSnapshot,
 } from "@/components/TruckWorkspaceStatus";
-import { SmartDispatchPanel } from "@/components/SmartDispatchPanel";
 import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 import { OrderListCard } from "@/components/OrderListCard";
 import {
@@ -25,7 +24,7 @@ import { InvoiceImportPanel,
 import { InvoiceImportQueuePanel } from "@/components/InvoiceImportQueuePanel";
 import { InvoiceNumberField } from "@/components/InvoiceNumberField";
 import { ProductSearchField } from "@/components/ProductSearchField";
-import { Badge, Button, Card, Input, Select, Alert, PageSection, LoadingState, CollapsibleCard } from "@/components/ui";
+import { Badge, Button, Card, Input, Select, Alert, LoadingState, CollapsibleCard, SegmentedControl } from "@/components/ui";
 import {
   ORDER_STAGE_LEGEND,
   type OrderDisplayStage,
@@ -57,6 +56,7 @@ import {
   DELIVERY_TIME_PREFERENCE_LABELS,
   DELIVERY_TIME_PREFERENCES,
   addDaysToDateString,
+  parseWorkDayFilter,
   todayDateString,
   type WorkDayFilter,
 } from "@/lib/delivery-schedule";
@@ -327,6 +327,8 @@ export default function OrdersPage() {
   const [exportGroupBy, setExportGroupBy] = useState<
     "none" | "region" | "truck" | "picker" | "driver"
   >("region");
+  const [showMoreFilters, setShowMoreFilters] = useState(false);
+  const [truckFocusOpen, setTruckFocusOpen] = useState(false);
   const [truckWorkspace, setTruckWorkspace] =
     useState<TruckWorkspaceSnapshot | null>(null);
   const [searchInput, setSearchInput] = useState("");
@@ -458,15 +460,38 @@ export default function OrdersPage() {
     const params = new URLSearchParams(window.location.search);
     const vehicleId = params.get("vehicleId");
     const deliveryRound = params.get("deliveryRound");
-    if (vehicleId) {
+    const parsedWorkDay = parseWorkDayFilter(params.get("workDay"));
+    const assignment = params.get("assignment");
+    if (vehicleId || parsedWorkDay) {
       setFilters((f) => ({
         ...f,
-        vehicleId,
-        deliveryRound: deliveryRound ?? f.deliveryRound,
-        vehicleScope: "workspace",
+        ...(vehicleId
+          ? {
+              vehicleId,
+              deliveryRound: deliveryRound ?? f.deliveryRound,
+              vehicleScope: "workspace" as const,
+            }
+          : {}),
+        ...(parsedWorkDay
+          ? {
+              workDay: parsedWorkDay,
+              workDayDate: params.get("date") || f.workDayDate,
+            }
+          : {}),
       }));
     }
+    if (
+      assignment === "unassigned" ||
+      assignment === "assigned" ||
+      assignment === "all"
+    ) {
+      setAssignmentFilter(assignment);
+    }
   }, []);
+
+  useEffect(() => {
+    if (filters.vehicleId) setTruckFocusOpen(true);
+  }, [filters.vehicleId]);
 
   useEffect(() => {
     setAssignState((prev) => {
@@ -1267,76 +1292,52 @@ export default function OrdersPage() {
     void loadOrders();
   }
 
-  return (
-    <AppShell title="Orders" contentMaxWidth="wide">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={openNewOrder}>New order</Button>
-          <select
-            className="rounded border border-zinc-300 bg-white px-2.5 py-2 text-sm text-zinc-700"
-            value={exportGroupBy}
-            onChange={(e) =>
-              setExportGroupBy(
-                e.target.value as
-                  | "none"
-                  | "region"
-                  | "truck"
-                  | "picker"
-                  | "driver"
-              )
-            }
-            aria-label="Excel grouping"
-          >
-            <option value="none">Excel: flat list</option>
-            <option value="region">Excel: group by region</option>
-            <option value="truck">Excel: group by truck</option>
-            <option value="picker">Excel: group by picker</option>
-            <option value="driver">Excel: group by driver</option>
-          </select>
-          <Button
-            variant="secondary"
-            onClick={() => {
-              const params = new URLSearchParams({ type: "orders" });
-              if (exportGroupBy !== "none") {
-                params.set("groupBy", exportGroupBy);
-              }
-              appendOrderFilterParams(params, filters, { includeCompleted: true });
-              window.open(`/api/export?${params}`, "_blank");
-            }}
-          >
-            Export Excel
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() =>
-              window.open("/api/export?type=locations", "_blank")
-            }
-          >
-            Export by Location
-          </Button>
-          <Link
-            href="/dispatch"
-            className="inline-flex items-center justify-center rounded border border-zinc-300 bg-white px-3.5 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
-          >
-            Dispatch board
-          </Link>
-          <Link
-            href={buildDispatchPrintHref(filters)}
-            target="_blank"
-            className="inline-flex items-center justify-center rounded border border-zinc-300 bg-white px-3.5 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
-          >
-            Print dispatch
-          </Link>
-        </div>
-      </div>
+  const extraFilterCount = [
+    filters.dateFrom,
+    filters.dateTo,
+    filters.minM2,
+    filters.minPallets,
+    filters.employeeId,
+    filters.pickerId,
+    filters.driverId,
+    filters.hideDelivered !== "true" ? "completed" : "",
+  ].filter(Boolean).length;
 
-      {flags.manualDispatchMode && (
-        <div className="mb-4">
-          <Alert tone="info">
-            Manual dispatch mode is on.
-          </Alert>
-        </div>
-      )}
+  return (
+    <AppShell
+      title="Orders"
+      description="Today’s deliveries and truck assignments"
+      contentMaxWidth="wide"
+    >
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <Button onClick={openNewOrder}>New order</Button>
+        <Link
+          href="/dispatch"
+          className="inline-flex items-center justify-center rounded border border-zinc-300 bg-white px-3.5 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
+        >
+          Dispatch
+        </Link>
+        <Link
+          href={buildDispatchPrintHref(filters)}
+          target="_blank"
+          className="inline-flex items-center justify-center rounded border border-zinc-300 bg-white px-3.5 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
+        >
+          Print
+        </Link>
+        <Button
+          variant="secondary"
+          onClick={() => {
+            const params = new URLSearchParams({ type: "orders" });
+            if (exportGroupBy !== "none") {
+              params.set("groupBy", exportGroupBy);
+            }
+            appendOrderFilterParams(params, filters, { includeCompleted: true });
+            window.open(`/api/export?${params}`, "_blank");
+          }}
+        >
+          Export Excel
+        </Button>
+      </div>
 
       {warning && (
         <div className="mb-4">
@@ -1350,11 +1351,262 @@ export default function OrdersPage() {
         </div>
       )}
 
+      <Card className="mb-4 p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+            {(
+              [
+                { id: "today", label: "Today" },
+                { id: "tomorrow", label: "Tomorrow" },
+                { id: "yesterday", label: "Yesterday" },
+                { id: "overdue", label: "Overdue" },
+                { id: "all", label: "All days" },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() =>
+                  setFilters((current) => ({
+                    ...current,
+                    workDay: tab.id,
+                    workDayDate: todayDateString(),
+                  }))
+                }
+                className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
+                  filters.workDay === tab.id
+                    ? "bg-zinc-900 text-white"
+                    : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+            <Input
+              label="Pick date"
+              type="date"
+              value={filters.workDayDate}
+              onChange={(e) =>
+                setFilters((current) => ({
+                  ...current,
+                  workDay: "date",
+                  workDayDate: e.target.value,
+                }))
+              }
+              className="max-w-[160px]"
+            />
+          </div>
+          <Input
+            label="Search"
+            placeholder="Invoice, customer…"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            className="w-full max-w-xs"
+          />
+          <Input
+            label="Region"
+            list="order-region-filter"
+            value={filters.region}
+            onChange={(e) =>
+              setFilters({ ...filters, region: e.target.value })
+            }
+            className="w-full max-w-[160px]"
+          />
+          <datalist id="order-region-filter">
+            {KOSOVO_MUNICIPALITIES.map((r) => (
+              <option key={r} value={r} />
+            ))}
+          </datalist>
+          <SegmentedControl
+            size="sm"
+            value={assignmentFilter}
+            onChange={setAssignmentFilter}
+            options={[
+              { value: "all", label: "All" },
+              { value: "unassigned", label: "Open" },
+              { value: "assigned", label: "Assigned" },
+            ]}
+          />
+          <Button
+            variant={showMoreFilters || extraFilterCount > 0 ? "secondary" : "ghost"}
+            className="text-xs"
+            onClick={() => setShowMoreFilters((open) => !open)}
+          >
+            More filters
+            {extraFilterCount > 0 ? ` (${extraFilterCount})` : ""}
+          </Button>
+          <div className="flex items-center gap-2 text-xs text-zinc-500">
+            <Button variant="ghost" className="text-xs" onClick={load}>
+              Refresh
+            </Button>
+            {loading && (
+              <span className="animate-pulse">Loading…</span>
+            )}
+            {lastRefreshed && !loading && (
+              <span>Updated {lastRefreshed.toLocaleTimeString()}</span>
+            )}
+          </div>
+        </div>
+
+        {showMoreFilters && (
+          <div className="mt-4 space-y-4 border-t border-zinc-100 pt-4">
+            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+              <Input
+                label="From date"
+                type="date"
+                value={filters.dateFrom}
+                onChange={(e) =>
+                  setFilters({ ...filters, dateFrom: e.target.value })
+                }
+              />
+              <Input
+                label="To date"
+                type="date"
+                value={filters.dateTo}
+                onChange={(e) =>
+                  setFilters({ ...filters, dateTo: e.target.value })
+                }
+              />
+              <Input
+                label="Min m²"
+                type="number"
+                value={filters.minM2}
+                onChange={(e) =>
+                  setFilters({ ...filters, minM2: e.target.value })
+                }
+              />
+              <Input
+                label="Min pallets"
+                type="number"
+                value={filters.minPallets}
+                onChange={(e) =>
+                  setFilters({ ...filters, minPallets: e.target.value })
+                }
+              />
+              <Select
+                label="Employee"
+                value={filters.employeeId}
+                onChange={(e) =>
+                  setFilters({ ...filters, employeeId: e.target.value })
+                }
+              >
+                <option value="">All employees</option>
+                {employees.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name}
+                  </option>
+                ))}
+              </Select>
+              {!flags.manualDispatchMode && (
+                <Select
+                  label="Picker"
+                  value={filters.pickerId}
+                  onChange={(e) =>
+                    setFilters({ ...filters, pickerId: e.target.value })
+                  }
+                >
+                  <option value="">All pickers</option>
+                  {pickers.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+              <Select
+                label="Driver"
+                value={filters.driverId}
+                onChange={(e) =>
+                  setFilters({ ...filters, driverId: e.target.value })
+                }
+              >
+                <option value="">All drivers</option>
+                {drivers.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name}
+                  </option>
+                ))}
+              </Select>
+              <select
+                className="self-end rounded border border-zinc-300 bg-white px-2.5 py-2 text-sm text-zinc-700"
+                value={exportGroupBy}
+                onChange={(e) =>
+                  setExportGroupBy(
+                    e.target.value as
+                      | "none"
+                      | "region"
+                      | "truck"
+                      | "picker"
+                      | "driver"
+                  )
+                }
+                aria-label="Excel grouping"
+              >
+                <option value="none">Excel: flat list</option>
+                <option value="region">Excel: group by region</option>
+                <option value="truck">Excel: group by truck</option>
+                <option value="picker">Excel: group by picker</option>
+                <option value="driver">Excel: group by driver</option>
+              </select>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-700">
+                <input
+                  type="checkbox"
+                  checked={filters.hideDelivered === "true"}
+                  onChange={(e) =>
+                    setFilters({
+                      ...filters,
+                      hideDelivered: e.target.checked ? "true" : "",
+                    })
+                  }
+                  className="rounded border-zinc-300"
+                />
+                Hide completed deliveries
+                <span className="text-zinc-400">
+                  (search invoice to find one)
+                </span>
+              </label>
+              <Button
+                variant="ghost"
+                className="text-xs"
+                onClick={() =>
+                  window.open("/api/export?type=locations", "_blank")
+                }
+              >
+                Export by location
+              </Button>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-500">
+              {ORDER_STAGE_LEGEND.map((item) => (
+                <span key={item.stage} className="inline-flex items-center gap-1.5">
+                  <span
+                    className={`h-2.5 w-2.5 rounded-sm ${item.swatchClass}`}
+                  />
+                  {item.label}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </Card>
+
       <CollapsibleCard
         className="mb-4"
         title="Truck focus"
+        subtitle={
+          focusVehicle
+            ? `${focusVehicle.name} · ${focusPalletsOnTruck.toFixed(1)} / ${focusVehicle.maxPallets} plt`
+            : "Optional — work one truck at a time"
+        }
+        badge={
+          focusVehicle ? (
+            <Badge tone="blue">{focusVehicle.name}</Badge>
+          ) : undefined
+        }
         headerTone="muted"
-        defaultExpanded={false}
+        expanded={truckFocusOpen}
+        onExpandedChange={setTruckFocusOpen}
       >
         <div className="space-y-4 bg-gradient-to-br from-blue-50/80 to-white p-4">
           <TruckFocusBar
@@ -1434,194 +1686,6 @@ export default function OrdersPage() {
           )}
         </div>
       </CollapsibleCard>
-
-      <PageSection title="Work day">
-        <Card className="p-4">
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              {(
-                [
-                  { id: "today", label: "Today" },
-                  { id: "tomorrow", label: "Tomorrow" },
-                  { id: "yesterday", label: "Yesterday open" },
-                  { id: "overdue", label: "Overdue" },
-                  { id: "all", label: "All days" },
-                ] as const
-              ).map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() =>
-                    setFilters((current) => ({
-                      ...current,
-                      workDay: tab.id,
-                      workDayDate: todayDateString(),
-                    }))
-                  }
-                  className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
-                    filters.workDay === tab.id
-                      ? "bg-zinc-900 text-white"
-                      : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-            <Input
-              label="Pick date"
-              type="date"
-              value={filters.workDayDate}
-              onChange={(e) =>
-                setFilters((current) => ({
-                  ...current,
-                  workDay: "date",
-                  workDayDate: e.target.value,
-                }))
-              }
-              className="max-w-[180px]"
-            />
-          </div>
-        </Card>
-      </PageSection>
-
-      <PageSection title="Filters">
-        <Card className="p-4">
-        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          <Input
-            label="From date"
-            type="date"
-            value={filters.dateFrom}
-            onChange={(e) =>
-              setFilters({ ...filters, dateFrom: e.target.value })
-            }
-          />
-          <Input
-            label="To date"
-            type="date"
-            value={filters.dateTo}
-            onChange={(e) =>
-              setFilters({ ...filters, dateTo: e.target.value })
-            }
-          />
-          <Input
-            label="Min m²"
-            type="number"
-            value={filters.minM2}
-            onChange={(e) =>
-              setFilters({ ...filters, minM2: e.target.value })
-            }
-          />
-          <Input
-            label="Min pallets"
-            type="number"
-            value={filters.minPallets}
-            onChange={(e) =>
-              setFilters({ ...filters, minPallets: e.target.value })
-            }
-          />
-          <Input
-            label="Region"
-            list="order-region-filter"
-            value={filters.region}
-            onChange={(e) =>
-              setFilters({ ...filters, region: e.target.value })
-            }
-          />
-          <datalist id="order-region-filter">
-            {KOSOVO_MUNICIPALITIES.map((r) => (
-              <option key={r} value={r} />
-            ))}
-          </datalist>
-          <Select
-            label="Employee"
-            value={filters.employeeId}
-            onChange={(e) =>
-              setFilters({ ...filters, employeeId: e.target.value })
-            }
-          >
-            <option value="">All employees</option>
-            {employees.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name}
-              </option>
-            ))}
-          </Select>
-          <Select
-            label="Picker"
-            value={filters.pickerId}
-            onChange={(e) =>
-              setFilters({ ...filters, pickerId: e.target.value })
-            }
-          >
-            <option value="">All pickers</option>
-            {pickers.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name}
-              </option>
-            ))}
-          </Select>
-          <Select
-            label="Driver"
-            value={filters.driverId}
-            onChange={(e) =>
-              setFilters({ ...filters, driverId: e.target.value })
-            }
-          >
-            <option value="">All drivers</option>
-            {drivers.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name}
-              </option>
-            ))}
-          </Select>
-          <Input
-            label="Search"
-            placeholder="Invoice, name..."
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-          />
-        </div>
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-zinc-100 pt-4">
-          <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-700">
-            <input
-              type="checkbox"
-              checked={filters.hideDelivered === "true"}
-              onChange={(e) =>
-                setFilters({
-                  ...filters,
-                  hideDelivered: e.target.checked ? "true" : "",
-                })
-              }
-              className="rounded border-zinc-300"
-            />
-            Hide completed deliveries
-            <span className="text-zinc-400">
-              (search invoice to find one · export always includes completed)
-            </span>
-          </label>
-          <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-500">
-            {ORDER_STAGE_LEGEND.map((item) => (
-              <span key={item.stage} className="inline-flex items-center gap-1.5">
-                <span
-                  className={`h-2.5 w-2.5 rounded-sm ${item.swatchClass}`}
-                />
-                {item.label}
-              </span>
-            ))}
-            <Button variant="secondary" className="text-xs" onClick={load}>
-              Refresh now
-            </Button>
-            {loading && (
-              <span className="animate-pulse text-xs text-zinc-500">Loading…</span>
-            )}
-            {lastRefreshed && !loading && (
-              <span>Updated {lastRefreshed.toLocaleTimeString()}</span>
-            )}
-          </div>
-        </div>
-        </Card>
-      </PageSection>
 
       <InvoiceImportQueuePanel
         onOpenForm={openFormFromInvoice}
@@ -2327,32 +2391,6 @@ export default function OrdersPage() {
                 </button>
               ))}
             </div>
-            <div className="flex flex-wrap gap-1">
-              {(
-                [
-                  ["all", "All"],
-                  ["unassigned", "Open"],
-                  ["assigned", "Assigned"],
-                ] as const
-              ).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setAssignmentFilter(value)}
-                  className={`rounded-md border px-2.5 py-1 text-xs font-medium transition ${
-                    assignmentFilter === value
-                      ? value === "assigned"
-                        ? "border-emerald-600 bg-emerald-600 text-white"
-                        : value === "unassigned"
-                          ? "border-amber-500 bg-amber-500 text-white"
-                          : "border-zinc-900 bg-zinc-900 text-white"
-                      : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
           </div>
           <div className="text-right text-xs text-zinc-500">
             <p className="font-medium text-zinc-700">
@@ -2490,15 +2528,6 @@ export default function OrdersPage() {
           )}
         </div>
       </Card>
-
-      {!flags.manualDispatchMode && flags.smartDispatch && (
-        <SmartDispatchPanel
-          regionFilter={filters.region || undefined}
-          onApplied={load}
-          onError={setError}
-          onWarning={setWarning}
-        />
-      )}
     </AppShell>
   );
 }

@@ -2509,33 +2509,49 @@ export async function getReportData(filters: {
 
 export async function getDashboardStats() {
   const db = await getDb();
-  const [totalsRow, unassignedRow, vehiclesAvailableRow] = await Promise.all([
-    dbOne(
-      db.select({ count: sql<number>`count(*)` }).from(orders)
-    ),
-    dbOne(
-      db
-        .select({
-          count: sql<number>`count(*)`,
-          pallets: sql<number>`coalesce(sum(${orders.totalPallets}), 0)`,
-        })
-        .from(orders)
-        .where(
-          sql`NOT EXISTS (SELECT 1 FROM assignments a WHERE a.order_id = ${orders.id})`
-        )
-    ),
-    dbOne(
-      db
-        .select({ count: sql<number>`count(*)` })
-        .from(vehicles)
-        .where(eq(vehicles.status, "available"))
-    ),
-  ]);
+  const asOf = todayDateString();
+  const workDateSql = sql`coalesce(nullif(trim(${orders.requestedDeliveryDate}), ''), ${orders.orderDate})`;
+  const openStatuses = sql`${orders.status} NOT IN ('delivered', 'cancelled')`;
+  const isToday = sql`${workDateSql} = ${asOf}`;
+  const isOverdue = sql`${workDateSql} < ${asOf}`;
+  const noAssignment = sql`NOT EXISTS (SELECT 1 FROM assignments a WHERE a.order_id = ${orders.id})`;
+
+  const [todayRow, unassignedRow, overdueRow, vehiclesAvailableRow] =
+    await Promise.all([
+      dbOne(
+        db
+          .select({ count: sql<number>`count(*)` })
+          .from(orders)
+          .where(and(isToday, openStatuses))
+      ),
+      dbOne(
+        db
+          .select({
+            count: sql<number>`count(*)`,
+            pallets: sql<number>`coalesce(sum(${orders.totalPallets}), 0)`,
+          })
+          .from(orders)
+          .where(and(isToday, openStatuses, noAssignment))
+      ),
+      dbOne(
+        db
+          .select({ count: sql<number>`count(*)` })
+          .from(orders)
+          .where(and(isOverdue, openStatuses))
+      ),
+      dbOne(
+        db
+          .select({ count: sql<number>`count(*)` })
+          .from(vehicles)
+          .where(eq(vehicles.status, "available"))
+      ),
+    ]);
 
   return {
-    totalOrders: Number(totalsRow?.count ?? 0),
+    totalOrders: Number(todayRow?.count ?? 0),
     unassignedOrders: Number(unassignedRow?.count ?? 0),
     totalPalletsPending: Number(unassignedRow?.pallets ?? 0),
+    overdueOrders: Number(overdueRow?.count ?? 0),
     vehiclesAvailable: Number(vehiclesAvailableRow?.count ?? 0),
   };
 }

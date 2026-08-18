@@ -29,29 +29,40 @@ export default async function DashboardPage() {
   const wh = BRAND.warehouse;
 
   return (
-    <AppShell title="Dashboard">
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+    <AppShell title="Dashboard" description="Today’s open work">
+      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <StatLink
           label="Pending imports"
           value={pendingImports}
           href="/orders"
+          hint="Invoice queue"
           accent={pendingImports > 0 ? "amber" : "default"}
         />
         <StatLink
-          label="Open orders"
+          label="Open today"
           value={stats.totalOrders}
-          href="/orders"
+          href="/orders?workDay=today"
+          hint="This work day"
         />
         <StatLink
           label="Unassigned"
           value={stats.unassignedOrders}
-          href="/orders"
+          href="/orders?workDay=today&assignment=unassigned"
+          hint="Need a truck"
           accent={stats.unassignedOrders > 0 ? "blue" : "default"}
+        />
+        <StatLink
+          label="Overdue"
+          value={stats.overdueOrders}
+          href="/orders?workDay=overdue"
+          hint="Past delivery date"
+          accent={stats.overdueOrders > 0 ? "amber" : "default"}
         />
         <StatLink
           label="Pallets pending"
           value={stats.totalPalletsPending}
           href="/dispatch"
+          hint="Unassigned today"
         />
         <StatLink
           label="Vehicles available"
@@ -82,6 +93,9 @@ export default async function DashboardPage() {
                 <p className="font-medium text-zinc-900">{m.label}</p>
                 {m.href === "/orders" && pendingImports > 0 ? (
                   <Badge tone="amber">{pendingImports} import</Badge>
+                ) : null}
+                {m.href === "/dispatch" && stats.unassignedOrders > 0 ? (
+                  <Badge tone="blue">{stats.unassignedOrders} open</Badge>
                 ) : null}
               </div>
             </Card>
