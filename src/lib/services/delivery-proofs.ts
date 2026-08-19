@@ -32,6 +32,7 @@ import {
   validatePartialSend,
   type OrderShipmentProgress,
 } from "@/lib/shipment-progress";
+import { proofCapturedAtTimestamp } from "@/lib/delivery-schedule";
 
 /** Trip phases cleared after a partial delivery so the remainder can ship again. */
 const TRIP_RESET_PHASES = [
@@ -392,6 +393,18 @@ async function insertProofRecord(input: {
 }) {
   const db = await getDb();
   const now = new Date().toISOString();
+  const order = await dbOne(
+    db
+      .select({
+        orderDate: orders.orderDate,
+        requestedDeliveryDate: orders.requestedDeliveryDate,
+      })
+      .from(orders)
+      .where(eq(orders.id, input.orderId))
+  );
+  const capturedAt = order
+    ? proofCapturedAtTimestamp(order, input.phase)
+    : now;
   await db.insert(deliveryProofs).values({
     orderId: input.orderId,
     employeeId: input.employeeId,
@@ -405,7 +418,7 @@ async function insertProofRecord(input: {
     sentPieces: input.sentPieces ?? null,
     lat: input.lat ?? null,
     lng: input.lng ?? null,
-    capturedAt: now,
+    capturedAt,
     createdAt: now,
   });
 }

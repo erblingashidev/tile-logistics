@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Button, Select } from "@/components/ui";
 import { MANUAL_ORDER_STATUSES, type ManualOrderStatus } from "@/lib/constants";
+import { pastWorkDateCompletionNote } from "@/lib/delivery-schedule";
 import { manualStatusFromOrder } from "@/lib/manual-order-status-display";
 
 interface VehicleOption {
@@ -25,6 +26,8 @@ interface ManualOrderStatusSelectProps {
   orderId: number;
   currentStatus: string;
   prepStatus?: "pending" | "prepared";
+  orderDate?: string;
+  requestedDeliveryDate?: string | null;
   vehicles?: VehicleOption[];
   pickers?: PickerOption[];
   currentVehicleId?: number | null;
@@ -48,6 +51,8 @@ export function ManualOrderStatusSelect({
   orderId,
   currentStatus,
   prepStatus,
+  orderDate,
+  requestedDeliveryDate,
   vehicles = [],
   pickers = [],
   currentVehicleId,
@@ -117,6 +122,14 @@ export function ManualOrderStatusSelect({
     status === resolvedStatus &&
     vehicleId === (currentVehicleId ? String(currentVehicleId) : "") &&
     pickerId === (currentPickerId ? String(currentPickerId) : "");
+  const pastDateNote =
+    orderDate &&
+    (status === "delivered" || status === "partially_delivered")
+      ? pastWorkDateCompletionNote({
+          orderDate,
+          requestedDeliveryDate,
+        })
+      : null;
 
   return (
     <div className="space-y-3 rounded-lg border border-dashed border-zinc-300 bg-white p-3">
@@ -147,6 +160,10 @@ export function ManualOrderStatusSelect({
             : "Update status"}
         </Button>
       </div>
+
+      {pastDateNote && (
+        <p className="text-xs leading-snug text-amber-800">{pastDateNote}</p>
+      )}
 
       {busy && linkedUpdateCount > 1 && (
         <p className="text-xs text-amber-800">

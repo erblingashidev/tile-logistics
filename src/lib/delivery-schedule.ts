@@ -44,6 +44,63 @@ export function orderWorkDate(order: {
   return order.requestedDeliveryDate?.trim() || order.orderDate;
 }
 
+const COMPLETION_STATUSES = new Set(["delivered", "partially_delivered"]);
+const COMPLETION_PROOF_PHASES = new Set(["delivered", "partial_delivery"]);
+
+/**
+ * Late status updates keep the scheduled work day. An order still on
+ * yesterday's (or an older) list is completed on that date — reschedule
+ * to today first to complete it today.
+ */
+export function statusChangeTimestamp(
+  order: {
+    requestedDeliveryDate?: string | null;
+    orderDate: string;
+  },
+  status: string,
+  asOf = new Date()
+): string {
+  const nowIso = asOf.toISOString();
+  if (!COMPLETION_STATUSES.has(status)) return nowIso;
+  const today = todayDateString(asOf);
+  const workDate = orderWorkDate(order);
+  if (workDate && workDate < today) {
+    return `${workDate}${nowIso.slice(10)}`;
+  }
+  return nowIso;
+}
+
+export function proofCapturedAtTimestamp(
+  order: {
+    requestedDeliveryDate?: string | null;
+    orderDate: string;
+  },
+  phase: string,
+  asOf = new Date()
+): string {
+  if (!COMPLETION_PROOF_PHASES.has(phase)) return asOf.toISOString();
+  return statusChangeTimestamp(
+    order,
+    phase === "partial_delivery" ? "partially_delivered" : "delivered",
+    asOf
+  );
+}
+
+export function pastWorkDateCompletionNote(
+  order: {
+    requestedDeliveryDate?: string | null;
+    orderDate: string;
+  },
+  asOf = new Date()
+): string | null {
+  const today = todayDateString(asOf);
+  const workDate = orderWorkDate(order);
+  if (!workDate || workDate >= today) return null;
+  const yesterday = addDaysToDateString(today, -1);
+  const label = workDate === yesterday ? "yesterday" : workDate;
+  return `This order is still on the ${label} list. Completing it will count as ${label}. Reschedule to today first if it was actually finished today.`;
+}
+
 export type WorkDayFilter =
   | "today"
   | "tomorrow"

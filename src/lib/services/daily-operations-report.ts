@@ -23,6 +23,22 @@ function datePrefix(iso?: string | null): string {
   return iso?.trim().slice(0, 10) ?? "";
 }
 
+function stampedCompletionDate(order: ExportOrder): string {
+  const delivered = order.proofs?.find((p) => p.phase === "delivered");
+  if (datePrefix(delivered?.capturedAt)) return datePrefix(delivered?.capturedAt);
+  if (order.status === "delivered") return datePrefix(order.updatedAt);
+  return "";
+}
+
+/** Delayed completions stay on the scheduled work day, not the day they were recorded. */
+export function effectiveCompletionDate(order: ExportOrder): string {
+  const stamped = stampedCompletionDate(order);
+  if (!stamped) return "";
+  const workDate = orderWorkDate(order);
+  if (workDate && workDate < stamped) return workDate;
+  return stamped;
+}
+
 export function activityOnReportDate(
   order: ExportOrder,
   reportDate: string
@@ -44,14 +60,20 @@ export function activityOnReportDate(
   }
 
   for (const proof of order.proofs ?? []) {
-    if (datePrefix(proof.capturedAt) === reportDate) return true;
+    const proofDate = datePrefix(proof.capturedAt);
+    if (proofDate !== reportDate) continue;
+    if (
+      (proof.phase === "delivered" || proof.phase === "partial_delivery") &&
+      orderWorkDate(order) < proofDate
+    ) {
+      continue;
+    }
+    return true;
   }
 
-  if (
-    order.status === "delivered" &&
-    datePrefix(order.updatedAt) === reportDate
-  ) {
-    return true;
+  if (order.status === "delivered") {
+    const completionDate = effectiveCompletionDate(order);
+    if (completionDate === reportDate) return true;
   }
 
   return false;
@@ -62,12 +84,7 @@ export function completedOnReportDate(
   reportDate: string
 ): boolean {
   if (!isComplete(order) || order.status === "cancelled") return false;
-  const delivered = order.proofs?.find((p) => p.phase === "delivered");
-  if (datePrefix(delivered?.capturedAt) === reportDate) return true;
-  if (order.status === "delivered" && datePrefix(order.updatedAt) === reportDate) {
-    return true;
-  }
-  return false;
+  return effectiveCompletionDate(order) === reportDate;
 }
 
 export function classifyDailyOrder(

@@ -254,6 +254,8 @@ function OrderRow({
                   (order as OrderListCardOrder & { prepStatus?: "pending" | "prepared" })
                     .prepStatus
                 }
+                orderDate={order.orderDate}
+                requestedDeliveryDate={order.requestedDeliveryDate}
                 vehicles={vehicles}
                 pickers={pickers}
                 currentVehicleId={order.assignment?.vehicleId}
@@ -393,6 +395,8 @@ function OrderRow({
                 (order as OrderListCardOrder & { prepStatus?: "pending" | "prepared" })
                   .prepStatus
               }
+              orderDate={order.orderDate}
+              requestedDeliveryDate={order.requestedDeliveryDate}
               vehicles={vehicles}
               pickers={pickers}
               currentVehicleId={order.assignment?.vehicleId}

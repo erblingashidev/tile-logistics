@@ -3,6 +3,7 @@ import { getDb } from "@/lib/db";
 import { dbAll, dbOne } from "@/lib/db/query";
 import { employees, orders } from "@/lib/db/schema";
 import type { OrderStatus } from "@/lib/constants";
+import { statusChangeTimestamp } from "@/lib/delivery-schedule";
 import { logActivity } from "@/lib/logger";
 import { orderStatusChangeMessage } from "@/lib/log-messages";
 
@@ -17,7 +18,7 @@ export async function updateOrderStatus(
   );
   if (!order) return null;
 
-  const now = new Date().toISOString();
+  const now = statusChangeTimestamp(order, status);
   const statusChanged = order.status !== status;
 
   await db
@@ -79,13 +80,14 @@ export async function updateOrderStatusBatch(
   }
 
   const db = await getDb();
-  const now = new Date().toISOString();
   const rows = await dbAll(
     db
       .select({
         id: orders.id,
         status: orders.status,
         invoiceNumber: orders.invoiceNumber,
+        orderDate: orders.orderDate,
+        requestedDeliveryDate: orders.requestedDeliveryDate,
       })
       .from(orders)
       .where(inArray(orders.id, unique))
@@ -93,10 +95,19 @@ export async function updateOrderStatusBatch(
 
   const toUpdate = rows.filter((row) => row.status !== status);
   if (toUpdate.length > 0) {
-    await db
-      .update(orders)
-      .set({ status, updatedAt: now })
-      .where(inArray(orders.id, toUpdate.map((row) => row.id)));
+    const idsByTimestamp = new Map<string, number[]>();
+    for (const row of toUpdate) {
+      const updatedAt = statusChangeTimestamp(row, status);
+      const group = idsByTimestamp.get(updatedAt) ?? [];
+      group.push(row.id);
+      idsByTimestamp.set(updatedAt, group);
+    }
+    for (const [updatedAt, ids] of idsByTimestamp) {
+      await db
+        .update(orders)
+        .set({ status, updatedAt })
+        .where(inArray(orders.id, ids));
+    }
   }
 
   if (toUpdate.length === 1) {
