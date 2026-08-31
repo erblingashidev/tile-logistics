@@ -203,6 +203,24 @@ export const deliveryProofs = sqliteTable("delivery_proofs", {
   createdAt: text("created_at").notNull(),
 });
 
+/** Per-product qty on a delivery / partial-delivery proof. */
+export const deliveryProofLines = sqliteTable("delivery_proof_lines", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  proofId: integer("proof_id")
+    .notNull()
+    .references(() => deliveryProofs.id, { onDelete: "cascade" }),
+  orderItemId: integer("order_item_id")
+    .notNull()
+    .references(() => orderItems.id, { onDelete: "cascade" }),
+  /** Qty in the line's native unit (m², pieces/bags, kg, m). */
+  quantity: real("quantity").notNull(),
+  unit: text("unit").notNull(),
+  sentFully: integer("sent_fully", { mode: "boolean" }).notNull().default(false),
+  sentM2: real("sent_m2").notNull().default(0),
+  sentPieces: integer("sent_pieces").notNull().default(0),
+  sentPallets: real("sent_pallets").notNull().default(0),
+});
+
 /** Default picker per truck + delivery round (automation). */
 export const vehicleRoundDefaults = sqliteTable("vehicle_round_defaults", {
   id: integer("id").primaryKey({ autoIncrement: true }),

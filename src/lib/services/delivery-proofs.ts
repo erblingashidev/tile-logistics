@@ -3,7 +3,15 @@ import path from "path";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { getDb, hasDeliveryProofDbPhotos, setDeliveryProofDbPhotosEnabled } from "@/lib/db";
 import { dbAll, dbOne } from "@/lib/db/query";
-import { deliveryProofs, employees, orders, assignments, orderEmployeeAssignments } from "@/lib/db/schema";
+import {
+  deliveryProofLines,
+  deliveryProofs,
+  employees,
+  orders,
+  assignments,
+  orderEmployeeAssignments,
+  orderItems,
+} from "@/lib/db/schema";
 import {
   DELIVERY_PROOF_PHASES,
   type DeliveryProofPhase,
@@ -32,6 +40,12 @@ import {
   validatePartialSend,
   type OrderShipmentProgress,
 } from "@/lib/shipment-progress";
+import {
+  computeLineShipmentProgress,
+  resolveShipmentFromLines,
+  type ProofLineInput,
+  type ResolvedProofLine,
+} from "@/lib/shipment-line-progress";
 import { proofCapturedAtTimestamp } from "@/lib/delivery-schedule";
 
 /** Trip phases cleared after a partial delivery so the remainder can ship again. */
@@ -287,6 +301,42 @@ export async function getOrderShipmentProgress(
   return computeShipmentProgress(order, proofs);
 }
 
+/** Prior sent qty per order item from shipment proofs (partial_delivery / delivered). */
+export async function listPriorProofLineSends(orderId: number) {
+  const db = await getDb();
+  const rows = await dbAll(
+    db
+      .select({
+        orderItemId: deliveryProofLines.orderItemId,
+        quantity: deliveryProofLines.quantity,
+        phase: deliveryProofs.phase,
+      })
+      .from(deliveryProofLines)
+      .innerJoin(
+        deliveryProofs,
+        eq(deliveryProofLines.proofId, deliveryProofs.id)
+      )
+      .where(eq(deliveryProofs.orderId, orderId))
+  );
+  return rows
+    .filter(
+      (r) => r.phase === "partial_delivery" || r.phase === "delivered"
+    )
+    .map((r) => ({
+      orderItemId: r.orderItemId,
+      quantity: Number(r.quantity) || 0,
+    }));
+}
+
+export async function getOrderLineShipmentProgress(orderId: number) {
+  const db = await getDb();
+  const items = await dbAll(
+    db.select().from(orderItems).where(eq(orderItems.orderId, orderId))
+  );
+  const prior = await listPriorProofLineSends(orderId);
+  return computeLineShipmentProgress(items, prior);
+}
+
 /**
  * After a partial delivery: keep shipment proofs, clear this trip's load/drive
  * steps, and unassign so the remaining qty can go on another truck.
@@ -390,7 +440,8 @@ async function insertProofRecord(input: {
   sentPieces?: number | null;
   lat?: number;
   lng?: number;
-}) {
+  lines?: ResolvedProofLine[];
+}): Promise<number | null> {
   const db = await getDb();
   const now = new Date().toISOString();
   const order = await dbOne(
@@ -405,22 +456,78 @@ async function insertProofRecord(input: {
   const capturedAt = order
     ? proofCapturedAtTimestamp(order, input.phase)
     : now;
-  await db.insert(deliveryProofs).values({
-    orderId: input.orderId,
-    employeeId: input.employeeId,
-    phase: input.phase,
-    photoPath: input.photoPath,
-    photoData: input.photoData ?? null,
-    photoMime: input.photoMime ?? null,
-    notes: input.notes?.trim() || null,
-    sentPallets: input.sentPallets ?? null,
-    sentM2: input.sentM2 ?? null,
-    sentPieces: input.sentPieces ?? null,
-    lat: input.lat ?? null,
-    lng: input.lng ?? null,
-    capturedAt,
-    createdAt: now,
-  });
+  const inserted = await db
+    .insert(deliveryProofs)
+    .values({
+      orderId: input.orderId,
+      employeeId: input.employeeId,
+      phase: input.phase,
+      photoPath: input.photoPath,
+      photoData: input.photoData ?? null,
+      photoMime: input.photoMime ?? null,
+      notes: input.notes?.trim() || null,
+      sentPallets: input.sentPallets ?? null,
+      sentM2: input.sentM2 ?? null,
+      sentPieces: input.sentPieces ?? null,
+      lat: input.lat ?? null,
+      lng: input.lng ?? null,
+      capturedAt,
+      createdAt: now,
+    })
+    .returning({ id: deliveryProofs.id });
+
+  const proofId = inserted[0]?.id ?? null;
+  if (proofId != null && input.lines && input.lines.length > 0) {
+    await db.insert(deliveryProofLines).values(
+      input.lines.map((line) => ({
+        proofId,
+        orderItemId: line.orderItemId,
+        quantity: line.quantity,
+        unit: line.unit,
+        sentFully: line.sentFully,
+        sentM2: line.sentM2,
+        sentPieces: line.sentPieces,
+        sentPallets: line.sentPallets,
+      }))
+    );
+  }
+  return proofId;
+}
+
+async function resolvePartialQtyFromLines(
+  orderId: number,
+  lines: ProofLineInput[] | undefined,
+  fallback: {
+    pallets?: number;
+    m2?: number;
+    pieces?: number;
+  },
+  available: { pallets: number; m2: number; pieces: number },
+  opts?: { action?: "deliver" | "load" }
+): Promise<
+  | {
+      ok: true;
+      sent: { pallets: number; m2: number; pieces: number };
+      proofLines?: ResolvedProofLine[];
+      isFullDelivery?: boolean;
+    }
+  | { ok: false; error: string }
+> {
+  if (lines && lines.length > 0) {
+    const lineProgress = await getOrderLineShipmentProgress(orderId);
+    const resolved = resolveShipmentFromLines(lineProgress, lines, opts);
+    if (!resolved.ok) return resolved;
+    return {
+      ok: true,
+      sent: resolved.sent,
+      proofLines: resolved.proofLines,
+      isFullDelivery: resolved.isFullDelivery,
+    };
+  }
+
+  const check = validatePartialSend(available, fallback, opts);
+  if (!check.ok) return check;
+  return { ok: true, sent: check.sent };
 }
 
 async function logProof(
@@ -555,6 +662,8 @@ export async function submitDeliveryProof(input: {
   sentPallets?: number;
   sentM2?: number;
   sentPieces?: number;
+  /** Per-product checklist for partial delivery / partial load. */
+  lines?: ProofLineInput[];
 }) {
   const check = await employeeCanSubmitPhase(
     input.employeeId,
@@ -672,38 +781,62 @@ export async function submitDeliveryProof(input: {
   let effectivePhase: DeliveryProofPhase = input.phase;
   let nextStatus = phaseDef.nextOrderStatus;
 
-  if (input.phase === "loaded" && input.sentPallets != null) {
-    const checkLoad = validatePartialSend(
-      progress.remainingUndelivered,
+  let proofLines: ResolvedProofLine[] | undefined;
+
+  if (
+    input.phase === "loaded" &&
+    (input.sentPallets != null || (input.lines && input.lines.length > 0))
+  ) {
+    const checkLoad = await resolvePartialQtyFromLines(
+      input.orderId,
+      input.lines,
       {
         pallets: input.sentPallets,
         m2: input.sentM2,
         pieces: input.sentPieces,
       },
+      progress.remainingUndelivered,
       { action: "load" }
     );
     if (!checkLoad.ok) {
       return { ok: false as const, error: checkLoad.error };
     }
+    if (checkLoad.isFullDelivery) {
+      return {
+        ok: false as const,
+        error: "That is the full remaining qty — use full load instead.",
+      };
+    }
     sentPallets = checkLoad.sent.pallets;
     sentM2 = checkLoad.sent.m2;
     sentPieces = checkLoad.sent.pieces;
+    proofLines = checkLoad.proofLines;
     nextStatus = "partially_delivered";
   }
 
   if (input.phase === "partial_delivery") {
     const available = progress.onTruck ?? progress.remainingUndelivered;
-    const checkSend = validatePartialSend(available, {
-      pallets: input.sentPallets,
-      m2: input.sentM2,
-      pieces: input.sentPieces,
-    });
+    const checkSend = await resolvePartialQtyFromLines(
+      input.orderId,
+      input.lines,
+      {
+        pallets: input.sentPallets,
+        m2: input.sentM2,
+        pieces: input.sentPieces,
+      },
+      available
+    );
     if (!checkSend.ok) {
       return { ok: false as const, error: checkSend.error };
     }
     sentPallets = checkSend.sent.pallets;
     sentM2 = checkSend.sent.m2;
     sentPieces = checkSend.sent.pieces;
+    proofLines = checkSend.proofLines;
+    if (checkSend.isFullDelivery) {
+      effectivePhase = "delivered";
+      nextStatus = "delivered";
+    }
   }
 
   if (input.phase === "delivered") {
@@ -811,6 +944,7 @@ export async function submitDeliveryProof(input: {
     sentPieces,
     lat: input.lat,
     lng: input.lng,
+    lines: proofLines,
   });
 
   await updateOrderStatus(input.orderId, nextStatus, input.employeeId);
@@ -894,6 +1028,7 @@ export async function submitAdminDeliveryProof(input: {
   sentPallets?: number;
   sentM2?: number;
   sentPieces?: number;
+  lines?: ProofLineInput[];
 }) {
   const phaseDef = DELIVERY_PROOF_PHASES.find((p) => p.id === input.phase);
   if (!phaseDef) return { ok: false as const, error: "Invalid phase" };
@@ -1032,38 +1167,62 @@ export async function submitAdminDeliveryProof(input: {
   let effectivePhase: DeliveryProofPhase = input.phase;
   let nextStatus = phaseDef.nextOrderStatus;
 
-  if (input.phase === "loaded" && input.sentPallets != null) {
-    const checkLoad = validatePartialSend(
-      progress.remainingUndelivered,
+  let proofLines: ResolvedProofLine[] | undefined;
+
+  if (
+    input.phase === "loaded" &&
+    (input.sentPallets != null || (input.lines && input.lines.length > 0))
+  ) {
+    const checkLoad = await resolvePartialQtyFromLines(
+      input.orderId,
+      input.lines,
       {
         pallets: input.sentPallets,
         m2: input.sentM2,
         pieces: input.sentPieces,
       },
+      progress.remainingUndelivered,
       { action: "load" }
     );
     if (!checkLoad.ok) {
       return { ok: false as const, error: checkLoad.error };
     }
+    if (checkLoad.isFullDelivery) {
+      return {
+        ok: false as const,
+        error: "That is the full remaining qty — use full load instead.",
+      };
+    }
     sentPallets = checkLoad.sent.pallets;
     sentM2 = checkLoad.sent.m2;
     sentPieces = checkLoad.sent.pieces;
+    proofLines = checkLoad.proofLines;
     nextStatus = "partially_delivered";
   }
 
   if (input.phase === "partial_delivery") {
     const available = progress.onTruck ?? progress.remainingUndelivered;
-    const checkSend = validatePartialSend(available, {
-      pallets: input.sentPallets,
-      m2: input.sentM2,
-      pieces: input.sentPieces,
-    });
+    const checkSend = await resolvePartialQtyFromLines(
+      input.orderId,
+      input.lines,
+      {
+        pallets: input.sentPallets,
+        m2: input.sentM2,
+        pieces: input.sentPieces,
+      },
+      available
+    );
     if (!checkSend.ok) {
       return { ok: false as const, error: checkSend.error };
     }
     sentPallets = checkSend.sent.pallets;
     sentM2 = checkSend.sent.m2;
     sentPieces = checkSend.sent.pieces;
+    proofLines = checkSend.proofLines;
+    if (checkSend.isFullDelivery) {
+      effectivePhase = "delivered";
+      nextStatus = "delivered";
+    }
   }
 
   if (input.phase === "delivered") {
@@ -1148,6 +1307,7 @@ export async function submitAdminDeliveryProof(input: {
     sentPallets,
     sentM2,
     sentPieces,
+    lines: proofLines,
   });
 
   await updateOrderStatus(input.orderId, nextStatus, actorId);

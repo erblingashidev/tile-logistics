@@ -3,6 +3,8 @@ import { getDb } from "@/lib/db";
 import { dbAll } from "@/lib/db/query";
 import {
   assignments,
+  deliveryProofLines,
+  deliveryProofs,
   employees,
   orderEmployeeAssignments,
   orderItems,
@@ -15,6 +17,7 @@ import {
   ORDER_STAGE_LABELS,
 } from "@/lib/order-display";
 import { computeShipmentProgress } from "@/lib/shipment-progress";
+import { computeLineShipmentProgress } from "@/lib/shipment-line-progress";
 import { listDeliveryProofsBatch } from "@/lib/services/delivery-proofs";
 import { parseEmployeeRoles } from "@/lib/services/employees";
 import { loadStatusFromProofs } from "@/lib/services/load-coordination";
@@ -146,7 +149,8 @@ export async function enrichOrdersForList(
   const orderIds = rows.map((row) => row.id);
   const db = await getDb();
 
-  const [proofsByOrder, assignmentRows, staffRows, itemRows] = await Promise.all([
+  const [proofsByOrder, assignmentRows, staffRows, itemRows, proofLineRows] =
+    await Promise.all([
     listDeliveryProofsBatch(orderIds),
     dbAll(
       db
@@ -184,6 +188,21 @@ export async function enrichOrdersForList(
     ) as Promise<StaffAssignmentRow[]>,
     dbAll(
       db.select().from(orderItems).where(inArray(orderItems.orderId, orderIds))
+    ),
+    dbAll(
+      db
+        .select({
+          orderId: deliveryProofs.orderId,
+          orderItemId: deliveryProofLines.orderItemId,
+          quantity: deliveryProofLines.quantity,
+          phase: deliveryProofs.phase,
+        })
+        .from(deliveryProofLines)
+        .innerJoin(
+          deliveryProofs,
+          eq(deliveryProofLines.proofId, deliveryProofs.id)
+        )
+        .where(inArray(deliveryProofs.orderId, orderIds))
     ),
   ]);
 
@@ -260,6 +279,20 @@ export async function enrichOrdersForList(
     itemsByOrderId.set(item.orderId, list);
   }
 
+  const priorLinesByOrderId = new Map<
+    number,
+    Array<{ orderItemId: number; quantity: number }>
+  >();
+  for (const row of proofLineRows) {
+    if (row.phase !== "partial_delivery" && row.phase !== "delivered") continue;
+    const list = priorLinesByOrderId.get(row.orderId) ?? [];
+    list.push({
+      orderItemId: row.orderItemId,
+      quantity: Number(row.quantity) || 0,
+    });
+    priorLinesByOrderId.set(row.orderId, list);
+  }
+
   return rows.map((order) => {
     try {
       const proofs = proofsByOrder.get(order.id) ?? [];
@@ -269,6 +302,7 @@ export async function enrichOrdersForList(
       );
       const assignmentRow = assignmentByOrderId.get(order.id) ?? null;
       const { prepStatus, loadStatus, notes } = loadStatusFromProofs(proofs);
+      const items = itemsByOrderId.get(order.id) ?? [];
 
       return {
         ...order,
@@ -289,13 +323,17 @@ export async function enrichOrdersForList(
         deliveryStage,
         deliveryStageLabel: ORDER_STAGE_LABELS[deliveryStage],
         shipment: computeShipmentProgress(order, proofs),
+        shipmentLines: computeLineShipmentProgress(
+          items,
+          priorLinesByOrderId.get(order.id) ?? []
+        ),
         prepStatus,
         loadStatus,
         loadNotes: notes,
         canMarkLoaded: false,
         loadBlockedReason: null,
         deliveryLinks: linkMap.get(order.id) ?? [],
-        items: itemsByOrderId.get(order.id) ?? [],
+        items,
       };
     } catch (err) {
       console.error("[enrichOrdersForList] failed for order", order.id, err);
@@ -315,6 +353,7 @@ export async function enrichOrdersForList(
         loadBlockedReason: null,
         deliveryLinks: linkMap.get(order.id) ?? [],
         items: [],
+        shipmentLines: [],
       };
     }
   });

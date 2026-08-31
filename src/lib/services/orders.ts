@@ -11,6 +11,7 @@ import {
   employees,
   orderEmployeeAssignments,
   deliveryProofs,
+  deliveryProofLines,
 } from "@/lib/db/schema";
 import {
   getOrderStaff,
@@ -451,13 +452,37 @@ export async function getOrder(id: number) {
     reconciledStatus,
     proofPhases
   );
+  const items = await dbAll(
+    db.select().from(orderItems).where(eq(orderItems.orderId, id))
+  );
+  const { computeLineShipmentProgress } = await import(
+    "@/lib/shipment-line-progress"
+  );
+  const priorLineRows = await dbAll(
+    db
+      .select({
+        orderItemId: deliveryProofLines.orderItemId,
+        quantity: deliveryProofLines.quantity,
+        phase: deliveryProofs.phase,
+      })
+      .from(deliveryProofLines)
+      .innerJoin(
+        deliveryProofs,
+        eq(deliveryProofLines.proofId, deliveryProofs.id)
+      )
+      .where(eq(deliveryProofs.orderId, id))
+  );
+  const priorLineSends = priorLineRows
+    .filter((r) => r.phase === "partial_delivery" || r.phase === "delivered")
+    .map((r) => ({
+      orderItemId: r.orderItemId,
+      quantity: Number(r.quantity) || 0,
+    }));
   return {
     ...order,
     customerHasForklift: Boolean(order.customerHasForklift),
     status: reconciledStatus,
-    items: await dbAll(
-      db.select().from(orderItems).where(eq(orderItems.orderId, id))
-    ),
+    items,
     assignment: await getOrderAssignment(id),
     staff: await getOrderStaff(id),
     proofs,
@@ -467,6 +492,7 @@ export async function getOrder(id: number) {
       { ...order, status: reconciledStatus },
       proofs
     ),
+    shipmentLines: computeLineShipmentProgress(items, priorLineSends),
     ...(await getOrderLoadStatus(id)),
     deliveryLinks: await (
       await import("@/lib/services/order-delivery-links")

@@ -41,6 +41,9 @@ export async function POST(
   let sentPallets: number | undefined;
   let sentM2: number | undefined;
   let sentPieces: number | undefined;
+  let lines:
+    | Array<{ orderItemId: number; sentFully?: boolean; quantity?: number }>
+    | undefined;
 
   if (contentType.includes("multipart/form-data")) {
     const form = await request.formData();
@@ -60,6 +63,18 @@ export async function POST(
     if (sp != null && String(sp) !== "") sentPallets = Number(sp);
     if (sm != null && String(sm) !== "") sentM2 = Number(sm);
     if (spi != null && String(spi) !== "") sentPieces = Number(spi);
+    const linesRaw = form.get("lines");
+    if (linesRaw != null && String(linesRaw).trim() !== "") {
+      try {
+        const parsed = JSON.parse(String(linesRaw));
+        if (Array.isArray(parsed)) lines = parsed;
+      } catch {
+        return NextResponse.json(
+          { error: "Invalid product lines payload" },
+          { status: 400 }
+        );
+      }
+    }
     const photo = form.get("photo");
     if (photo instanceof File && photo.size > 0) {
       photoBuffer = Buffer.from(await photo.arrayBuffer());
@@ -75,6 +90,11 @@ export async function POST(
       sentPallets?: number;
       sentM2?: number;
       sentPieces?: number;
+      lines?: Array<{
+        orderItemId: number;
+        sentFully?: boolean;
+        quantity?: number;
+      }>;
     };
     if (body.phase && ADMIN_PHASES.has(body.phase)) phase = body.phase;
     notes = body.notes?.trim() || undefined;
@@ -84,6 +104,7 @@ export async function POST(
     sentPallets = body.sentPallets;
     sentM2 = body.sentM2;
     sentPieces = body.sentPieces;
+    lines = body.lines;
   }
 
   if (!phase) {
@@ -105,6 +126,7 @@ export async function POST(
     sentPallets: Number.isFinite(sentPallets) ? sentPallets : undefined,
     sentM2: Number.isFinite(sentM2) ? sentM2 : undefined,
     sentPieces: Number.isFinite(sentPieces) ? sentPieces : undefined,
+    lines,
   });
 
   if (!result.ok) {

@@ -486,6 +486,26 @@ async function ensureDeliveryProofPhotoColumns(client: Client) {
     proofCols = await tableColumns(client, "delivery_proofs");
   }
   deliveryProofDbPhotosEnabled = proofCols.has("photo_data");
+
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS delivery_proof_lines (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      proof_id INTEGER NOT NULL REFERENCES delivery_proofs(id) ON DELETE CASCADE,
+      order_item_id INTEGER NOT NULL REFERENCES order_items(id) ON DELETE CASCADE,
+      quantity REAL NOT NULL,
+      unit TEXT NOT NULL,
+      sent_fully INTEGER NOT NULL DEFAULT 0,
+      sent_m2 REAL NOT NULL DEFAULT 0,
+      sent_pieces INTEGER NOT NULL DEFAULT 0,
+      sent_pallets REAL NOT NULL DEFAULT 0
+    )
+  `);
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_delivery_proof_lines_proof ON delivery_proof_lines(proof_id)"
+  );
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_delivery_proof_lines_item ON delivery_proof_lines(order_item_id)"
+  );
 }
 
 async function runMigrations(client: Client) {

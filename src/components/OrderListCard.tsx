@@ -487,6 +487,13 @@ export function OrderListCard({
               loadStatus={order.loadStatus}
               staffOptions={staffOptionsFromOrder(order)}
               staffSnapshot={order.staff}
+              shipmentLines={
+                (
+                  order as OrderListCardOrder & {
+                    shipmentLines?: import("@/lib/shipment-line-progress").LineShipmentProgress[];
+                  }
+                ).shipmentLines
+              }
               deliveryLinks={order.deliveryLinks}
               draft={draft}
               vehicles={vehicles}

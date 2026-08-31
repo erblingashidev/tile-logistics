@@ -116,9 +116,18 @@ export const sq = {
   deliveryFull: "Dorëzuar të gjithë (mbetja)",
   deliveryTripLoad: (n: number) => `Dorëzuar ngarkesën e kamionit (${n} plt)`,
   deliveryPartial: "Dorëzim i pjesshëm",
-  deliveryPartialHint: "Sa pallet po lëshon tani?",
+  deliveryPartialHint:
+    "Shëno produktet që po dërgon. Plotësisht, ose sasi e personalizuar (m² / thasë / copë).",
   deliveryPartialPallets: "Paletat e dërguara tani",
   deliveryPartialConfirm: "Konfirmo dorëzimin e pjesshëm",
+  deliveryPartialProducts: "Produktet në këtë dorëzim",
+  deliveryPartialFull: "Dërgo plotësisht",
+  deliveryPartialQty: "Sasia e dërguar tani",
+  deliveryPartialLeft: "Mbeten pa dërguar",
+  deliveryPartialOrdered: "Në faturë",
+  deliveryPartialRemaining: "mbeten",
+  deliveryPartialAlreadySent: "tashmë dërguar",
+  deliveryPartialNeedLines: "Shëno të paktën një produkt dhe sasinë e dërguar.",
   deliveryRemaining: (sent: number, left: number) =>
     `Dërguar ${sent} plt · mbeten ${left} plt`,
   deliveryOrdered: (n: number) => `Porosia: ${n} plt`,
@@ -214,6 +223,7 @@ export const sq = {
     prepareFirst: "Shëno fillimisht si e përgatitur.",
     partialPallets: "Shkruaj sa pallet po dorëzon tani.",
     partialLoadPallets: "Shkruaj sa pallet po ngarkon tani.",
+    partialLines: "Shëno të paktën një produkt dhe sasinë e dërguar.",
   },
 
   reportsLink: "Raportet e depo",

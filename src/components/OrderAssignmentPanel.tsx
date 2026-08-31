@@ -46,6 +46,7 @@ interface OrderAssignmentPanelProps {
   prepStatus?: "pending" | "prepared";
   loadStatus?: "pending" | "loaded" | "load_skipped";
   staffOptions?: Array<{ id: number; name: string; role: string }>;
+  shipmentLines?: import("@/lib/shipment-line-progress").LineShipmentProgress[];
   staffSnapshot?: {
     picker?: { employeeId?: number; employeeName: string; assignedAt?: string } | null;
     driver?: { employeeId?: number; employeeName: string; assignedAt?: string } | null;
@@ -127,6 +128,7 @@ export function OrderAssignmentPanel({
   prepStatus,
   loadStatus,
   staffOptions = [],
+  shipmentLines = [],
   staffSnapshot,
   deliveryLinks = [],
   draft,
@@ -619,6 +621,7 @@ export function OrderAssignmentPanel({
         prepStatus={prepStatus}
         loadStatus={loadStatus}
         staffOptions={staffOptions}
+        shipmentLines={shipmentLines}
         onSaved={onSaved}
         onError={onError}
       />

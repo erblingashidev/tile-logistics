@@ -1,9 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Alert, Button, Input } from "@/components/ui";
+import { useEffect, useMemo, useState } from "react";
+import { Button, Input } from "@/components/ui";
+import {
+  PartialDeliveryChecklist,
+  checklistToProofLines,
+  emptyChecklistState,
+  type ChecklistState,
+} from "@/components/PartialDeliveryChecklist";
 import { type DeliveryProofPhase } from "@/lib/constants";
 import type { OrderDisplayStage } from "@/lib/order-display";
+import type { LineShipmentProgress } from "@/lib/shipment-line-progress";
 
 interface StaffOption {
   id: number;
@@ -19,6 +26,7 @@ interface AdminManualProofPanelProps {
   prepStatus?: "pending" | "prepared";
   loadStatus?: "pending" | "loaded" | "load_skipped";
   staffOptions?: StaffOption[];
+  shipmentLines?: LineShipmentProgress[];
   onSaved: () => void;
   onError: (message: string) => void;
 }
@@ -35,6 +43,7 @@ export function AdminManualProofPanel({
   prepStatus,
   loadStatus,
   staffOptions = [],
+  shipmentLines = [],
   onSaved,
   onError,
 }: AdminManualProofPanelProps) {
@@ -43,6 +52,23 @@ export function AdminManualProofPanel({
   const [sentPallets, setSentPallets] = useState("");
   const [employeeId, setEmployeeId] = useState("");
   const [showNotesFor, setShowNotesFor] = useState<string | null>(null);
+  const [checklist, setChecklist] = useState<ChecklistState>(() =>
+    emptyChecklistState(shipmentLines)
+  );
+
+  useEffect(() => {
+    setChecklist(emptyChecklistState(shipmentLines));
+    // Reset when order changes or remaining lines change after save.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    orderId,
+    shipmentLines.map((l) => `${l.orderItemId}:${l.remaining}`).join("|"),
+  ]);
+
+  const openProductLines = useMemo(
+    () => shipmentLines.filter((l) => l.remaining > 0),
+    [shipmentLines]
+  );
 
   const actions = useMemo(() => {
     const list: Array<{
@@ -127,7 +153,9 @@ export function AdminManualProofPanel({
     }
 
     if (
-      (hasPhase(proofPhases, "departed") || deliveryStage === "in_transit" || deliveryStage === "arrived") &&
+      (hasPhase(proofPhases, "departed") ||
+        deliveryStage === "in_transit" ||
+        deliveryStage === "arrived") &&
       !hasPhase(proofPhases, "delivered") &&
       loadStatus !== "load_skipped"
     ) {
@@ -142,15 +170,27 @@ export function AdminManualProofPanel({
       list.push({
         id: "partial_delivery",
         phase: "partial_delivery",
-        label: "Partial delivery — enter pallets sent",
+        label:
+          openProductLines.length > 0
+            ? "Partial delivery — product checklist"
+            : "Partial delivery — enter pallets sent",
         variant: "secondary",
         needsNotes: true,
-        hint: "Records how much went now; remainder stays open for another truck.",
+        hint:
+          openProductLines.length > 0
+            ? "Check products sent: full line or custom m² / bags / pcs. Remainder stays open."
+            : "Records how much went now; remainder stays open for another truck.",
       });
     }
 
     return list;
-  }, [proofPhases, prepStatus, loadStatus, deliveryStage]);
+  }, [
+    proofPhases,
+    prepStatus,
+    loadStatus,
+    deliveryStage,
+    openProductLines.length,
+  ]);
 
   async function submit(
     phase: DeliveryProofPhase,
@@ -163,15 +203,33 @@ export function AdminManualProofPanel({
     }
 
     let qty: number | undefined;
-    if (phase === "partial_delivery" || opts?.needsPartialLoad) {
+    let lines:
+      | Array<{ orderItemId: number; sentFully?: boolean; quantity?: number }>
+      | undefined;
+
+    if (phase === "partial_delivery") {
+      if (openProductLines.length > 0) {
+        lines = checklistToProofLines(checklist);
+        if (lines.length === 0) {
+          setShowNotesFor(phase);
+          onError(
+            "Check at least one product and enter how much was sent (full or custom qty)."
+          );
+          return;
+        }
+      } else {
+        qty = Number(sentPallets);
+        if (!Number.isFinite(qty) || qty <= 0) {
+          setShowNotesFor(phase);
+          onError("Enter how many pallets were delivered on this trip.");
+          return;
+        }
+      }
+    } else if (opts?.needsPartialLoad) {
       qty = Number(sentPallets);
       if (!Number.isFinite(qty) || qty <= 0) {
         setShowNotesFor(phase);
-        onError(
-          opts?.needsPartialLoad
-            ? "Enter how many pallets are going on this truck."
-            : "Enter how many pallets were delivered on this trip."
-        );
+        onError("Enter how many pallets are going on this truck.");
         return;
       }
     }
@@ -193,6 +251,7 @@ export function AdminManualProofPanel({
           phase === "delivered" ||
           phase === "partial_delivery",
         sentPallets: qty,
+        lines,
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -206,6 +265,7 @@ export function AdminManualProofPanel({
     setNotes("");
     setSentPallets("");
     setShowNotesFor(null);
+    setChecklist(emptyChecklistState(shipmentLines));
     onSaved();
   }
 
@@ -216,6 +276,13 @@ export function AdminManualProofPanel({
   if (actions.length === 0) {
     return null;
   }
+
+  const showPartialForm =
+    showNotesFor === "partial_delivery" ||
+    showNotesFor === "loaded" ||
+    notes ||
+    sentPallets ||
+    actions.some((a) => a.phase === "partial_delivery" || a.needsPartialLoad);
 
   return (
     <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50/80 p-3">
@@ -247,7 +314,7 @@ export function AdminManualProofPanel({
         </div>
       )}
 
-      {(showNotesFor || notes || sentPallets) && (
+      {showPartialForm && (
         <div className="mt-3 space-y-2">
           <Input
             label="Note"
@@ -255,17 +322,24 @@ export function AdminManualProofPanel({
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
           />
-          {(showNotesFor === "partial_delivery" ||
-            showNotesFor === "loaded" ||
-            actions.some(
-              (a) => a.phase === "partial_delivery" || a.needsPartialLoad
-            )) && (
+          {actions.some((a) => a.phase === "partial_delivery") &&
+          openProductLines.length > 0 ? (
+            <PartialDeliveryChecklist
+              lines={shipmentLines}
+              state={checklist}
+              onChange={setChecklist}
+            />
+          ) : null}
+          {(showNotesFor === "loaded" ||
+            actions.some((a) => a.needsPartialLoad) ||
+            (actions.some((a) => a.phase === "partial_delivery") &&
+              openProductLines.length === 0)) && (
             <Input
               label="Pallets on this trip"
               type="number"
               value={sentPallets}
               onChange={(e) => setSentPallets(e.target.value)}
-              hint="Required for partial load or partial delivery"
+              hint="Required for partial load (and partial delivery when no product lines)"
             />
           )}
         </div>
@@ -286,6 +360,17 @@ export function AdminManualProofPanel({
               if (action.needsPartialLoad && !sentPallets.trim()) {
                 setShowNotesFor(action.phase);
                 onError("Enter how many pallets are going on this truck.");
+                return;
+              }
+              if (
+                action.phase === "partial_delivery" &&
+                openProductLines.length > 0 &&
+                checklistToProofLines(checklist).length === 0
+              ) {
+                setShowNotesFor(action.phase);
+                onError(
+                  "Check at least one product and enter how much was sent."
+                );
                 return;
               }
               if (

@@ -10,6 +10,14 @@ import {
 } from "@/components/ui";
 import { OrderPrepareModal } from "@/components/wms/OrderPrepareModal";
 import {
+  PartialDeliveryChecklist,
+  checklistToProofLines,
+  emptyChecklistState,
+  type ChecklistState,
+} from "@/components/PartialDeliveryChecklist";
+import type { LineShipmentProgress } from "@/lib/shipment-line-progress";
+import type { ProofLineInput } from "@/lib/shipment-line-progress";
+import {
   PortalCard,
   PortalSectionTitle,
   PortalShell,
@@ -62,6 +70,14 @@ interface PortalOrder {
     isPartialLoad?: boolean;
     isFullyDelivered: boolean;
   };
+  shipmentLines?: LineShipmentProgress[];
+  items?: Array<{
+    id: number;
+    unit?: string | null;
+    productName?: string | null;
+    quantityM2?: number | null;
+    pieceCount?: number | null;
+  }>;
   assignment?: {
     vehicleId?: number;
     vehicleName: string;
@@ -169,6 +185,9 @@ export default function PortalPage() {
   const [partialPallets, setPartialPallets] = useState<Record<number, string>>(
     {}
   );
+  const [partialChecklist, setPartialChecklist] = useState<
+    Record<number, ChecklistState>
+  >({});
   const [partialLoadOpen, setPartialLoadOpen] = useState<
     Record<number, boolean>
   >({});
@@ -263,7 +282,12 @@ export default function PortalPage() {
     orderId: number,
     phase: DeliveryProofPhase,
     notes?: string,
-    extras?: { sentPallets?: number; sentM2?: number; sentPieces?: number }
+    extras?: {
+      sentPallets?: number;
+      sentM2?: number;
+      sentPieces?: number;
+      lines?: ProofLineInput[];
+    }
   ) {
     setError("");
     setSuccess("");
@@ -286,11 +310,14 @@ export default function PortalPage() {
     }
 
     if (phase === "partial_delivery") {
-      const pallets = extras?.sentPallets;
-      if (pallets == null || !Number.isFinite(pallets) || pallets <= 0) {
-        setError(sq.errors.partialPallets);
-        setBusyOrderId(null);
-        return;
+      const lines = extras?.lines ?? [];
+      if (lines.length === 0) {
+        const pallets = extras?.sentPallets;
+        if (pallets == null || !Number.isFinite(pallets) || pallets <= 0) {
+          setError(sq.errors.partialLines);
+          setBusyOrderId(null);
+          return;
+        }
       }
     }
 
@@ -313,6 +340,9 @@ export default function PortalPage() {
     if (extras?.sentM2 != null) form.set("sentM2", String(extras.sentM2));
     if (extras?.sentPieces != null) {
       form.set("sentPieces", String(extras.sentPieces));
+    }
+    if (extras?.lines && extras.lines.length > 0) {
+      form.set("lines", JSON.stringify(extras.lines));
     }
 
     try {
@@ -953,56 +983,116 @@ export default function PortalPage() {
                                   <button
                                     type="button"
                                     className="mt-2 w-full py-2 text-center text-sm font-medium text-orange-800 underline-offset-2 hover:underline"
-                                    onClick={() =>
+                                    onClick={() => {
                                       setPartialOpen({
                                         ...partialOpen,
                                         [order.id]: true,
-                                      })
-                                    }
+                                      });
+                                      if (
+                                        !partialChecklist[order.id] &&
+                                        (order.shipmentLines?.length ?? 0) > 0
+                                      ) {
+                                        setPartialChecklist({
+                                          ...partialChecklist,
+                                          [order.id]: emptyChecklistState(
+                                            order.shipmentLines ?? []
+                                          ),
+                                        });
+                                      }
+                                    }}
                                   >
                                     {sq.deliveryPartial}
                                   </button>
                                 ) : (
                                   <div className="mt-3 rounded-lg border border-orange-200 bg-orange-50/70 p-3">
-                                    <p className="text-sm font-medium text-zinc-900">
-                                      {sq.deliveryPartialHint}
-                                    </p>
-                                    <label className="mt-2 block text-xs text-zinc-600">
-                                      {sq.deliveryPartialPallets}
-                                      <input
-                                        type="number"
-                                        min={0.1}
-                                        step={0.1}
-                                        max={tripQty}
-                                        className="mt-1 w-full rounded border border-zinc-200 px-2 py-2 text-sm"
-                                        value={
-                                          partialPallets[order.id] ??
-                                          (onTruck != null ? String(onTruck) : "")
+                                    {(order.shipmentLines?.length ?? 0) > 0 ? (
+                                      <PartialDeliveryChecklist
+                                        lines={order.shipmentLines ?? []}
+                                        state={
+                                          partialChecklist[order.id] ??
+                                          emptyChecklistState(
+                                            order.shipmentLines ?? []
+                                          )
                                         }
-                                        onChange={(e) =>
-                                          setPartialPallets({
-                                            ...partialPallets,
-                                            [order.id]: e.target.value,
+                                        onChange={(next) =>
+                                          setPartialChecklist({
+                                            ...partialChecklist,
+                                            [order.id]: next,
                                           })
                                         }
-                                        placeholder={`max ${tripQty}`}
+                                        labels={{
+                                          title: sq.deliveryPartialProducts,
+                                          hint: sq.deliveryPartialHint,
+                                          full: sq.deliveryPartialFull,
+                                          qty: sq.deliveryPartialQty,
+                                          left: sq.deliveryPartialLeft,
+                                          ordered: sq.deliveryPartialOrdered,
+                                          remaining: sq.deliveryPartialRemaining,
+                                          alreadySent:
+                                            sq.deliveryPartialAlreadySent,
+                                        }}
                                       />
-                                    </label>
+                                    ) : (
+                                      <>
+                                        <p className="text-sm font-medium text-zinc-900">
+                                          {sq.deliveryPartialHint}
+                                        </p>
+                                        <label className="mt-2 block text-xs text-zinc-600">
+                                          {sq.deliveryPartialPallets}
+                                          <input
+                                            type="number"
+                                            min={0.1}
+                                            step={0.1}
+                                            max={tripQty}
+                                            className="mt-1 w-full rounded border border-zinc-200 px-2 py-2 text-sm"
+                                            value={
+                                              partialPallets[order.id] ??
+                                              (onTruck != null
+                                                ? String(onTruck)
+                                                : "")
+                                            }
+                                            onChange={(e) =>
+                                              setPartialPallets({
+                                                ...partialPallets,
+                                                [order.id]: e.target.value,
+                                              })
+                                            }
+                                            placeholder={`max ${tripQty}`}
+                                          />
+                                        </label>
+                                      </>
+                                    )}
                                     <Button
                                       className="mt-2 w-full py-3"
                                       disabled={busyOrderId === order.id}
-                                      onClick={() =>
+                                      onClick={() => {
+                                        const lines = checklistToProofLines(
+                                          partialChecklist[order.id] ??
+                                            emptyChecklistState(
+                                              order.shipmentLines ?? []
+                                            )
+                                        );
+                                        if (
+                                          (order.shipmentLines?.length ?? 0) >
+                                            0 &&
+                                          lines.length === 0
+                                        ) {
+                                          setError(sq.errors.partialLines);
+                                          return;
+                                        }
                                         submitProof(
                                           order.id,
                                           "partial_delivery",
                                           undefined,
-                                          {
-                                            sentPallets: Number(
-                                              partialPallets[order.id]
-                                            ),
-                                          }
-                                        )
-                                      }
+                                          lines.length > 0
+                                            ? { lines }
+                                            : {
+                                                sentPallets: Number(
+                                                  partialPallets[order.id]
+                                                ),
+                                              }
+                                        );
+                                      }}
                                     >
                                       {sq.deliveryPartialConfirm}
                                     </Button>

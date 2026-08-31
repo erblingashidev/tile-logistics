@@ -57,6 +57,24 @@ export async function POST(
       ? Number(sentPiecesRaw)
       : undefined;
 
+    let lines: Array<{
+      orderItemId: number;
+      sentFully?: boolean;
+      quantity?: number;
+    }> | undefined;
+    const linesRaw = form.get("lines");
+    if (linesRaw != null && String(linesRaw).trim() !== "") {
+      try {
+        const parsed = JSON.parse(String(linesRaw));
+        if (Array.isArray(parsed)) lines = parsed;
+      } catch {
+        return NextResponse.json(
+          { error: "Invalid product lines payload" },
+          { status: 400 }
+        );
+      }
+    }
+
     const photo = form.get("photo");
     let photoBuffer: Buffer | undefined;
     let photoMime: string | undefined;
@@ -78,6 +96,7 @@ export async function POST(
       sentPallets: Number.isFinite(sentPallets) ? sentPallets : undefined,
       sentM2: Number.isFinite(sentM2) ? sentM2 : undefined,
       sentPieces: Number.isFinite(sentPieces) ? sentPieces : undefined,
+      lines,
     });
 
     if (!result.ok) {
