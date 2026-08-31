@@ -312,7 +312,7 @@ export async function buildDailyOperationsExcel(reportDate?: string) {
     buffer: await workbookToBuffer(wb),
     filename: `AGIMI-operations-${date}.xlsx`,
     title: `AGIMI Operations ${date}`,
-    orderCount: orders.length,
+    orderCount: stats.scheduled,
     stats,
   };
 }

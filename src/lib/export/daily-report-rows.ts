@@ -345,9 +345,15 @@ export function buildReportSummaryRows(
     delayed: number;
     partial: number;
     scheduled: number;
+    scheduledWaiting?: number;
+    scheduledCompleted?: number;
+    completionRate?: number;
+    delayedShareOfOpen?: number;
     waitingValue: number;
     completedValue: number;
     completedTodayValue: number;
+    scheduledValue?: number;
+    delayedValue?: number;
     totalValue: number;
   },
   generatedAt: string
@@ -355,20 +361,48 @@ export function buildReportSummaryRows(
   return [
     { Metric: "Report date", Value: reportDate },
     { Metric: "Generated", Value: generatedAt },
-    { Metric: "Orders", Value: stats.total },
-    { Metric: "Waiting", Value: stats.waiting },
-    { Metric: "Completed", Value: stats.completed },
+    {
+      Metric: "Orders scheduled this day",
+      Value: stats.scheduled,
+    },
+    {
+      Metric: "Delayed backlog (not this day)",
+      Value: stats.delayed,
+    },
+    {
+      Metric: "Total rows in report (day + delayed)",
+      Value: stats.total,
+    },
+    { Metric: "Scheduled — waiting", Value: stats.scheduledWaiting ?? "" },
+    {
+      Metric: "Scheduled — completed",
+      Value: stats.scheduledCompleted ?? "",
+    },
+    {
+      Metric: "Day completion rate (%)",
+      Value: stats.completionRate ?? "",
+    },
+    { Metric: "Waiting (all open)", Value: stats.waiting },
     { Metric: "Completed today", Value: stats.completedToday },
-    { Metric: "Scheduled", Value: stats.scheduled },
-    { Metric: "Delayed", Value: stats.delayed },
     { Metric: "Partial", Value: stats.partial },
-    { Metric: "Total value (€)", Value: roundMoney(stats.totalValue) },
+    {
+      Metric: "Delayed share of open (%)",
+      Value: stats.delayedShareOfOpen ?? "",
+    },
+    {
+      Metric: "Value scheduled (€)",
+      Value: roundMoney(stats.scheduledValue ?? 0),
+    },
+    {
+      Metric: "Value delayed (€)",
+      Value: roundMoney(stats.delayedValue ?? 0),
+    },
     { Metric: "Value waiting (€)", Value: roundMoney(stats.waitingValue) },
-    { Metric: "Value completed (€)", Value: roundMoney(stats.completedValue) },
     {
       Metric: "Value completed today (€)",
       Value: roundMoney(stats.completedTodayValue),
     },
+    { Metric: "Total value in report (€)", Value: roundMoney(stats.totalValue) },
   ];
 }
 

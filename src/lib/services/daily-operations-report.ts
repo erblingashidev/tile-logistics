@@ -151,31 +151,58 @@ export async function getDailyReportOrders(reportDate?: string) {
   const partial = orders.filter(isPartial);
   const scheduled = orders.filter((o) => orderWorkDate(o) === date);
 
+  const scheduledWaiting = scheduled.filter(
+    (o) => !isComplete(o) && o.status !== "cancelled"
+  );
+  const scheduledCompleted = scheduled.filter(
+    (o) => o.status === "delivered"
+  );
   const waitingValue = waiting.reduce((s, o) => s + (o.price ?? 0), 0);
   const completedValue = completed.reduce((s, o) => s + (o.price ?? 0), 0);
   const completedTodayValue = completedToday.reduce(
     (s, o) => s + (o.price ?? 0),
     0
   );
+  const scheduledValue = scheduled.reduce((s, o) => s + (o.price ?? 0), 0);
+  const delayedValue = delayed.reduce((s, o) => s + (o.price ?? 0), 0);
   const totalValue = orders.reduce((s, o) => s + (o.price ?? 0), 0);
+  const scheduledCount = scheduled.length;
+  const delayedCount = delayed.length;
+  const completionRate =
+    scheduledCount > 0
+      ? Math.round((scheduledCompleted.length / scheduledCount) * 100)
+      : 0;
+  const delayedShareOfOpen =
+    waiting.length > 0
+      ? Math.round((delayedCount / waiting.length) * 100)
+      : 0;
 
   return {
     reportDate: date,
     orders,
     dayOrders,
     delayedOrders: delayed,
+    scheduledOrders: scheduled,
     stats: {
+      /** All rows included in the report (day + delayed backlog). */
       total: orders.length,
+      /** Orders scheduled for this report date (the real “that day” count). */
+      scheduled: scheduledCount,
+      scheduledWaiting: scheduledWaiting.length,
+      scheduledCompleted: scheduledCompleted.length,
       waiting: waiting.length,
       completed: completed.length,
       completedToday: completedToday.length,
-      delayed: delayed.length,
+      delayed: delayedCount,
       partial: partial.length,
-      scheduled: scheduled.length,
       waitingValue,
       completedValue,
       completedTodayValue,
+      scheduledValue,
+      delayedValue,
       totalValue,
+      completionRate,
+      delayedShareOfOpen,
     },
   };
 }
