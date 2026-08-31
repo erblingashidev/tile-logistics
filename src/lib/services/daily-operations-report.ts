@@ -13,6 +13,14 @@ function isComplete(order: ExportOrder): boolean {
   return order.status === "delivered" || order.status === "cancelled";
 }
 
+export function isDelayedOnReportDate(
+  order: ExportOrder,
+  reportDate: string
+): boolean {
+  if (isComplete(order) || order.status === "cancelled") return false;
+  return orderWorkDate(order) < reportDate;
+}
+
 function isPartial(order: ExportOrder): boolean {
   if (order.status === "partially_delivered") return true;
   const shipment = "shipment" in order ? order.shipment : undefined;
@@ -130,12 +138,16 @@ export async function getDailyReportOrders(reportDate?: string) {
   const completedToday = orders.filter((o) =>
     completedOnReportDate(o, date)
   );
-  const delayed = orders.filter((o) => {
-    const workDate = orderWorkDate(o);
-    return (
-      !isComplete(o) && o.status !== "cancelled" && workDate < date
-    );
-  });
+  const delayed = orders
+    .filter((o) => isDelayedOnReportDate(o, date))
+    .sort((a, b) => {
+      const byDate = orderWorkDate(a).localeCompare(orderWorkDate(b));
+      if (byDate !== 0) return byDate;
+      return a.invoiceNumber.localeCompare(b.invoiceNumber, "sq", {
+        numeric: true,
+      });
+    });
+  const dayOrders = orders.filter((o) => !isDelayedOnReportDate(o, date));
   const partial = orders.filter(isPartial);
   const scheduled = orders.filter((o) => orderWorkDate(o) === date);
 
@@ -150,6 +162,8 @@ export async function getDailyReportOrders(reportDate?: string) {
   return {
     reportDate: date,
     orders,
+    dayOrders,
+    delayedOrders: delayed,
     stats: {
       total: orders.length,
       waiting: waiting.length,

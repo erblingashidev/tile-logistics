@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { getDailyReportOrders } from "@/lib/services/daily-operations-report";
 import { buildPickerPerformanceRows } from "@/lib/export/daily-report-rows";
+import { orderWorkDate } from "@/lib/delivery-schedule";
+import { daysBetweenDates } from "@/lib/export/report-dates";
 
 export const runtime = "nodejs";
 
@@ -12,7 +14,7 @@ export async function GET(request: NextRequest) {
       request.nextUrl.searchParams.get("date")?.trim() ||
       new Date().toISOString().slice(0, 10);
 
-    const { orders, stats } = await getDailyReportOrders(date);
+    const { orders, delayedOrders, stats } = await getDailyReportOrders(date);
     const pickerRows = buildPickerPerformanceRows(orders, date);
 
     return NextResponse.json({
@@ -28,6 +30,22 @@ export async function GET(request: NextRequest) {
       waitingValue: stats.waitingValue,
       completedValue: stats.completedValue,
       completedTodayValue: stats.completedTodayValue,
+      delayedOrders: delayedOrders.map((order) => {
+        const deliveryDate = orderWorkDate(order);
+        return {
+          id: order.id,
+          invoiceNumber: order.invoiceNumber,
+          customerName: order.customerName,
+          location: order.city || order.region || order.location,
+          deliveryDate,
+          daysOverdue: daysBetweenDates(deliveryDate, date),
+          status:
+            "deliveryStageLabel" in order && order.deliveryStageLabel
+              ? order.deliveryStageLabel
+              : order.status.replace(/_/g, " "),
+          pallets: order.totalPallets,
+        };
+      }),
       pickers: pickerRows.map((row) => ({
         name: row.Picker,
         orders: row.Orders,

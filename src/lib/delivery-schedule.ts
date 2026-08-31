@@ -101,6 +101,42 @@ export function pastWorkDateCompletionNote(
   return `This order is still on the ${label} list. Completing it will count as ${label}. Reschedule to today first if it was actually finished today.`;
 }
 
+/** Compact label for lists: Today / Yesterday / Tomorrow, otherwise the date. */
+export function formatWorkDateLabel(
+  order: {
+    requestedDeliveryDate?: string | null;
+    orderDate: string;
+  },
+  asOf = new Date()
+): string {
+  const workDate = orderWorkDate(order);
+  if (!workDate) return "—";
+  const today = todayDateString(asOf);
+  if (workDate === today) return `Today · ${workDate}`;
+  if (workDate === addDaysToDateString(today, -1)) {
+    return `Yesterday · ${workDate}`;
+  }
+  if (workDate === addDaysToDateString(today, 1)) {
+    return `Tomorrow · ${workDate}`;
+  }
+  return workDate;
+}
+
+export function isWorkDateOverdue(
+  order: {
+    requestedDeliveryDate?: string | null;
+    orderDate: string;
+    status?: string;
+    deliveryStage?: string;
+  },
+  asOf = new Date()
+): boolean {
+  const stage = order.deliveryStage ?? order.status ?? "";
+  if (stage === "delivered" || stage === "cancelled") return false;
+  const workDate = orderWorkDate(order);
+  return Boolean(workDate && workDate < todayDateString(asOf));
+}
+
 export type WorkDayFilter =
   | "today"
   | "tomorrow"

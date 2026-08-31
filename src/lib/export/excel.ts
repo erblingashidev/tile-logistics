@@ -227,28 +227,20 @@ export async function buildPartialDeliveriesExcel(filters: {
 
 /** Daily operations Excel — date in filename, color-coded rows. */
 export async function buildDailyOperationsExcel(reportDate?: string) {
-  const { reportDate: date, orders, stats } =
+  const { reportDate: date, orders, dayOrders, delayedOrders, stats } =
     await getDailyReportOrders(reportDate);
   const generatedAt = new Date().toLocaleString("en-GB", {
     dateStyle: "short",
     timeStyle: "short",
   });
 
-  const waitingOrders = orders.filter(
+  const waitingOrders = dayOrders.filter(
     (o) => o.status !== "delivered" && o.status !== "cancelled"
   );
-  const completedOrders = orders.filter((o) => o.status === "delivered");
+  const completedOrders = dayOrders.filter((o) => o.status === "delivered");
   const completedTodayOrders = orders.filter((o) =>
     completedOnReportDate(o, date)
   );
-  const delayedOrders = orders.filter((o) => {
-    const workDate = o.requestedDeliveryDate?.trim() || o.orderDate;
-    return (
-      o.status !== "delivered" &&
-      o.status !== "cancelled" &&
-      workDate < date
-    );
-  });
 
   const wb = createStyledWorkbook();
   const usedNames = new Set<string>();
@@ -262,7 +254,14 @@ export async function buildDailyOperationsExcel(reportDate?: string) {
   addStyledDataSheet(
     wb,
     sanitizeSheetName("Orders", usedNames),
-    buildDailyOrderRows(orders, date),
+    buildDailyOrderRows(dayOrders, date),
+    { rowStatus: classifyOrderExportRow, highlightColumn: "Pipeline" }
+  );
+
+  addStyledDataSheet(
+    wb,
+    sanitizeSheetName("Delayed", usedNames),
+    buildDailyOrderRows(delayedOrders, date),
     { rowStatus: classifyOrderExportRow, highlightColumn: "Pipeline" }
   );
 
@@ -276,7 +275,7 @@ export async function buildDailyOperationsExcel(reportDate?: string) {
   addStyledDataSheet(
     wb,
     sanitizeSheetName("Orders by picker", usedNames),
-    buildOrdersByPickerRows(orders, date),
+    buildOrdersByPickerRows(dayOrders, date),
     { rowStatus: classifyOrderExportRow, highlightColumn: "Pipeline" }
   );
 
@@ -303,15 +302,6 @@ export async function buildDailyOperationsExcel(reportDate?: string) {
       wb,
       sanitizeSheetName("Completed today", usedNames),
       buildDailyOrderRows(completedTodayOrders, date),
-      { rowStatus: classifyOrderExportRow, highlightColumn: "Pipeline" }
-    );
-  }
-
-  if (delayedOrders.length > 0) {
-    addStyledDataSheet(
-      wb,
-      sanitizeSheetName("Delayed", usedNames),
-      buildDailyOrderRows(delayedOrders, date),
       { rowStatus: classifyOrderExportRow, highlightColumn: "Pipeline" }
     );
   }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addDaysToDateString,
+  formatWorkDateLabel,
   pastWorkDateCompletionNote,
   proofCapturedAtTimestamp,
   statusChangeTimestamp,
@@ -82,5 +83,29 @@ describe("pastWorkDateCompletionNote", () => {
       localNoon("2026-08-19")
     );
     expect(note).toBeNull();
+  });
+});
+
+describe("formatWorkDateLabel", () => {
+  it("labels today, yesterday, and other dates", () => {
+    const asOf = localNoon("2026-08-19");
+    expect(
+      formatWorkDateLabel(
+        { orderDate: "2026-08-19", requestedDeliveryDate: "2026-08-19" },
+        asOf
+      )
+    ).toBe("Today · 2026-08-19");
+    expect(
+      formatWorkDateLabel(
+        { orderDate: "2026-08-18", requestedDeliveryDate: "2026-08-18" },
+        asOf
+      )
+    ).toBe("Yesterday · 2026-08-18");
+    expect(
+      formatWorkDateLabel(
+        { orderDate: "2026-08-10", requestedDeliveryDate: "2026-08-10" },
+        asOf
+      )
+    ).toBe("2026-08-10");
   });
 });

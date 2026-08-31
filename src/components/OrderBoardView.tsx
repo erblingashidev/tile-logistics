@@ -7,6 +7,10 @@ import {
 import { Badge, Button } from "@/components/ui";
 import { formatM2 } from "@/lib/calculations";
 import { assignmentTruckLabel } from "@/lib/delivery-rounds";
+import {
+  formatWorkDateLabel,
+  isWorkDateOverdue,
+} from "@/lib/delivery-schedule";
 import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 import {
   orderListRowClass,
@@ -56,6 +60,20 @@ function locationDetail(order: OrderListCardOrder): string {
   if (location && location !== region) return location;
   if (city && city !== region) return city;
   return location || city || "—";
+}
+
+function DeliveryDateLine({ order }: { order: OrderListCardOrder }) {
+  const overdue = isWorkDateOverdue(order);
+  return (
+    <p
+      className={`truncate text-xs tabular-nums ${
+        overdue ? "font-medium text-amber-700" : "text-zinc-500"
+      }`}
+      title="Scheduled delivery date"
+    >
+      {formatWorkDateLabel(order)}
+    </p>
+  );
 }
 
 function StageBadge({ order }: { order: OrderListCardOrder }) {
@@ -205,6 +223,7 @@ function OrderRow({
               <p className="mt-1 truncate text-xs text-zinc-500">
                 {locationDetail(order)}
               </p>
+              <DeliveryDateLine order={order} />
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
@@ -338,6 +357,7 @@ function OrderRow({
             <p className="truncate text-xs text-zinc-500">
               {locationDetail(order)}
             </p>
+            <DeliveryDateLine order={order} />
           </div>
           <p className="text-sm tabular-nums text-zinc-700">
             {order.totalPallets} plt
@@ -517,7 +537,7 @@ export function OrderBoardView({
                 <span />
                 <span>Invoice (click)</span>
                 <span>Customer</span>
-                <span>Location</span>
+                <span>Location / date</span>
                 <span>Load</span>
                 <span>Status</span>
                 <span className="text-right">Actions</span>

@@ -481,7 +481,8 @@ export default function OrdersPage() {
     const deliveryRound = params.get("deliveryRound");
     const parsedWorkDay = parseWorkDayFilter(params.get("workDay"));
     const assignment = params.get("assignment");
-    if (vehicleId || parsedWorkDay) {
+    const search = params.get("search");
+    if (vehicleId || parsedWorkDay || search) {
       setFilters((f) => ({
         ...f,
         ...(vehicleId
@@ -497,8 +498,10 @@ export default function OrdersPage() {
               workDayDate: params.get("date") || f.workDayDate,
             }
           : {}),
+        ...(search ? { search } : {}),
       }));
     }
+    if (search) setSearchInput(search);
     if (
       assignment === "unassigned" ||
       assignment === "assigned" ||

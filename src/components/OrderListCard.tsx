@@ -18,6 +18,7 @@ import { normalizeOrderUnit } from "@/lib/constants";
 import {
   formatDeliverySchedule,
   deliveryScheduleBadgeTone,
+  formatWorkDateLabel,
   isOrderReadyToShip,
 } from "@/lib/delivery-schedule";
 import { assignmentTruckLabel } from "@/lib/delivery-rounds";
@@ -292,8 +293,9 @@ export function OrderListCard({
           </div>
         )}
 
-        <div className="grid gap-3 border-b border-zinc-100 bg-zinc-50/70 px-4 py-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-3 border-b border-zinc-100 bg-zinc-50/70 px-4 py-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <MetaItem label="Region" value={region} />
+          <MetaItem label="Delivery" value={formatWorkDateLabel(order)} />
           <MetaItem label="Order date" value={order.orderDate} />
           <MetaItem label="Referenti" value={referenti || "—"} />
           <MetaItem label="Price" value={`€${order.price.toFixed(2)}`} />
