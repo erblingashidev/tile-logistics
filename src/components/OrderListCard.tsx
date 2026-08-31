@@ -466,6 +466,13 @@ export function OrderListCard({
                 ?.employeeId
             }
             linkedOrders={order.deliveryLinks}
+            shipmentLines={
+              (
+                order as OrderListCardOrder & {
+                  shipmentLines?: import("@/lib/shipment-line-progress").LineShipmentProgress[];
+                }
+              ).shipmentLines
+            }
             onUpdated={onSaved}
             onError={onError}
           />

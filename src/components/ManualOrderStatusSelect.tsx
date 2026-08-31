@@ -1,10 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button, Select } from "@/components/ui";
+import {
+  PartialDeliveryChecklist,
+  checklistToProofLines,
+  emptyChecklistState,
+  type ChecklistState,
+} from "@/components/PartialDeliveryChecklist";
 import { MANUAL_ORDER_STATUSES, type ManualOrderStatus } from "@/lib/constants";
 import { pastWorkDateCompletionNote } from "@/lib/delivery-schedule";
 import { manualStatusFromOrder } from "@/lib/manual-order-status-display";
+import type { LineShipmentProgress } from "@/lib/shipment-line-progress";
 
 interface VehicleOption {
   id: number;
@@ -33,6 +40,7 @@ interface ManualOrderStatusSelectProps {
   currentVehicleId?: number | null;
   currentPickerId?: number | null;
   linkedOrders?: LinkedOrder[];
+  shipmentLines?: LineShipmentProgress[];
   onUpdated: () => void;
   onError: (message: string) => void;
 }
@@ -58,10 +66,14 @@ export function ManualOrderStatusSelect({
   currentVehicleId,
   currentPickerId,
   linkedOrders = [],
+  shipmentLines = [],
   onUpdated,
   onError,
 }: ManualOrderStatusSelectProps) {
-  const resolvedStatus = manualStatusFromOrder({ status: currentStatus, prepStatus });
+  const resolvedStatus = manualStatusFromOrder({
+    status: currentStatus,
+    prepStatus,
+  });
   const [status, setStatus] = useState(resolvedStatus);
   const [vehicleId, setVehicleId] = useState(
     currentVehicleId ? String(currentVehicleId) : ""
@@ -71,6 +83,16 @@ export function ManualOrderStatusSelect({
   );
   const [applyToLinked, setApplyToLinked] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [checklist, setChecklist] = useState<ChecklistState>(() =>
+    emptyChecklistState(shipmentLines)
+  );
+
+  const openProductLines = useMemo(
+    () => shipmentLines.filter((l) => l.remaining > 0),
+    [shipmentLines]
+  );
+  const showPartialChecklist =
+    status === "partially_delivered" && openProductLines.length > 0;
 
   useEffect(() => {
     setStatus(manualStatusFromOrder({ status: currentStatus, prepStatus }));
@@ -80,6 +102,14 @@ export function ManualOrderStatusSelect({
     setVehicleId(currentVehicleId ? String(currentVehicleId) : "");
     setPickerId(currentPickerId ? String(currentPickerId) : "");
   }, [currentVehicleId, currentPickerId]);
+
+  useEffect(() => {
+    setChecklist(emptyChecklistState(shipmentLines));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    orderId,
+    shipmentLines.map((l) => `${l.orderItemId}:${l.remaining}`).join("|"),
+  ]);
 
   const partners = linkedOrders.filter((link) => link.id !== orderId);
   const isCurrentlyDelivered = resolvedStatus === "delivered";
@@ -91,8 +121,23 @@ export function ManualOrderStatusSelect({
     showLinkedOption && applyToLinked ? partners.length + 1 : 1;
 
   async function save() {
-    setBusy(true);
     onError("");
+
+    let lines:
+      | Array<{ orderItemId: number; sentFully?: boolean; quantity?: number }>
+      | undefined;
+
+    if (status === "partially_delivered" && openProductLines.length > 0) {
+      lines = checklistToProofLines(checklist);
+      if (lines.length === 0) {
+        onError(
+          "Check at least one product and enter how much was sent (full or custom qty in that product’s unit)."
+        );
+        return;
+      }
+    }
+
+    setBusy(true);
 
     const payload: Record<string, unknown> = {
       status,
@@ -100,6 +145,7 @@ export function ManualOrderStatusSelect({
     };
     if (vehicleId) payload.vehicleId = Number(vehicleId);
     if (pickerId) payload.pickerId = Number(pickerId);
+    if (lines) payload.lines = lines;
 
     try {
       const res = await fetch(`/api/orders/${orderId}/status`, {
@@ -121,7 +167,8 @@ export function ManualOrderStatusSelect({
   const unchanged =
     status === resolvedStatus &&
     vehicleId === (currentVehicleId ? String(currentVehicleId) : "") &&
-    pickerId === (currentPickerId ? String(currentPickerId) : "");
+    pickerId === (currentPickerId ? String(currentPickerId) : "") &&
+    !(status === "partially_delivered" && showPartialChecklist);
   const pastDateNote =
     orderDate &&
     (status === "delivered" || status === "partially_delivered")
@@ -160,6 +207,33 @@ export function ManualOrderStatusSelect({
             : "Update status"}
         </Button>
       </div>
+
+      {showPartialChecklist && (
+        <div className="rounded-lg border border-orange-200 bg-orange-50/50 p-3">
+          <PartialDeliveryChecklist
+            lines={shipmentLines}
+            state={checklist}
+            onChange={setChecklist}
+            labels={{
+              title: "Products sent on this partial delivery",
+              hint: "Check each product. Use Full, or enter qty in the same unit as the invoice (m², bags, pcs, kg).",
+              full: "Send fully",
+              qty: "Qty sent now",
+              left: "Left behind",
+              ordered: "On invoice",
+              remaining: "still left",
+              alreadySent: "already sent",
+            }}
+          />
+        </div>
+      )}
+
+      {status === "partially_delivered" && openProductLines.length === 0 && (
+        <p className="text-xs text-amber-800">
+          No open product lines left on this order — status will be saved
+          without a qty checklist.
+        </p>
+      )}
 
       {pastDateNote && (
         <p className="text-xs leading-snug text-amber-800">{pastDateNote}</p>

@@ -8,6 +8,7 @@ import { getLinkedOrderIdGroup } from "@/lib/services/order-delivery-links";
 import {
   deleteDeliveryProofsForOrder,
   deleteDeliveryProofsForOrders,
+  getOrderLineShipmentProgress,
   submitAdminDeliveryProof,
 } from "@/lib/services/delivery-proofs";
 import { getOrderStaff } from "@/lib/services/employees";
@@ -21,6 +22,7 @@ import {
   applyRetroactiveOrderAttributionBatch,
   getOrder,
 } from "@/lib/services/orders";
+import type { ProofLineInput } from "@/lib/shipment-line-progress";
 
 export { manualStatusFromOrder };
 
@@ -98,6 +100,8 @@ export async function updateManualOrderStatus(input: {
   applyToLinked?: boolean;
   vehicleId?: number;
   pickerId?: number;
+  /** Per-product qty when marking partially delivered. */
+  lines?: ProofLineInput[];
 }) {
   const applyToLinked = input.applyToLinked !== false;
   const hasAttribution =
@@ -115,6 +119,76 @@ export async function updateManualOrderStatus(input: {
       if (!attribution.ok) return attribution;
     }
     return markOrderManuallyPrepared(input.orderId);
+  }
+
+  if (input.status === "partially_delivered") {
+    if (hasAttribution) {
+      const attribution = await applyRetroactiveOrderAttribution({
+        orderId: input.orderId,
+        vehicleId: input.vehicleId,
+        deliveryRound: 1,
+        pickerId: input.pickerId,
+      });
+      if (!attribution.ok) return attribution;
+    }
+
+    const openLines = (await getOrderLineShipmentProgress(input.orderId)).filter(
+      (l) => l.remaining > 0
+    );
+
+    if (openLines.length > 0) {
+      const lines = input.lines ?? [];
+      if (lines.length === 0) {
+        return {
+          ok: false as const,
+          error:
+            "Check at least one product and enter how much was sent (full or custom qty).",
+        };
+      }
+
+      const staff = await getOrderStaff(input.orderId);
+      const actorId =
+        staff.driver?.employeeId ??
+        staff.picker?.employeeId ??
+        staff.groupLeader?.employeeId ??
+        staff.staff?.find((s) => s.role === "unloader")?.employeeId ??
+        input.pickerId;
+
+      if (!actorId) {
+        return {
+          ok: false as const,
+          error:
+            "Choose a picker (Prepared by) before saving partial delivery, or assign staff to the order first.",
+        };
+      }
+
+      const proof = await submitAdminDeliveryProof({
+        orderId: input.orderId,
+        phase: "partial_delivery",
+        employeeId: actorId,
+        notes: "Manual partial delivery — product checklist from admin status.",
+        force: true,
+        allowDeliveredWithoutPhoto: true,
+        lines,
+      });
+      if (!proof.ok) {
+        return { ok: false as const, error: proof.error };
+      }
+
+      return {
+        ok: true as const,
+        orderId: input.orderId,
+        status:
+          proof.orderStatus === "delivered"
+            ? ("delivered" as const)
+            : ("partially_delivered" as const),
+        updatedOrderIds: [input.orderId],
+        linked: false,
+        shipment: proof.shipment,
+        sent: proof.sent,
+      };
+    }
+    // No open product lines — fall through to plain status update.
   }
 
   const orderStatus = input.status as OrderStatus;

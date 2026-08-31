@@ -40,6 +40,7 @@ export async function PATCH(
       applyToLinked,
       vehicleId: parseOptionalId(body.vehicleId),
       pickerId: parseOptionalId(body.pickerId),
+      lines: Array.isArray(body.lines) ? body.lines : undefined,
     });
     if (!result.ok) {
       return NextResponse.json(
