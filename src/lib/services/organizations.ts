@@ -30,13 +30,20 @@ import {
   organizationUnits,
 } from "@/lib/db/schema";
 import { logActivity } from "@/lib/logger";
+import {
+  DEFAULT_ORGANIZATION_ID,
+  LEGACY_AGIMI_NAME,
+  LEGACY_AGIMI_ORGANIZATION_ID,
+  LEGACY_AGIMI_SLUG,
+} from "@/lib/organizations/constants";
 import { MIN_ADMIN_PASSWORD_LENGTH } from "@/lib/services/admins";
 
-export const DEFAULT_ORGANIZATION_ID = 1;
-/** Primary tenant — existing AGIMI orders, staff, and settings stay on this org. */
-export const LEGACY_AGIMI_ORGANIZATION_ID = 1;
-export const LEGACY_AGIMI_SLUG = "agimi";
-export const LEGACY_AGIMI_NAME = "AGIMI COM SHPK";
+export {
+  DEFAULT_ORGANIZATION_ID,
+  LEGACY_AGIMI_ORGANIZATION_ID,
+  LEGACY_AGIMI_SLUG,
+  LEGACY_AGIMI_NAME,
+} from "@/lib/organizations/constants";
 
 function rowsFromExecute(result: unknown): Array<Record<string, unknown>> {
   const rows = (result as { rows?: Array<Record<string, unknown>> })?.rows;

@@ -18,7 +18,7 @@ import {
   FEATURE_FLAGS_COOKIE,
   parseFeatureFlagsCookie,
 } from "@/lib/features/cookie";
-import { LEGACY_AGIMI_ORGANIZATION_ID } from "@/lib/services/organizations";
+import { LEGACY_AGIMI_ORGANIZATION_ID } from "@/lib/organizations/constants";
 
 const PUBLIC_PREFIXES = [
   "/login",
