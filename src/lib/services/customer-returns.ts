@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { dbAll, dbOne } from "@/lib/db/query";
 import {
@@ -8,20 +8,17 @@ import {
 } from "@/lib/db/schema";
 import {
   isReturnCondition,
-  returnLocationCode,
   type ReturnCondition,
 } from "@/lib/customer-return-conditions";
-import { normalizeOrderUnit, type OrderUnit } from "@/lib/constants";
+import { type OrderUnit } from "@/lib/constants";
 import { isLogisticsLine } from "@/lib/order-lines/classification";
 import { logActivity } from "@/lib/logger";
 import { getOrderByInvoiceNumber } from "@/lib/services/orders";
 import {
-  computeLineShipmentProgress,
   lineNativeOrdered,
   type LineShipmentProgress,
   type OrderItemLike,
 } from "@/lib/shipment-line-progress";
-import { ensureReturnLocation, receiveStock } from "@/lib/services/stock";
 
 export type ReturnableLine = LineShipmentProgress & {
   returnable: number;
@@ -135,19 +132,6 @@ export async function lookupOrderForReturn(invoiceNumber: string) {
   };
 }
 
-function stockReceiveArgs(quantity: number, unit: OrderUnit) {
-  if (unit === "m2") {
-    return { quantityM2: quantity, skipStock: false as const };
-  }
-  if (unit === "piece") {
-    return { loosePieces: Math.round(quantity), skipStock: false as const };
-  }
-  if (unit === "kg") {
-    return { skipStock: true as const, reason: "kg returns are recorded only" };
-  }
-  return { quantityM2: quantity, skipStock: false as const };
-}
-
 export async function createCustomerReturn(input: {
   invoiceNumber: string;
   lines: ReturnLineInput[];
@@ -183,7 +167,6 @@ export async function createCustomerReturn(input: {
     quantityM2: number;
     loosePieces: number;
     notes: string | null;
-    productEan: string | null;
     productName: string;
   }> = [];
 
@@ -217,7 +200,6 @@ export async function createCustomerReturn(input: {
       quantityM2: item.unit === "m2" ? qty : 0,
       loosePieces: item.unit === "piece" ? Math.round(qty) : 0,
       notes: line.notes?.trim() || null,
-      productEan: item.productEan,
       productName: item.productName,
     });
   }
@@ -253,77 +235,6 @@ export async function createCustomerReturn(input: {
     }))
   );
 
-  const stockResults: Array<{ productName: string; ok: boolean; error?: string }> =
-    [];
-
-  for (const line of resolvedLines) {
-    const ean = line.productEan?.trim();
-    if (!ean || ean.length < 4) {
-      stockResults.push({
-        productName: line.productName,
-        ok: false,
-        error: "No barcode on invoice line — return recorded, stock not updated.",
-      });
-      continue;
-    }
-
-    const locCode = returnLocationCode(line.condition);
-    const location = await ensureReturnLocation({
-      code: locCode,
-      label:
-        line.condition === "untouched"
-          ? "Returns — sellable"
-          : "Returns — damaged",
-      notes: `Customer returns (${line.condition})`,
-    });
-    if (!location) {
-      stockResults.push({
-        productName: line.productName,
-        ok: false,
-        error: "Could not create return location.",
-      });
-      continue;
-    }
-
-    const orderItem = await dbOne(
-      db
-        .select()
-        .from(orderItems)
-        .where(eq(orderItems.id, line.orderItemId))
-    );
-
-    const receiveArgs = stockReceiveArgs(line.quantity, line.unit);
-    if (receiveArgs.skipStock) {
-      stockResults.push({
-        productName: line.productName,
-        ok: true,
-        error: receiveArgs.reason,
-      });
-      continue;
-    }
-
-    const stock = await receiveStock({
-      ean,
-      productName: line.productName,
-      locationId: location.id,
-      tileWidthCm: orderItem?.tileWidthCm ?? undefined,
-      tileHeightCm: orderItem?.tileHeightCm ?? undefined,
-      tileThicknessCm: orderItem?.tileThicknessCm ?? undefined,
-      movementType: "return",
-      referenceType: "customer_return",
-      referenceId: inserted.id,
-      employeeId: input.employeeId,
-      notes: `Return ${line.condition} · ${lookup.invoiceNumber}${line.notes ? ` · ${line.notes}` : ""}`,
-      ...receiveArgs,
-    });
-
-    stockResults.push({
-      productName: line.productName,
-      ok: stock.ok,
-      error: stock.ok ? undefined : stock.error,
-    });
-  }
-
   await logActivity(
     "create",
     "customer_return",
@@ -335,7 +246,13 @@ export async function createCustomerReturn(input: {
         orderId: lookup.orderId,
         invoiceNumber: lookup.invoiceNumber,
         lineCount: resolvedLines.length,
-        stockResults,
+        lines: resolvedLines.map((line) => ({
+          productName: line.productName,
+          quantity: line.quantity,
+          unit: line.unit,
+          condition: line.condition,
+          notes: line.notes,
+        })),
       },
     }
   );
@@ -345,17 +262,85 @@ export async function createCustomerReturn(input: {
     returnId: inserted.id,
     invoiceNumber: lookup.invoiceNumber,
     lineCount: resolvedLines.length,
-    stockResults,
   };
 }
 
-export async function listCustomerReturns(limit = 50) {
+export type CustomerReturnSummary = {
+  id: number;
+  orderId: number;
+  invoiceNumber: string;
+  status: string;
+  notes: string | null;
+  createdAt: string;
+  postedAt: string | null;
+  lines: Array<{
+    id: number;
+    productName: string;
+    quantity: number;
+    unit: string;
+    condition: string;
+    notes: string | null;
+  }>;
+};
+
+export async function listCustomerReturns(limit = 50): Promise<CustomerReturnSummary[]> {
   const db = await getDb();
-  return dbAll(
+  const headers = await dbAll(
     db
       .select()
       .from(customerReturns)
       .orderBy(desc(customerReturns.createdAt))
       .limit(limit)
   );
+  if (!headers.length) return [];
+
+  const returnIds = headers.map((h) => h.id);
+  const allLines = returnIds.length
+    ? await dbAll(
+        db
+          .select({
+            id: customerReturnLines.id,
+            returnId: customerReturnLines.returnId,
+            quantity: customerReturnLines.quantity,
+            unit: customerReturnLines.unit,
+            condition: customerReturnLines.condition,
+            notes: customerReturnLines.notes,
+            productName: orderItems.productName,
+            productEan: orderItems.productEan,
+          })
+          .from(customerReturnLines)
+          .innerJoin(
+            orderItems,
+            eq(customerReturnLines.orderItemId, orderItems.id)
+          )
+          .where(inArray(customerReturnLines.returnId, returnIds))
+      )
+    : [];
+
+  const linesByReturn = new Map<number, CustomerReturnSummary["lines"]>();
+  for (const row of allLines) {
+    if (!returnIds.includes(row.returnId)) continue;
+    const list = linesByReturn.get(row.returnId) ?? [];
+    list.push({
+      id: row.id,
+      productName:
+        row.productName?.trim() || row.productEan?.trim() || "Product",
+      quantity: row.quantity,
+      unit: row.unit,
+      condition: row.condition,
+      notes: row.notes,
+    });
+    linesByReturn.set(row.returnId, list);
+  }
+
+  return headers.map((h) => ({
+    id: h.id,
+    orderId: h.orderId,
+    invoiceNumber: h.invoiceNumber,
+    status: h.status,
+    notes: h.notes,
+    createdAt: h.createdAt,
+    postedAt: h.postedAt,
+    lines: linesByReturn.get(h.id) ?? [],
+  }));
 }

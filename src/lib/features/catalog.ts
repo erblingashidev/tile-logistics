@@ -92,7 +92,7 @@ export const FEATURE_FLAG_META: Array<{
     group: "Warehouse",
     title: "Warehouse (WMS)",
     description:
-      "Outdoor warehouse tools: unloading, row mapping, stock levels, inventory counts, and the Returns tab inside Warehouse for admin and depot staff.",
+      "Outdoor warehouse tools: unloading, row mapping, stock levels, and inventory counts for admin and depot staff.",
     enabledLabel: "Warehouse module on",
     disabledLabel: "Hidden",
   },

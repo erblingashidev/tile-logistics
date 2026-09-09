@@ -10,9 +10,3 @@ export const RETURN_CONDITION_LABELS: Record<ReturnCondition, string> = {
 export function isReturnCondition(value: string): value is ReturnCondition {
   return (RETURN_CONDITIONS as readonly string[]).includes(value);
 }
-
-/** Warehouse bin for returned stock by condition. */
-export function returnLocationCode(condition: ReturnCondition): string {
-  if (condition === "untouched") return "RETURNS-SELLABLE";
-  return "RETURNS-DAMAGED";
-}

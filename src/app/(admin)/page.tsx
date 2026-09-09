@@ -22,7 +22,7 @@ export default async function DashboardPage() {
           { href: "/map", label: "Map" },
         ]
       : []),
-    { href: "/warehouse/returns", label: "Returns" },
+    { href: "/returns", label: "Returns" },
     ...(flags.warehouseWms ? [{ href: "/warehouse", label: "Warehouse" }] : []),
     { href: "/vehicles", label: "Vehicles" },
     { href: "/employees", label: "Employees" },
