@@ -340,6 +340,19 @@ export async function loginAdminFromDb(
     await syncLinkedEmployee(row, {});
   }
 
+  if (row.isPlatformAdmin === 1) {
+    return {
+      role: "admin",
+      adminId: row.id,
+      name: row.name,
+      username: row.username,
+      title: row.title ?? null,
+      organizationId: null,
+      isPlatformAdmin: true,
+      onboardingComplete: true,
+    };
+  }
+
   let organizationId = row.organizationId ?? LEGACY_AGIMI_ORGANIZATION_ID;
   if (organizationId === LEGACY_AGIMI_ORGANIZATION_ID) {
     await repairAgimiAdminLogin(row.id);
@@ -355,7 +368,7 @@ export async function loginAdminFromDb(
     username: row.username,
     title: row.title ?? null,
     organizationId,
-    isPlatformAdmin: row.isPlatformAdmin === 1,
+    isPlatformAdmin: false,
     onboardingComplete,
   };
 }

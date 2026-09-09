@@ -106,12 +106,32 @@ export async function verifySessionToken(
     };
     if (!parsed.exp || parsed.exp < Date.now()) return null;
     if (parsed.role === "admin") {
+      const isPlatformAdmin =
+        parsed.isPlatformAdmin === true ||
+        (typeof parsed.adminId === "number" && parsed.adminId === 0);
       const organizationId =
         typeof parsed.organizationId === "number"
           ? parsed.organizationId
           : parsed.organizationId === null
             ? null
             : undefined;
+
+      if (isPlatformAdmin && organizationId === null) {
+        return {
+          role: "admin",
+          adminId: typeof parsed.adminId === "number" ? parsed.adminId : 0,
+          name: parsed.name || "Admin",
+          username: typeof parsed.username === "string" ? parsed.username : "",
+          title:
+            typeof parsed.title === "string" || parsed.title === null
+              ? parsed.title
+              : null,
+          organizationId: null,
+          isPlatformAdmin: true,
+          onboardingComplete: true,
+        };
+      }
+
       const legacyAgimi = isLegacyAgimiOrganization(organizationId);
       return {
         role: "admin",
@@ -125,7 +145,7 @@ export async function verifySessionToken(
         organizationId: legacyAgimi
           ? LEGACY_AGIMI_ORGANIZATION_ID
           : organizationId,
-        isPlatformAdmin: parsed.isPlatformAdmin === true,
+        isPlatformAdmin,
         onboardingComplete: legacyAgimi
           ? true
           : parsed.onboardingComplete === true,

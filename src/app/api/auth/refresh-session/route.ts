@@ -35,12 +35,26 @@ export async function POST() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    let organizationId = row.organizationId ?? LEGACY_AGIMI_ORGANIZATION_ID;
-    if (isLegacyAgimiOrganization(organizationId)) {
-      await repairAgimiAdminLogin(row.id);
-      organizationId = LEGACY_AGIMI_ORGANIZATION_ID;
+    const isPlatformAdmin = row.isPlatformAdmin === 1;
+    let organizationId: number | null;
+    let onboardingComplete: boolean;
+
+    if (isPlatformAdmin) {
+      organizationId =
+        typeof session.organizationId === "number" && session.organizationId > 0
+          ? session.organizationId
+          : null;
+      onboardingComplete = organizationId
+        ? await isOnboardingComplete(organizationId)
+        : true;
+    } else {
+      organizationId = row.organizationId ?? LEGACY_AGIMI_ORGANIZATION_ID;
+      if (isLegacyAgimiOrganization(organizationId)) {
+        await repairAgimiAdminLogin(row.id);
+        organizationId = LEGACY_AGIMI_ORGANIZATION_ID;
+      }
+      onboardingComplete = await isOnboardingComplete(organizationId);
     }
-    const onboardingComplete = await isOnboardingComplete(organizationId);
 
     const user = {
       role: "admin" as const,
@@ -49,7 +63,7 @@ export async function POST() {
       username: row.username,
       title: row.title ?? null,
       organizationId,
-      isPlatformAdmin: row.isPlatformAdmin === 1,
+      isPlatformAdmin,
       onboardingComplete,
     };
 

@@ -18,6 +18,10 @@ import {
   FEATURE_FLAGS_COOKIE,
   parseFeatureFlagsCookie,
 } from "@/lib/features/cookie";
+import {
+  platformAdminNeedsOrgPicker,
+  platformOrgPickerPathAllowed,
+} from "@/lib/auth/platform-admin";
 import { isLegacyAgimiOrganization } from "@/lib/organizations/constants";
 
 const PUBLIC_PREFIXES = [
@@ -173,6 +177,20 @@ export async function proxy(request: NextRequest) {
       return NextResponse.redirect(new URL("/", request.url));
     }
 
+    if (platformAdmin && platformAdminNeedsOrgPicker(session)) {
+      if (!platformOrgPickerPathAllowed(pathname)) {
+        if (pathname.startsWith("/api/")) {
+          return NextResponse.json(
+            { error: "Select a company first." },
+            { status: 403 }
+          );
+        }
+        return NextResponse.redirect(
+          new URL("/platform/companies", request.url)
+        );
+      }
+    }
+
     if (
       !platformAdmin &&
       session.onboardingComplete === false &&
@@ -193,7 +211,10 @@ export async function proxy(request: NextRequest) {
     }
 
     if (platformAdmin && pathname.startsWith("/onboarding")) {
-      return NextResponse.redirect(new URL("/", request.url));
+      const target = platformAdminNeedsOrgPicker(session)
+        ? "/platform/companies"
+        : "/";
+      return NextResponse.redirect(new URL(target, request.url));
     }
 
     if (session.onboardingComplete && pathname.startsWith("/onboarding")) {

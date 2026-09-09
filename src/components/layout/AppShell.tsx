@@ -67,7 +67,10 @@ function buildNavGroups(
         { href: "/logs", label: "Logs" },
         { href: "/settings", label: "Settings" },
         ...(isPlatformAdmin
-          ? [{ href: "/platform/applications", label: "Signup queue" }]
+          ? [
+              { href: "/platform/companies", label: "Companies" },
+              { href: "/platform/applications", label: "Signup queue" },
+            ]
           : []),
       ],
     },
@@ -181,6 +184,7 @@ export function AppShell({
   const router = useRouter();
   const { organizationName } = useCompanyProfile();
   const [userName, setUserName] = useState<string | null>(null);
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
@@ -193,7 +197,10 @@ export function AppShell({
         }
         return r.json();
       })
-      .then((data) => setUserName(data?.user?.name ?? null))
+      .then((data) => {
+        setUserName(data?.user?.name ?? null);
+        setIsPlatformAdmin(data?.user?.isPlatformAdmin === true);
+      })
       .catch(() => {
         router.replace("/login");
       });
@@ -275,6 +282,14 @@ export function AppShell({
                 </div>
               )}
               <div className="flex shrink-0 items-center gap-2">
+                {isPlatformAdmin && (
+                  <Link
+                    href="/platform/companies"
+                    className="hidden text-xs text-zinc-500 hover:text-zinc-800 sm:inline"
+                  >
+                    Switch company
+                  </Link>
+                )}
                 {userName && (
                   <Link
                     href="/settings"

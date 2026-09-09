@@ -41,23 +41,34 @@ export async function POST(request: NextRequest) {
   }
 
   if (user.role === "admin") {
-    const orgId = user.organizationId ?? LEGACY_AGIMI_ORGANIZATION_ID;
-    if (isLegacyAgimiOrganization(orgId)) {
-      if (user.adminId > 0) await repairAgimiAdminLogin(user.adminId);
-      else await ensureLegacyAgimiOrganizationReady();
-      user.organizationId = LEGACY_AGIMI_ORGANIZATION_ID;
+    const platformAdmin =
+      user.adminId === 0 || user.isPlatformAdmin === true;
+    if (platformAdmin) {
+      user.organizationId = null;
       user.onboardingComplete = true;
     } else {
-      user.organizationId = orgId;
-      user.onboardingComplete = await isOnboardingComplete(orgId);
+      const orgId = user.organizationId ?? LEGACY_AGIMI_ORGANIZATION_ID;
+      if (isLegacyAgimiOrganization(orgId)) {
+        if (user.adminId > 0) await repairAgimiAdminLogin(user.adminId);
+        else await ensureLegacyAgimiOrganizationReady();
+        user.organizationId = LEGACY_AGIMI_ORGANIZATION_ID;
+        user.onboardingComplete = true;
+      } else {
+        user.organizationId = orgId;
+        user.onboardingComplete = await isOnboardingComplete(orgId);
+      }
     }
   }
 
   const token = await createSessionToken(user);
   let redirect =
     user.role === "admin" ? "/" : employeeLoginRedirect(user.roles);
-  if (user.role === "admin" && user.onboardingComplete === false) {
-    redirect = "/onboarding";
+  if (user.role === "admin") {
+    if (user.adminId === 0 || user.isPlatformAdmin === true) {
+      redirect = "/platform/companies";
+    } else if (user.onboardingComplete === false) {
+      redirect = "/onboarding";
+    }
   }
 
   const response = NextResponse.json({

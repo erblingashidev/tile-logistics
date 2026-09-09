@@ -37,7 +37,7 @@ export async function loginAdmin(
     name: "Admin",
     username: admin.username.trim().toLowerCase(),
     title: "Administrator",
-    organizationId: 1,
+    organizationId: null,
     isPlatformAdmin: true,
     onboardingComplete: true,
   };

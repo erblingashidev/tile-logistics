@@ -262,6 +262,31 @@ export async function getOrganizationById(id: number) {
   return dbOne(db.select().from(organizations).where(eq(organizations.id, id)));
 }
 
+export type OrganizationSummary = {
+  id: number;
+  slug: string;
+  name: string;
+  status: string;
+  onboardingComplete: boolean;
+};
+
+export async function listOrganizations(): Promise<OrganizationSummary[]> {
+  const db = await getDb();
+  const rows = await dbAll(db.select().from(organizations));
+  rows.sort((a, b) => a.name.localeCompare(b.name));
+  const summaries: OrganizationSummary[] = [];
+  for (const row of rows) {
+    summaries.push({
+      id: row.id,
+      slug: row.slug,
+      name: row.name,
+      status: row.status,
+      onboardingComplete: await isOnboardingComplete(row.id),
+    });
+  }
+  return summaries;
+}
+
 export async function getOrganizationDisplayName(
   organizationId: number
 ): Promise<string> {
