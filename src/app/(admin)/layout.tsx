@@ -4,6 +4,7 @@ import {
   employeeLoginRedirect,
 } from "@/lib/employee-categories";
 import { FeatureFlagsProvider } from "@/components/features/FeatureFlagsProvider";
+import { CompanyProfileProvider } from "@/components/company/CompanyProfileProvider";
 
 export const dynamic = "force-dynamic";
 
@@ -22,5 +23,17 @@ export default async function AdminLayout({
     redirect(employeeLoginRedirect(session.roles));
   }
 
-  return <FeatureFlagsProvider>{children}</FeatureFlagsProvider>;
+  if (session.role === "admin") {
+    const platformAdmin =
+      session.adminId === 0 || session.isPlatformAdmin === true;
+    if (!platformAdmin && session.onboardingComplete === false) {
+      redirect("/onboarding");
+    }
+  }
+
+  return (
+    <FeatureFlagsProvider>
+      <CompanyProfileProvider>{children}</CompanyProfileProvider>
+    </FeatureFlagsProvider>
+  );
 }

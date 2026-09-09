@@ -9,7 +9,7 @@ import {
   employeeLoginRedirect,
 } from "@/lib/auth";
 import { applyFeatureFlagsCookie } from "@/lib/features/cookie";
-import { getFeatureFlags } from "@/lib/services/feature-flags";
+import { getFeatureFlagsForSession } from "@/lib/services/feature-flags";
 
 export const runtime = "nodejs";
 
@@ -34,8 +34,18 @@ export async function POST(request: NextRequest) {
   }
 
   const token = await createSessionToken(user);
-  const redirect =
+  let redirect =
     user.role === "admin" ? "/" : employeeLoginRedirect(user.roles);
+  if (
+    user.role === "admin" &&
+    user.organizationId &&
+    user.onboardingComplete === false
+  ) {
+    redirect = "/onboarding";
+  }
+  if (user.role === "admin" && user.isPlatformAdmin) {
+    redirect = "/";
+  }
 
   const response = NextResponse.json({
     user: {
@@ -52,7 +62,7 @@ export async function POST(request: NextRequest) {
     token,
     sessionCookieOptions()
   );
-  applyFeatureFlagsCookie(response, await getFeatureFlags());
+  applyFeatureFlagsCookie(response, await getFeatureFlagsForSession(user));
 
   return response;
 }

@@ -37,6 +37,9 @@ export async function loginAdmin(
     name: "Admin",
     username: admin.username.trim().toLowerCase(),
     title: "Administrator",
+    organizationId: 1,
+    isPlatformAdmin: true,
+    onboardingComplete: true,
   };
 }
 
@@ -87,6 +90,23 @@ export async function requireSession(): Promise<SessionUser> {
 export async function requireAdmin(): Promise<Extract<SessionUser, { role: "admin" }>> {
   const session = await requireSession();
   if (session.role !== "admin") throw new Error("Forbidden");
+  return session;
+}
+
+export function isPlatformAdmin(
+  session: SessionUser
+): session is Extract<SessionUser, { role: "admin" }> {
+  return (
+    session.role === "admin" &&
+    (session.adminId === 0 || session.isPlatformAdmin === true)
+  );
+}
+
+export async function requirePlatformAdmin(): Promise<
+  Extract<SessionUser, { role: "admin" }>
+> {
+  const session = await requireAdmin();
+  if (!isPlatformAdmin(session)) throw new Error("Forbidden");
   return session;
 }
 

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { Button, Card, Input, Alert } from "@/components/ui";
 import { BRAND } from "@/lib/brand";
@@ -69,6 +70,12 @@ export default function LoginPage() {
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? sq.login.submitting : sq.login.submit}
           </Button>
+          <p className="text-center text-sm text-zinc-500">
+            New company?{" "}
+            <Link href="/signup" className="font-medium text-zinc-900 underline">
+              Request access
+            </Link>
+          </p>
         </form>
       </Card>
     </div>

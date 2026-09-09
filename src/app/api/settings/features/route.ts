@@ -3,7 +3,7 @@ import { getSession, requireAdmin } from "@/lib/auth";
 import { applyFeatureFlagsCookie } from "@/lib/features/cookie";
 import { effectiveFeatureFlags } from "@/lib/features/catalog";
 import {
-  getStoredFeatureFlags,
+  getFeatureFlagsForSession,
   updateFeatureFlagsFromBody,
 } from "@/lib/services/feature-flags";
 
@@ -15,7 +15,7 @@ export async function GET() {
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const flags = await getStoredFeatureFlags();
+    const flags = await getFeatureFlagsForSession(session);
     const response = NextResponse.json(flags);
     applyFeatureFlagsCookie(response, effectiveFeatureFlags(flags));
     return response;

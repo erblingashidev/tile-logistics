@@ -13,12 +13,16 @@ export type SessionUser =
       name: string;
       username: string;
       title?: string | null;
+      organizationId?: number | null;
+      isPlatformAdmin?: boolean;
+      onboardingComplete?: boolean;
     }
   | {
       role: "employee";
       employeeId: number;
       name: string;
       roles: EmployeeRole[];
+      organizationId?: number | null;
     };
 
 function encodeBase64Url(data: string): string {
@@ -107,6 +111,14 @@ export async function verifySessionToken(
           typeof parsed.title === "string" || parsed.title === null
             ? parsed.title
             : null,
+        organizationId:
+          typeof parsed.organizationId === "number"
+            ? parsed.organizationId
+            : parsed.organizationId === null
+              ? null
+              : undefined,
+        isPlatformAdmin: parsed.isPlatformAdmin === true,
+        onboardingComplete: parsed.onboardingComplete === true,
       };
     }
     if (
@@ -119,6 +131,10 @@ export async function verifySessionToken(
         employeeId: parsed.employeeId,
         name: parsed.name,
         roles: parsed.roles,
+        organizationId:
+          typeof parsed.organizationId === "number"
+            ? parsed.organizationId
+            : undefined,
       };
     }
     return null;

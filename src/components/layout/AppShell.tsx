@@ -5,18 +5,24 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { BRAND } from "@/lib/brand";
 import { Button } from "@/components/ui";
+import { useCompanyModules } from "@/components/company/CompanyProfileProvider";
 import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 import { WAREHOUSE_SIDEBAR_LINKS } from "@/components/warehouse/WarehouseNav";
+import type { CompanyModuleFlags } from "@/lib/company-profile";
 import type { FeatureFlags } from "@/lib/features/catalog";
 
-function buildNavGroups(flags: FeatureFlags) {
+function buildNavGroups(
+  flags: FeatureFlags,
+  modules: CompanyModuleFlags,
+  isPlatformAdmin: boolean
+) {
   return [
     {
       label: "Operations",
       items: [
         { href: "/", label: "Dashboard" },
         { href: "/orders", label: "Orders" },
-        { href: "/returns", label: "Returns" },
+        ...(modules.returns ? [{ href: "/returns", label: "Returns" }] : []),
         ...(flags.operationsSuite
           ? [
               { href: "/dispatch", label: "Dispatch" },
@@ -25,13 +31,17 @@ function buildNavGroups(flags: FeatureFlags) {
           : []),
       ],
     },
-    {
-      label: "Fleet",
-      items: [
-        { href: "/vehicles", label: "Vehicles" },
-        { href: "/vehicles/maintenance", label: "Maintenance" },
-      ],
-    },
+    ...(modules.vehicles
+      ? [
+          {
+            label: "Fleet",
+            items: [
+              { href: "/vehicles", label: "Vehicles" },
+              { href: "/vehicles/maintenance", label: "Maintenance" },
+            ],
+          },
+        ]
+      : []),
     {
       label: "People",
       items: [
@@ -53,6 +63,9 @@ function buildNavGroups(flags: FeatureFlags) {
         { href: "/reports", label: "Reports" },
         { href: "/logs", label: "Logs" },
         { href: "/settings", label: "Settings" },
+        ...(isPlatformAdmin
+          ? [{ href: "/platform/applications", label: "Signup queue" }]
+          : []),
       ],
     },
   ];
@@ -75,7 +88,19 @@ function NavLinks({
   mobile?: boolean;
 }) {
   const flags = useFeatureFlags();
-  const navGroups = buildNavGroups(flags);
+  const modules = useCompanyModules();
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/auth/me", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        setIsPlatformAdmin(data?.user?.isPlatformAdmin === true);
+      })
+      .catch(() => {});
+  }, []);
+
+  const navGroups = buildNavGroups(flags, modules, isPlatformAdmin);
   return (
     <>
       {navGroups.map((group) => (

@@ -10,6 +10,11 @@ import {
 } from "@/lib/features/catalog";
 import { getAppSetting, setAppSetting } from "@/lib/services/app-settings";
 import { logActivity } from "@/lib/logger";
+import {
+  DEFAULT_ORGANIZATION_ID,
+  getFeatureFlagsForOrganization,
+} from "@/lib/services/organizations";
+import type { SessionUser } from "@/lib/auth/session";
 
 export const MANUAL_DISPATCH_MODE_KEY =
   FEATURE_FLAG_SETTING_KEYS.manualDispatchMode;
@@ -42,8 +47,25 @@ export async function getStoredFeatureFlags(): Promise<FeatureFlags> {
   return flags;
 }
 
-export async function getFeatureFlags(): Promise<FeatureFlags> {
+export async function getFeatureFlags(
+  organizationId?: number | null
+): Promise<FeatureFlags> {
+  if (organizationId != null && organizationId > 0) {
+    return effectiveFeatureFlags(
+      await getFeatureFlagsForOrganization(organizationId)
+    );
+  }
   return effectiveFeatureFlags(await getStoredFeatureFlags());
+}
+
+export async function getFeatureFlagsForSession(
+  session: SessionUser | null
+): Promise<FeatureFlags> {
+  if (session?.role === "admin") {
+    const orgId = session.organizationId ?? DEFAULT_ORGANIZATION_ID;
+    if (orgId > 0) return getFeatureFlags(orgId);
+  }
+  return getFeatureFlags();
 }
 
 export async function updateFeatureFlags(

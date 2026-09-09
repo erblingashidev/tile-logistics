@@ -21,9 +21,19 @@ import {
 
 const PUBLIC_PREFIXES = [
   "/login",
+  "/signup",
   "/api/auth/login",
+  "/api/auth/signup",
   "/_next",
   "/favicon.ico",
+];
+
+const ONBOARDING_ALLOWED_PREFIXES = [
+  "/onboarding",
+  "/api/onboarding",
+  "/api/auth/refresh-session",
+  "/api/auth/logout",
+  "/api/auth/me",
 ];
 
 const SALES_PREFIXES = ["/sales", "/api/sales"];
@@ -145,6 +155,45 @@ export async function proxy(request: NextRequest) {
 
   if (session.role === "admin" && pathname.startsWith("/portal")) {
     return NextResponse.redirect(new URL("/", request.url));
+  }
+
+  if (session.role === "admin") {
+    const platformAdmin =
+      session.adminId === 0 || session.isPlatformAdmin === true;
+
+    if (
+      (pathname.startsWith("/platform") ||
+        pathname.startsWith("/api/platform")) &&
+      !platformAdmin
+    ) {
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      return NextResponse.redirect(new URL("/", request.url));
+    }
+
+    if (!platformAdmin && session.onboardingComplete === false) {
+      const allowed = ONBOARDING_ALLOWED_PREFIXES.some((p) =>
+        pathname.startsWith(p)
+      );
+      if (!allowed) {
+        if (pathname.startsWith("/api/")) {
+          return NextResponse.json(
+            { error: "Complete company setup first." },
+            { status: 403 }
+          );
+        }
+        return NextResponse.redirect(new URL("/onboarding", request.url));
+      }
+    }
+
+    if (platformAdmin && pathname.startsWith("/onboarding")) {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
+
+    if (session.onboardingComplete && pathname.startsWith("/onboarding")) {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
   }
 
   if (!wmsEnabled) {

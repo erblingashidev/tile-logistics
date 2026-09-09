@@ -138,8 +138,84 @@ export const employees = sqliteTable("employees", {
   updatedAt: text("updated_at").notNull(),
 });
 
+/** Tenant company — each deployment can host multiple organizations. */
+export const organizations = sqliteTable("organizations", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  slug: text("slug").notNull().unique(),
+  name: text("name").notNull(),
+  /** pending | active | suspended | rejected */
+  status: text("status").notNull().default("pending"),
+  createdAt: text("created_at").notNull(),
+  activatedAt: text("activated_at"),
+});
+
+/** Public signup queue — approved by platform admin. */
+export const organizationApplications = sqliteTable("organization_applications", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  orgName: text("org_name").notNull(),
+  slug: text("slug").notNull(),
+  contactName: text("contact_name").notNull(),
+  contactEmail: text("contact_email").notNull(),
+  adminUsername: text("admin_username").notNull(),
+  adminPasswordHash: text("admin_password_hash").notNull(),
+  companyCategory: text("company_category"),
+  message: text("message"),
+  /** pending | approved | rejected */
+  status: text("status").notNull().default("pending"),
+  reviewedByAdminId: integer("reviewed_by_admin_id").references(() => admins.id, {
+    onDelete: "set null",
+  }),
+  reviewedAt: text("reviewed_at"),
+  rejectionReason: text("rejection_reason"),
+  organizationId: integer("organization_id").references(() => organizations.id, {
+    onDelete: "set null",
+  }),
+  createdAt: text("created_at").notNull(),
+});
+
+export const organizationOnboarding = sqliteTable("organization_onboarding", {
+  organizationId: integer("organization_id")
+    .primaryKey()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  currentStep: text("current_step").notNull().default("company"),
+  completedAt: text("completed_at"),
+  updatedAt: text("updated_at").notNull(),
+});
+
+/** Per-tenant key/value settings (feature flags, profile JSON, etc.). */
+export const organizationSettings = sqliteTable(
+  "organization_settings",
+  {
+    organizationId: integer("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    value: text("value").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => ({
+    pk: uniqueIndex("idx_org_settings_pk").on(table.organizationId, table.key),
+  })
+);
+
+/** Custom quantity units defined during onboarding (e.g. bags, boxes, m²). */
+export const organizationUnits = sqliteTable("organization_units", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  code: text("code").notNull(),
+  label: text("label").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+});
+
 export const admins = sqliteTable("admins", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  organizationId: integer("organization_id").references(() => organizations.id, {
+    onDelete: "cascade",
+  }),
+  /** Can approve new company signups (platform operator). */
+  isPlatformAdmin: integer("is_platform_admin").notNull().default(0),
   name: text("name").notNull(),
   username: text("username").notNull().unique(),
   passwordHash: text("password_hash").notNull(),

@@ -16,6 +16,7 @@ import {
 } from "@/lib/services/employees";
 import { logActivity } from "@/lib/logger";
 import type { SessionUser } from "@/lib/auth/session";
+import { isOnboardingComplete } from "@/lib/services/organizations";
 
 export const MIN_ADMIN_PASSWORD_LENGTH = 6;
 
@@ -335,12 +336,21 @@ export async function loginAdminFromDb(
     await syncLinkedEmployee(row, {});
   }
 
+  const organizationId = row.organizationId ?? null;
+  const onboardingComplete =
+    organizationId != null
+      ? await isOnboardingComplete(organizationId)
+      : true;
+
   return {
     role: "admin",
     adminId: row.id,
     name: row.name,
     username: row.username,
     title: row.title ?? null,
+    organizationId,
+    isPlatformAdmin: row.isPlatformAdmin === 1,
+    onboardingComplete,
   };
 }
 

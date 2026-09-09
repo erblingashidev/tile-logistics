@@ -3,7 +3,7 @@ import { applyFeatureFlagsCookie } from "@/lib/features/cookie";
 import { getSession } from "@/lib/auth";
 import { getAdmin } from "@/lib/services/admins";
 import { getEmployee } from "@/lib/services/employees";
-import { getFeatureFlags } from "@/lib/services/feature-flags";
+import { getFeatureFlagsForSession } from "@/lib/services/feature-flags";
 
 export const runtime = "nodejs";
 
@@ -13,7 +13,7 @@ export async function GET() {
     return NextResponse.json({ user: null }, { status: 401 });
   }
 
-  const features = await getFeatureFlags();
+  const features = await getFeatureFlagsForSession(session);
 
   if (session.role === "admin") {
     if (session.adminId > 0) {
@@ -31,6 +31,9 @@ export async function GET() {
               isActive: profile.isActive,
               createdAt: profile.createdAt,
               lastLoginAt: profile.lastLoginAt,
+              organizationId: session.organizationId ?? null,
+              isPlatformAdmin: session.isPlatformAdmin === true,
+              onboardingComplete: session.onboardingComplete !== false,
             },
             features,
           }),
@@ -47,6 +50,8 @@ export async function GET() {
           isActive: true,
           createdAt: null,
           lastLoginAt: null,
+          isPlatformAdmin: session.isPlatformAdmin === true,
+          onboardingComplete: session.onboardingComplete !== false,
         },
         features,
       }),

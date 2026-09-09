@@ -390,6 +390,97 @@ async function ensureWarehouseSchemaPatches(client: Client) {
   );
 }
 
+async function ensureOrganizationsSchema(client: Client) {
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS organizations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      slug TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TEXT NOT NULL,
+      activated_at TEXT
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS organization_applications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      org_name TEXT NOT NULL,
+      slug TEXT NOT NULL,
+      contact_name TEXT NOT NULL,
+      contact_email TEXT NOT NULL,
+      admin_username TEXT NOT NULL,
+      admin_password_hash TEXT NOT NULL,
+      company_category TEXT,
+      message TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      reviewed_by_admin_id INTEGER,
+      reviewed_at TEXT,
+      rejection_reason TEXT,
+      organization_id INTEGER REFERENCES organizations(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS organization_onboarding (
+      organization_id INTEGER PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
+      current_step TEXT NOT NULL DEFAULT 'company',
+      completed_at TEXT,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS organization_settings (
+      organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      key TEXT NOT NULL,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (organization_id, key)
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS organization_units (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      code TEXT NOT NULL,
+      label TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_org_units_org ON organization_units(organization_id)"
+  );
+
+  const { ensureDefaultOrganization } = await import(
+    "@/lib/services/organizations"
+  );
+  await ensureDefaultOrganization(client);
+}
+
+async function ensureOrganizationAdminColumns(client: Client) {
+  const adminCols = await tableColumns(client, "admins");
+  if (!adminCols.size) return;
+  await addColumnIfMissing(
+    client,
+    "admins",
+    "organization_id",
+    "organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE",
+    adminCols
+  );
+  await addColumnIfMissing(
+    client,
+    "admins",
+    "is_platform_admin",
+    "is_platform_admin INTEGER NOT NULL DEFAULT 0",
+    adminCols
+  );
+  await client.execute(
+    "UPDATE admins SET organization_id = 1 WHERE organization_id IS NULL"
+  );
+  await client.execute(
+    "UPDATE admins SET is_platform_admin = 1 WHERE id = (SELECT MIN(id) FROM admins)"
+  );
+}
+
 async function ensureAdminsTable(client: Client) {
   await client.execute(`
     CREATE TABLE IF NOT EXISTS admins (
@@ -1137,7 +1228,9 @@ export async function getDb() {
         }
         await ensureDeliveryProofPhotoColumns(clientInstance);
         await ensureEmployeeNotificationsTable(clientInstance);
+        await ensureOrganizationsSchema(clientInstance);
         await ensureAdminsTable(clientInstance);
+        await ensureOrganizationAdminColumns(clientInstance);
         await ensureOrderDeliveryLinksTable(clientInstance);
         await ensureOrderSchemaPatches(clientInstance);
         await ensureNullableAssignmentTimestamps(clientInstance);
