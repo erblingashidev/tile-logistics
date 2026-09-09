@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSession } from "@/lib/auth";
 import {
   CITIES,
   KOSOVO_MUNICIPALITIES,
@@ -9,7 +10,9 @@ import {
   searchLocations,
   searchNominatimKosovo,
 } from "@/lib/locations";
+import { DEFAULT_ORGANIZATION_ID } from "@/lib/organizations/constants";
 import { searchRecentDeliveryLocations } from "@/lib/services/delivery-locations";
+import { getOrganizationWarehouseLocation } from "@/lib/services/organizations";
 
 export const runtime = "nodejs";
 
@@ -72,8 +75,19 @@ export async function GET(request: NextRequest) {
     merged.push(entry);
   }
 
+  const session = await getSession();
+  const organizationId = session?.organizationId ?? DEFAULT_ORGANIZATION_ID;
+  let warehouse = WAREHOUSE_LOCATION;
+  if (session) {
+    try {
+      warehouse = await getOrganizationWarehouseLocation(organizationId);
+    } catch {
+      warehouse = WAREHOUSE_LOCATION;
+    }
+  }
+
   return NextResponse.json({
-    warehouse: WAREHOUSE_LOCATION,
+    warehouse,
     locations: merged.slice(0, 30),
     regions: REGIONS,
     municipalities: KOSOVO_MUNICIPALITIES,

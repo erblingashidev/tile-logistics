@@ -5,7 +5,10 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { BRAND } from "@/lib/brand";
 import { Button } from "@/components/ui";
-import { useCompanyModules } from "@/components/company/CompanyProfileProvider";
+import {
+  useCompanyModules,
+  useCompanyProfile,
+} from "@/components/company/CompanyProfileProvider";
 import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 import { WAREHOUSE_SIDEBAR_LINKS } from "@/components/warehouse/WarehouseNav";
 import type { CompanyModuleFlags } from "@/lib/company-profile";
@@ -176,6 +179,7 @@ export function AppShell({
         : "max-w-7xl";
   const pathname = usePathname();
   const router = useRouter();
+  const { organizationName } = useCompanyProfile();
   const [userName, setUserName] = useState<string | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
@@ -211,9 +215,11 @@ export function AppShell({
         <aside className="sticky top-0 hidden h-screen w-56 shrink-0 self-start flex-col bg-[var(--sidebar)] lg:flex">
           <div className="border-b border-white/10 px-5 py-6">
             <p className="text-[15px] font-semibold tracking-tight text-white">
-              {BRAND.name}
+              {organizationName ?? BRAND.name}
             </p>
-            <p className="mt-1 text-xs text-zinc-400">{BRAND.tagline}</p>
+            <p className="mt-1 text-xs text-zinc-400">
+              {organizationName ? BRAND.name : BRAND.tagline}
+            </p>
           </div>
           <nav className="flex flex-1 flex-col overflow-y-auto p-3">
             <NavLinks pathname={pathname} />
@@ -299,8 +305,12 @@ export function AppShell({
               <div className="absolute inset-y-0 left-0 flex w-[min(100%,20rem)] flex-col bg-[var(--sidebar)] shadow-xl">
                 <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
                   <div>
-                    <p className="text-sm font-semibold text-white">{BRAND.name}</p>
-                    <p className="text-xs text-zinc-400">{BRAND.tagline}</p>
+                    <p className="text-sm font-semibold text-white">
+                      {organizationName ?? BRAND.name}
+                    </p>
+                    <p className="text-xs text-zinc-400">
+                      {organizationName ? BRAND.name : BRAND.tagline}
+                    </p>
                   </div>
                   <button
                     type="button"

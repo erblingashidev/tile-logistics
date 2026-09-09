@@ -34,10 +34,29 @@ export type OrganizationUnit = {
   sortOrder?: number;
 };
 
+/** Depot / warehouse pin used on maps and dispatch routing. */
+export type CompanyWarehouse = {
+  name: string;
+  address: string;
+  city?: string;
+  lat: number;
+  lng: number;
+};
+
+/** AGIMI default depot — org #1 keeps this unless overridden in profile. */
+export const LEGACY_AGIMI_WAREHOUSE: CompanyWarehouse = {
+  name: "AGIMI Warehouse — Shkabaj",
+  address: "Shkabaj, 10000 Prishtinë",
+  city: "Prishtinë",
+  lat: 42.6763725,
+  lng: 21.1146869,
+};
+
 export type CompanyProfile = {
   companyCategory: CompanyCategory;
   productFocus: ProductFocus;
   modules: CompanyModuleFlags;
+  warehouse?: CompanyWarehouse;
   onboardingComplete: boolean;
 };
 
@@ -130,8 +149,31 @@ export function legacyAgimiCompanyProfile(): CompanyProfile {
       useInvoices: true,
       ...preset.modules,
     },
+    warehouse: { ...LEGACY_AGIMI_WAREHOUSE },
     onboardingComplete: true,
   };
+}
+
+function parseWarehouse(raw: unknown): CompanyWarehouse | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const o = raw as Record<string, unknown>;
+  const lat = Number(o.lat);
+  const lng = Number(o.lng);
+  const name = typeof o.name === "string" ? o.name.trim() : "";
+  const address = typeof o.address === "string" ? o.address.trim() : "";
+  if (!name || !Number.isFinite(lat) || !Number.isFinite(lng)) return undefined;
+  return {
+    name,
+    address,
+    city: typeof o.city === "string" ? o.city.trim() : undefined,
+    lat,
+    lng,
+  };
+}
+
+export function parseCompanyWarehouseInput(raw: unknown): CompanyWarehouse | null {
+  const parsed = parseWarehouse(raw);
+  return parsed ?? null;
 }
 
 export function slugifyCompanyName(name: string): string {
@@ -163,6 +205,7 @@ export function parseCompanyProfile(raw: unknown): CompanyProfile {
       employeePortal: modulesRaw.employeePortal === true,
       useInvoices: modulesRaw.useInvoices !== false,
     },
+    warehouse: parseWarehouse(o.warehouse),
     onboardingComplete: o.onboardingComplete === true,
   };
 }

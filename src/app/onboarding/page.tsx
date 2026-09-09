@@ -18,6 +18,8 @@ import type {
 } from "@/lib/company-profile";
 
 type OnboardingData = {
+  organizationName?: string;
+  isLegacyAgimi?: boolean;
   profile: {
     companyCategory: CompanyCategory;
     productFocus: ProductFocus;
@@ -36,7 +38,7 @@ type OnboardingData = {
   >;
 };
 
-const STEPS = ["Company", "Units", "Modules", "Finish"] as const;
+const STEPS = ["Company", "Location", "Units", "Modules", "Finish"] as const;
 
 export default function OnboardingPage() {
   const [step, setStep] = useState(0);
@@ -45,6 +47,10 @@ export default function OnboardingPage() {
   const [error, setError] = useState("");
   const [data, setData] = useState<OnboardingData | null>(null);
 
+  const [companyName, setCompanyName] = useState("");
+  const [warehouseName, setWarehouseName] = useState("Main warehouse");
+  const [warehouseAddress, setWarehouseAddress] = useState("");
+  const [warehouseCity, setWarehouseCity] = useState("");
   const [companyCategory, setCompanyCategory] =
     useState<CompanyCategory>("general");
   const [productFocus, setProductFocus] = useState<ProductFocus>("general");
@@ -62,7 +68,12 @@ export default function OnboardingPage() {
     fetch("/api/onboarding", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((payload: OnboardingData) => {
+        if (payload.isLegacyAgimi) {
+          window.location.href = "/";
+          return;
+        }
         setData(payload);
+        setCompanyName(payload.organizationName ?? "");
         setCompanyCategory(payload.profile.companyCategory);
         setProductFocus(payload.profile.productFocus);
         setModules(payload.profile.modules);
@@ -119,10 +130,16 @@ export default function OnboardingPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          companyName,
           companyCategory,
           productFocus,
           modules,
           units: validUnits,
+          warehouse: {
+            name: warehouseName,
+            address: warehouseAddress,
+            city: warehouseCity,
+          },
         }),
       });
       const body = await res.json();
@@ -183,8 +200,15 @@ export default function OnboardingPage() {
           {step === 0 && (
             <div className="space-y-4">
               <h2 className="text-base font-semibold text-zinc-900">
-                What kind of company are you?
+                Your company
               </h2>
+              <Input
+                label="Company name"
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                required
+              />
+              <p className="text-sm font-medium text-zinc-700">Business type</p>
               <div className="grid gap-3 sm:grid-cols-2">
                 {(data?.categories ?? []).map((c) => (
                   <button
@@ -222,6 +246,35 @@ export default function OnboardingPage() {
           )}
 
           {step === 1 && (
+            <div className="space-y-4">
+              <h2 className="text-base font-semibold text-zinc-900">
+                Main warehouse / depot
+              </h2>
+              <p className="text-sm text-zinc-500">
+                Used as the map pin and starting point for delivery routes.
+              </p>
+              <Input
+                label="Warehouse name"
+                value={warehouseName}
+                onChange={(e) => setWarehouseName(e.target.value)}
+                required
+              />
+              <Input
+                label="Address"
+                value={warehouseAddress}
+                onChange={(e) => setWarehouseAddress(e.target.value)}
+                required
+              />
+              <Input
+                label="City / area"
+                value={warehouseCity}
+                onChange={(e) => setWarehouseCity(e.target.value)}
+                placeholder="e.g. Prishtinë"
+              />
+            </div>
+          )}
+
+          {step === 2 && (
             <div className="space-y-4">
               <h2 className="text-base font-semibold text-zinc-900">
                 Quantity units
@@ -268,7 +321,7 @@ export default function OnboardingPage() {
             </div>
           )}
 
-          {step === 2 && (
+          {step === 3 && (
             <div className="space-y-4">
               <h2 className="text-base font-semibold text-zinc-900">
                 Which modules do you need?
@@ -314,7 +367,7 @@ export default function OnboardingPage() {
             </div>
           )}
 
-          {step === 3 && (
+          {step === 4 && (
             <div className="space-y-4">
               <h2 className="text-base font-semibold text-zinc-900">
                 Ready to go
@@ -324,11 +377,20 @@ export default function OnboardingPage() {
                 later.
               </p>
               <dl className="divide-y divide-zinc-100 rounded border border-zinc-200 text-sm">
+                <SummaryRow label="Company" value={companyName || "—"} />
                 <SummaryRow
                   label="Company type"
                   value={
                     data?.categories.find((c) => c.id === companyCategory)
                       ?.label ?? companyCategory
+                  }
+                />
+                <SummaryRow
+                  label="Warehouse"
+                  value={
+                    [warehouseName, warehouseAddress, warehouseCity]
+                      .filter(Boolean)
+                      .join(", ") || "—"
                   }
                 />
                 <SummaryRow
@@ -370,7 +432,13 @@ export default function OnboardingPage() {
             {step < STEPS.length - 1 ? (
               <Button
                 type="button"
-                disabled={(step === 1 && validUnits.length === 0) || saving}
+                disabled={
+                  (step === 0 && !companyName.trim()) ||
+                  (step === 1 &&
+                    (!warehouseName.trim() || !warehouseAddress.trim())) ||
+                  (step === 2 && validUnits.length === 0) ||
+                  saving
+                }
                 onClick={() => setStep((s) => s + 1)}
               >
                 Continue

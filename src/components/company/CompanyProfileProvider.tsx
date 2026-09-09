@@ -12,12 +12,15 @@ import {
   DEFAULT_COMPANY_MODULES,
   type CompanyModuleFlags,
   type CompanyProfile,
+  type CompanyWarehouse,
   type OrganizationUnit,
 } from "@/lib/company-profile";
 
 type CompanyContextValue = {
   profile: CompanyProfile | null;
   units: OrganizationUnit[];
+  organizationName: string | null;
+  warehouse: CompanyWarehouse | null;
   loading: boolean;
 };
 
@@ -31,12 +34,16 @@ const defaultProfile: CompanyProfile = {
 const CompanyProfileContext = createContext<CompanyContextValue>({
   profile: defaultProfile,
   units: [],
+  organizationName: null,
+  warehouse: null,
   loading: true,
 });
 
 export function CompanyProfileProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<CompanyProfile | null>(defaultProfile);
   const [units, setUnits] = useState<OrganizationUnit[]>([]);
+  const [organizationName, setOrganizationName] = useState<string | null>(null);
+  const [warehouse, setWarehouse] = useState<CompanyWarehouse | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -47,6 +54,8 @@ export function CompanyProfileProvider({ children }: { children: ReactNode }) {
         if (cancelled || !data) return;
         setProfile(data.profile ?? defaultProfile);
         setUnits(data.units ?? []);
+        setOrganizationName(data.organizationName ?? null);
+        setWarehouse(data.warehouse ?? data.profile?.warehouse ?? null);
       })
       .catch(() => {})
       .finally(() => {
@@ -58,8 +67,8 @@ export function CompanyProfileProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ profile, units, loading }),
-    [profile, units, loading]
+    () => ({ profile, units, organizationName, warehouse, loading }),
+    [profile, units, organizationName, warehouse, loading]
   );
 
   return (

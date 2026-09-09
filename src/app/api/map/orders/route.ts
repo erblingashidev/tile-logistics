@@ -3,7 +3,8 @@ import { requireApiSessionNoSalesWrite } from "@/lib/auth/api-guard";
 import { parseWorkDayFilter } from "@/lib/delivery-schedule";
 import { listOrders } from "@/lib/services/orders";
 import { buildOrderMapPins } from "@/lib/locations/map-pins";
-import { WAREHOUSE_LOCATION } from "@/lib/locations";
+import { DEFAULT_ORGANIZATION_ID } from "@/lib/organizations/constants";
+import { getOrganizationWarehouseLocation } from "@/lib/services/organizations";
 
 export const runtime = "nodejs";
 
@@ -19,6 +20,9 @@ export async function GET(request: NextRequest) {
   const region = sp.get("region") ?? undefined;
   const unassignedOnly = sp.get("unassigned") === "true";
   const workDay = parseWorkDay(sp.get("workDay"));
+  const organizationId =
+    auth.session.organizationId ?? DEFAULT_ORGANIZATION_ID;
+  const warehouse = await getOrganizationWarehouseLocation(organizationId);
 
   const orders = await listOrders({
     region,
@@ -48,7 +52,7 @@ export async function GET(request: NextRequest) {
   );
 
   return NextResponse.json({
-    warehouse: WAREHOUSE_LOCATION,
+    warehouse,
     pins,
     orderCount: activeOrders.length,
     pinCount: pins.length,

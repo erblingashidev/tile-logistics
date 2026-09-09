@@ -7,8 +7,11 @@ import {
   type CompanyCategory,
   type ProductFocus,
 } from "@/lib/company-profile";
+import { inferWarehouseCoordinates } from "@/lib/organizations/warehouse";
+import { isLegacyAgimiOrganization } from "@/lib/organizations/constants";
 import {
   completeOnboarding,
+  getOrganizationDisplayName,
   getOrganizationProfile,
   listOrganizationUnits,
   OrganizationError,
@@ -24,18 +27,21 @@ export async function GET() {
       return NextResponse.json({ error: "No organization linked." }, { status: 400 });
     }
 
-    const [profile, units] = await Promise.all([
+    const [profile, units, organizationName] = await Promise.all([
       getOrganizationProfile(organizationId),
       listOrganizationUnits(organizationId),
+      getOrganizationDisplayName(organizationId),
     ]);
 
     return NextResponse.json({
       organizationId,
+      organizationName,
       profile,
       units,
       categories: COMPANY_CATEGORIES,
       productFocusOptions: PRODUCT_FOCUS_OPTIONS,
       presets: CATEGORY_PRESETS,
+      isLegacyAgimi: isLegacyAgimiOrganization(organizationId),
     });
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -49,10 +55,24 @@ export async function POST(request: Request) {
     if (!organizationId) {
       return NextResponse.json({ error: "No organization linked." }, { status: 400 });
     }
+    if (isLegacyAgimiOrganization(organizationId)) {
+      return NextResponse.json(
+        { error: "AGIMI is already configured." },
+        { status: 400 }
+      );
+    }
 
     const body = (await request.json()) as {
+      companyName?: string;
       companyCategory?: CompanyCategory;
       productFocus?: ProductFocus;
+      warehouse?: {
+        name?: string;
+        address?: string;
+        city?: string;
+        lat?: number;
+        lng?: number;
+      };
       modules?: {
         vehicles?: boolean;
         dispatch?: boolean;
@@ -63,6 +83,36 @@ export async function POST(request: Request) {
       };
       units?: Array<{ code: string; label: string; sortOrder?: number }>;
     };
+
+    const companyName = body.companyName?.trim();
+    if (!companyName) {
+      return NextResponse.json(
+        { error: "Company name is required." },
+        { status: 400 }
+      );
+    }
+
+    const warehouseName = body.warehouse?.name?.trim();
+    const warehouseAddress = body.warehouse?.address?.trim();
+    const warehouseCity = body.warehouse?.city?.trim();
+    if (!warehouseName || !warehouseAddress) {
+      return NextResponse.json(
+        { error: "Warehouse name and address are required." },
+        { status: 400 }
+      );
+    }
+
+    const coords =
+      Number.isFinite(body.warehouse?.lat) && Number.isFinite(body.warehouse?.lng)
+        ? {
+            lat: Number(body.warehouse!.lat),
+            lng: Number(body.warehouse!.lng),
+            city: warehouseCity,
+          }
+        : inferWarehouseCoordinates({
+            city: warehouseCity,
+            address: warehouseAddress,
+          });
 
     const category = body.companyCategory ?? "general";
     const preset = CATEGORY_PRESETS[category] ?? CATEGORY_PRESETS.general;
@@ -80,6 +130,7 @@ export async function POST(request: Request) {
 
     const profile = await completeOnboarding({
       organizationId,
+      companyName,
       companyCategory: category,
       productFocus: body.productFocus ?? preset.productFocus ?? "general",
       modules: {
@@ -91,6 +142,13 @@ export async function POST(request: Request) {
         useInvoices: body.modules?.useInvoices !== false,
       },
       units,
+      warehouse: {
+        name: warehouseName,
+        address: warehouseAddress,
+        city: coords.city ?? warehouseCity,
+        lat: coords.lat,
+        lng: coords.lng,
+      },
     });
 
     return NextResponse.json({ ok: true, profile, units });

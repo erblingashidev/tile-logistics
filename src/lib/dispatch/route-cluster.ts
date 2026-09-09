@@ -43,13 +43,14 @@ function canAddToGroup(
 
 /** Order delivery stops from warehouse using nearest-neighbor (minimizes driving). */
 export function orderStopsForRoundTrip<T extends { lat: number; lng: number }>(
-  stops: T[]
+  stops: T[],
+  origin: { lat: number; lng: number } = WAREHOUSE_LOCATION
 ): T[] {
   if (stops.length <= 1) return [...stops];
 
   const remaining = [...stops];
   const ordered: T[] = [];
-  let current: { lat: number; lng: number } = WAREHOUSE_LOCATION;
+  let current: { lat: number; lng: number } = origin;
 
   while (remaining.length > 0) {
     remaining.sort(

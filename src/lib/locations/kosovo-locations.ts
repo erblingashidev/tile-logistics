@@ -1,4 +1,4 @@
-import { BRAND } from "@/lib/brand";
+import { LEGACY_AGIMI_WAREHOUSE } from "@/lib/company-profile";
 
 /** OpenStreetMap-based locations for Kosovo (XK). Coordinates from OSM / Geofabrik 2026. */
 
@@ -19,10 +19,10 @@ export interface LocationEntry {
   postalCode?: string;
 }
 
-/** Default depot — Shkabaj, 10000 Prishtinë */
+/** Legacy default depot pin (AGIMI Shkabaj) — prefer org warehouse from profile in APIs. */
 export const WAREHOUSE_LOCATION: LocationEntry = {
   id: "agimi-warehouse-shkabaj",
-  name: BRAND.warehouse.displayName,
+  name: LEGACY_AGIMI_WAREHOUSE.name,
   city: "Prishtinë",
   region: "Prishtinë",
   type: "warehouse",

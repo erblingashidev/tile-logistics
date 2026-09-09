@@ -10,7 +10,9 @@ import { dbOne } from "@/lib/db/query";
 import { admins } from "@/lib/db/schema";
 import { applyFeatureFlagsCookie } from "@/lib/features/cookie";
 import { getFeatureFlagsForSession } from "@/lib/services/feature-flags";
+import { isLegacyAgimiOrganization } from "@/lib/organizations/constants";
 import {
+  isOnboardingComplete,
   LEGACY_AGIMI_ORGANIZATION_ID,
   repairAgimiAdminLogin,
 } from "@/lib/services/organizations";
@@ -33,7 +35,12 @@ export async function POST() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    await repairAgimiAdminLogin(row.id);
+    let organizationId = row.organizationId ?? LEGACY_AGIMI_ORGANIZATION_ID;
+    if (isLegacyAgimiOrganization(organizationId)) {
+      await repairAgimiAdminLogin(row.id);
+      organizationId = LEGACY_AGIMI_ORGANIZATION_ID;
+    }
+    const onboardingComplete = await isOnboardingComplete(organizationId);
 
     const user = {
       role: "admin" as const,
@@ -41,13 +48,13 @@ export async function POST() {
       name: row.name,
       username: row.username,
       title: row.title ?? null,
-      organizationId: LEGACY_AGIMI_ORGANIZATION_ID,
+      organizationId,
       isPlatformAdmin: row.isPlatformAdmin === 1,
-      onboardingComplete: true,
+      onboardingComplete,
     };
 
     const token = await createSessionToken(user);
-    const response = NextResponse.json({ ok: true, onboardingComplete: true });
+    const response = NextResponse.json({ ok: true, onboardingComplete });
     response.cookies.set(
       sessionCookieOptions().name,
       token,

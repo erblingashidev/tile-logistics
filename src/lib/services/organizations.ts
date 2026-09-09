@@ -11,9 +11,15 @@ import {
   slugifyCompanyName,
   type CompanyCategory,
   type CompanyProfile,
+  type CompanyWarehouse,
   type OrganizationUnit,
   type ProductFocus,
 } from "@/lib/company-profile";
+import type { LocationEntry } from "@/lib/locations/kosovo-locations";
+import {
+  companyWarehouseToLocationEntry,
+  resolveProfileWarehouse,
+} from "@/lib/organizations/warehouse";
 import {
   FEATURE_FLAG_SETTING_KEYS,
   type FeatureFlagId,
@@ -256,6 +262,27 @@ export async function getOrganizationById(id: number) {
   return dbOne(db.select().from(organizations).where(eq(organizations.id, id)));
 }
 
+export async function getOrganizationDisplayName(
+  organizationId: number
+): Promise<string> {
+  const org = await getOrganizationById(organizationId);
+  return org?.name?.trim() || LEGACY_AGIMI_NAME;
+}
+
+export async function getOrganizationWarehouse(
+  organizationId: number
+): Promise<CompanyWarehouse> {
+  const profile = await getOrganizationProfile(organizationId);
+  return resolveProfileWarehouse(organizationId, profile.warehouse);
+}
+
+export async function getOrganizationWarehouseLocation(
+  organizationId: number
+): Promise<LocationEntry> {
+  const warehouse = await getOrganizationWarehouse(organizationId);
+  return companyWarehouseToLocationEntry(organizationId, warehouse);
+}
+
 export async function submitOrganizationApplication(input: {
   orgName: string;
   slug?: string;
@@ -484,15 +511,18 @@ export async function rejectOrganizationApplication(
 
 export async function completeOnboarding(input: {
   organizationId: number;
+  companyName?: string;
   companyCategory: CompanyCategory;
   productFocus: ProductFocus;
   modules: CompanyProfile["modules"];
   units: OrganizationUnit[];
+  warehouse?: CompanyWarehouse;
 }) {
   const profile: CompanyProfile = {
     companyCategory: input.companyCategory,
     productFocus: input.productFocus,
     modules: input.modules,
+    warehouse: input.warehouse,
     onboardingComplete: true,
   };
   await saveOrganizationProfile(input.organizationId, profile);
@@ -500,6 +530,13 @@ export async function completeOnboarding(input: {
 
   const db = await getDb();
   const now = nowIso();
+  const companyName = input.companyName?.trim();
+  if (companyName) {
+    await db
+      .update(organizations)
+      .set({ name: companyName })
+      .where(eq(organizations.id, input.organizationId));
+  }
   await db
     .update(organizationOnboarding)
     .set({ currentStep: "complete", completedAt: now, updatedAt: now })

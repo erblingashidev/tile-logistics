@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
-import { BRAND } from "@/lib/brand";
+import { requireAdmin } from "@/lib/auth";
+import { DEFAULT_ORGANIZATION_ID } from "@/lib/organizations/constants";
+import { warehouseOsmUrl } from "@/lib/organizations/warehouse";
 import { getFeatureFlags } from "@/lib/services/feature-flags";
+import { getOrganizationWarehouse } from "@/lib/services/organizations";
 import { getDashboardStats } from "@/lib/services/orders";
 import { pendingImportQueueCount } from "@/lib/services/invoice-import-queue";
 import { Badge, Card, StatLink } from "@/components/ui";
@@ -9,11 +12,15 @@ import { Badge, Card, StatLink } from "@/components/ui";
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const [stats, pendingImports, flags] = await Promise.all([
+  const session = await requireAdmin();
+  const organizationId = session.organizationId ?? DEFAULT_ORGANIZATION_ID;
+  const [stats, pendingImports, flags, warehouse] = await Promise.all([
     getDashboardStats(),
     pendingImportQueueCount(),
     getFeatureFlags(),
+    getOrganizationWarehouse(organizationId),
   ]);
+  const depotMapUrl = warehouseOsmUrl(warehouse);
   const modules = [
     { href: "/orders", label: "Orders" },
     ...(flags.operationsSuite
@@ -31,8 +38,6 @@ export default async function DashboardPage() {
     { href: "/logs", label: "Logs" },
     { href: "/settings", label: "Settings" },
   ];
-  const wh = BRAND.warehouse;
-
   return (
     <AppShell
       title="Dashboard"
@@ -88,7 +93,7 @@ export default async function DashboardPage() {
           Quick access
         </h2>
         <a
-          href={wh.osmUrl}
+          href={depotMapUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="text-xs text-zinc-500 underline hover:text-zinc-800"

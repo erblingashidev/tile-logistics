@@ -7,7 +7,10 @@ import {
   type DispatchPlan,
 } from "@/lib/dispatch/recommendations";
 import { truckColorForVehicle } from "@/lib/dispatch/truck-colors";
-import { WAREHOUSE_LOCATION, resolveOrderGeo } from "@/lib/locations";
+import { resolveOrderGeo } from "@/lib/locations";
+import { DEFAULT_ORGANIZATION_ID } from "@/lib/organizations/constants";
+import { getOrganizationWarehouseLocation } from "@/lib/services/organizations";
+import type { LocationEntry } from "@/lib/locations/kosovo-locations";
 import { isOrderUrgent } from "@/lib/order-priority";
 import { getDispatchBoard } from "@/lib/services/dispatch-board";
 import { listOrders, getVehicleLoad } from "@/lib/services/orders";
@@ -41,12 +44,13 @@ interface MapUnassignedOrder {
 }
 
 function buildRouteCoordinates(
-  stops: Array<{ lat: number; lng: number }>
+  stops: Array<{ lat: number; lng: number }>,
+  warehouse: LocationEntry
 ): [number, number][] {
   if (stops.length === 0) return [];
-  const ordered = orderStopsForRoundTrip(stops);
+  const ordered = orderStopsForRoundTrip(stops, warehouse);
   return [
-    [WAREHOUSE_LOCATION.lng, WAREHOUSE_LOCATION.lat],
+    [warehouse.lng, warehouse.lat],
     ...ordered.map((s) => [s.lng, s.lat] as [number, number]),
   ];
 }
@@ -89,6 +93,9 @@ export async function GET(request: NextRequest) {
     ? Number(sp.get("maxDistanceKm"))
     : undefined;
   const region = sp.get("region") ?? undefined;
+  const organizationId =
+    auth.session.organizationId ?? DEFAULT_ORGANIZATION_ID;
+  const warehouse = await getOrganizationWarehouseLocation(organizationId);
 
   let missingGeo = 0;
   const unassigned: MapUnassignedOrder[] = [];
@@ -191,7 +198,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const orderedStops = orderStopsForRoundTrip(geoStops);
+    const orderedStops = orderStopsForRoundTrip(geoStops, warehouse);
     const stops: MapStop[] = orderedStops.map((s, idx) => ({
       ...s,
       sequence: idx + 1,
@@ -243,20 +250,20 @@ export async function GET(request: NextRequest) {
           spreadKm,
           regions,
           stops,
-          routeCoordinates: buildRouteCoordinates(geoStops),
+          routeCoordinates: buildRouteCoordinates(geoStops, warehouse),
         },
       ],
     });
   }
 
   const payload: {
-    warehouse: typeof WAREHOUSE_LOCATION;
+    warehouse: LocationEntry;
     unassigned: MapUnassignedOrder[];
     trucks: MapTruckPayload[];
     missingGeo: number;
     plan?: DispatchPlan;
   } = {
-    warehouse: WAREHOUSE_LOCATION,
+    warehouse,
     unassigned,
     trucks,
     missingGeo,

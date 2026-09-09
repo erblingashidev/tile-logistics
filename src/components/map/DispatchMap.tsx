@@ -15,7 +15,6 @@ import {
   KOSOVO_MAP_CENTER,
 } from "@/lib/locations/map-config";
 import { orderStopsForRoundTrip } from "@/lib/dispatch/route-cluster";
-import { WAREHOUSE_LOCATION } from "@/lib/locations";
 import { useMapStyle } from "@/hooks/useMapStyle";
 
 interface MapStop {
@@ -282,11 +281,11 @@ export function DispatchMap({
   const planRoutes = useMemo(() => {
     if (!showPlan || !data?.plan?.recommendations.length) return [];
     return data.plan.recommendations.map((rec) => {
-      const ordered = orderStopsForRoundTrip(rec.orders);
+      const ordered = orderStopsForRoundTrip(rec.orders, data.warehouse);
       const truck = data.trucks.find((t) => t.vehicleId === rec.vehicleId);
       const color = truck?.color ?? "#94a3b8";
       const coordinates: [number, number][] = [
-        [WAREHOUSE_LOCATION.lng, WAREHOUSE_LOCATION.lat],
+        [data.warehouse.lng, data.warehouse.lat],
         ...ordered.map((s) => [s.lng, s.lat] as [number, number]),
       ];
       return { id: rec.id, color, coordinates, vehicleName: rec.vehicleName };

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
+import { BRAND } from "@/lib/brand";
 import { ChangePasswordCard } from "@/components/portal/ChangePasswordCard";
 import { broadcastFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 import {
@@ -300,7 +301,7 @@ export default function SettingsPage() {
                   System
                 </p>
                 <h2 className="mt-1 text-lg font-semibold text-zinc-900">
-                  How you use Tile Logistics
+                  How you use {BRAND.name}
                 </h2>
                 <p className="mt-1 max-w-2xl text-sm text-zinc-600">
                   One switch for the whole warehouse and dispatch system. After
