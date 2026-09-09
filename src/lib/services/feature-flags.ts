@@ -13,6 +13,8 @@ import { logActivity } from "@/lib/logger";
 import {
   DEFAULT_ORGANIZATION_ID,
   getFeatureFlagsForOrganization,
+  LEGACY_AGIMI_ORGANIZATION_ID,
+  setOrganizationSetting,
 } from "@/lib/services/organizations";
 import type { SessionUser } from "@/lib/auth/session";
 
@@ -69,18 +71,29 @@ export async function getFeatureFlagsForSession(
 }
 
 export async function updateFeatureFlags(
-  patch: Partial<FeatureFlags>
+  patch: Partial<FeatureFlags>,
+  organizationId?: number | null
 ): Promise<FeatureFlags> {
-  const current = await getStoredFeatureFlags();
+  const orgId =
+    organizationId != null && organizationId > 0 ? organizationId : null;
+  const current = orgId
+    ? await getFeatureFlags(orgId)
+    : await getStoredFeatureFlags();
   const applied = expandFeatureFlagPatch(current, patch);
   const next = { ...current };
   for (const id of FEATURE_FLAG_IDS) {
     if (typeof applied[id] !== "boolean" || applied[id] === current[id]) continue;
     next[id] = applied[id]!;
-    await setAppSetting(
-      FEATURE_FLAG_SETTING_KEYS[id],
-      applied[id] ? "true" : "false"
-    );
+    const stored = applied[id] ? "true" : "false";
+    const key = FEATURE_FLAG_SETTING_KEYS[id];
+    if (orgId) {
+      await setOrganizationSetting(orgId, key, stored);
+      if (orgId === LEGACY_AGIMI_ORGANIZATION_ID) {
+        await setAppSetting(key, stored);
+      }
+    } else {
+      await setAppSetting(key, stored);
+    }
   }
 
   const changed = FEATURE_FLAG_IDS.filter((id) => current[id] !== next[id]);
@@ -94,7 +107,7 @@ export async function updateFeatureFlags(
         .join(", ")}`,
       {
         category: "system",
-        details: { previous: current, next },
+        details: { previous: current, next, organizationId: orgId },
       }
     );
   }
@@ -103,9 +116,21 @@ export async function updateFeatureFlags(
 }
 
 export async function updateFeatureFlagsFromBody(
+  body: unknown,
+  organizationId?: number | null
+): Promise<FeatureFlags> {
+  return updateFeatureFlags(parseFeatureFlagPatch(body), organizationId);
+}
+
+export async function updateFeatureFlagsForSession(
+  session: SessionUser | null,
   body: unknown
 ): Promise<FeatureFlags> {
-  return updateFeatureFlags(parseFeatureFlagPatch(body));
+  const orgId =
+    session?.role === "admin"
+      ? session.organizationId ?? DEFAULT_ORGANIZATION_ID
+      : null;
+  return updateFeatureFlagsFromBody(body, orgId);
 }
 
 export async function isManualDispatchMode(): Promise<boolean> {

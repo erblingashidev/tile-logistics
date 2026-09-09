@@ -13,7 +13,11 @@ import {
   type OrganizationUnit,
   type ProductFocus,
 } from "@/lib/company-profile";
-import { FEATURE_FLAG_SETTING_KEYS } from "@/lib/features/catalog";
+import {
+  FEATURE_FLAG_SETTING_KEYS,
+  type FeatureFlagId,
+} from "@/lib/features/catalog";
+import { getAppSetting } from "@/lib/services/app-settings";
 import { getDb } from "@/lib/db";
 import { dbAll, dbOne } from "@/lib/db/query";
 import {
@@ -28,6 +32,23 @@ import { logActivity } from "@/lib/logger";
 import { MIN_ADMIN_PASSWORD_LENGTH } from "@/lib/services/admins";
 
 export const DEFAULT_ORGANIZATION_ID = 1;
+/** Primary tenant — existing AGIMI orders, staff, and settings stay on this org. */
+export const LEGACY_AGIMI_ORGANIZATION_ID = 1;
+export const LEGACY_AGIMI_SLUG = "agimi";
+export const LEGACY_AGIMI_NAME = "AGIMI COM SHPK";
+
+function rowsFromExecute(result: unknown): Array<Record<string, unknown>> {
+  const rows = (result as { rows?: Array<Record<string, unknown>> })?.rows;
+  return rows ?? [];
+}
+
+function scalarFromExecute(result: unknown): unknown {
+  const rows = rowsFromExecute(result);
+  const row = rows[0];
+  if (!row) return undefined;
+  const firstKey = Object.keys(row)[0];
+  return row[firstKey ?? "c"] ?? row[0];
+}
 
 export class OrganizationError extends Error {
   constructor(message: string) {
@@ -54,6 +75,14 @@ async function getOrgSetting(orgId: number, key: string) {
       )
   );
   return row?.value ?? null;
+}
+
+export async function setOrganizationSetting(
+  orgId: number,
+  key: string,
+  value: string
+) {
+  await setOrgSetting(orgId, key, value);
 }
 
 async function setOrgSetting(orgId: number, key: string, value: string) {
@@ -428,7 +457,7 @@ export async function getFeatureFlagsForOrganization(
   const db = await getDb();
   const flags = { ...profileToFeatureFlags(await getOrganizationProfile(organizationId)) };
   for (const [id, key] of Object.entries(FEATURE_FLAG_SETTING_KEYS)) {
-    const flagId = id as keyof typeof FEATURE_FLAG_SETTING_KEYS;
+    const flagId = id as FeatureFlagId;
     const row = await dbOne(
       db
         .select({ value: organizationSettings.value })
@@ -440,35 +469,70 @@ export async function getFeatureFlagsForOrganization(
           )
         )
     );
-    if (row?.value === "true") flags[flagId] = true;
-    if (row?.value === "false") flags[flagId] = false;
+    if (row?.value === "true") {
+      flags[flagId] = true;
+      continue;
+    }
+    if (row?.value === "false") {
+      flags[flagId] = false;
+      continue;
+    }
+    // Legacy AGIMI: fall back to global app_settings until org copy exists.
+    if (organizationId === LEGACY_AGIMI_ORGANIZATION_ID) {
+      const legacy = await getAppSetting(key);
+      if (legacy === "true") flags[flagId] = true;
+      if (legacy === "false") flags[flagId] = false;
+    }
   }
   return flags;
 }
 
-export async function ensureDefaultOrganization(client: Client) {
-  const count = await client.execute(
-    "SELECT COUNT(*) AS c FROM organizations"
-  );
-  const rows = (count as { rows: Array<Record<string, unknown>> }).rows;
-  const n = Number(rows[0]?.c ?? rows[0]?.[0] ?? 0);
-  if (n > 0) return;
-
-  const now = new Date().toISOString();
-  await client.execute({
-    sql: `INSERT INTO organizations (id, slug, name, status, created_at, activated_at)
-          VALUES (1, 'default', 'Default company', 'active', ?, ?)`,
-    args: [now, now],
+async function readClientSetting(
+  client: Client,
+  orgId: number,
+  key: string
+): Promise<string | null> {
+  const result = await client.execute({
+    sql: `SELECT value FROM organization_settings
+          WHERE organization_id = ? AND key = ? LIMIT 1`,
+    args: [orgId, key],
   });
-  await client.execute({
-    sql: `INSERT INTO organization_onboarding (organization_id, current_step, completed_at, updated_at)
-          VALUES (1, 'complete', ?, ?)`,
-    args: [now, now],
-  });
+  const value = scalarFromExecute(result);
+  return typeof value === "string" ? value : null;
+}
 
+async function copyLegacyAppSettingsToOrganization(
+  client: Client,
+  orgId: number,
+  updatedAt: string
+) {
+  for (const key of Object.values(FEATURE_FLAG_SETTING_KEYS)) {
+    const existing = await readClientSetting(client, orgId, key);
+    if (existing != null) continue;
+
+    const global = await client.execute({
+      sql: "SELECT value FROM app_settings WHERE key = ? LIMIT 1",
+      args: [key],
+    });
+    const value = scalarFromExecute(global);
+    if (typeof value !== "string" || !value.trim()) continue;
+
+    await client.execute({
+      sql: `INSERT INTO organization_settings (organization_id, key, value, updated_at)
+            VALUES (?, ?, ?, ?)`,
+      args: [orgId, key, value.trim(), updatedAt],
+    });
+  }
+}
+
+async function ensureLegacyAgimiProfile(client: Client, orgId: number, updatedAt: string) {
+  const existing = await readClientSetting(client, orgId, COMPANY_PROFILE_SETTING_KEY);
+  if (existing) return;
+
+  const preset = CATEGORY_PRESETS.tile_dealer;
   const profile = {
-    ...DEFAULT_COMPANY_PROFILE,
-    onboardingComplete: true,
+    companyCategory: preset.companyCategory ?? "tile_dealer",
+    productFocus: preset.productFocus ?? "tiles",
     modules: {
       vehicles: true,
       dispatch: true,
@@ -476,11 +540,78 @@ export async function ensureDefaultOrganization(client: Client) {
       returns: true,
       employeePortal: true,
       useInvoices: true,
+      ...preset.modules,
     },
+    onboardingComplete: true,
   };
+
   await client.execute({
     sql: `INSERT INTO organization_settings (organization_id, key, value, updated_at)
-          VALUES (1, ?, ?, ?)`,
-    args: [COMPANY_PROFILE_SETTING_KEY, JSON.stringify(profile), now],
+          VALUES (?, ?, ?, ?)`,
+    args: [orgId, COMPANY_PROFILE_SETTING_KEY, JSON.stringify(profile), updatedAt],
   });
+}
+
+async function ensureLegacyAgimiUnits(client: Client, orgId: number) {
+  const count = await client.execute({
+    sql: "SELECT COUNT(*) AS c FROM organization_units WHERE organization_id = ?",
+    args: [orgId],
+  });
+  const n = Number(scalarFromExecute(count) ?? 0);
+  if (n > 0) return;
+
+  const units = CATEGORY_PRESETS.tile_dealer.suggestedUnits ?? [];
+  for (const [index, unit] of units.entries()) {
+    await client.execute({
+      sql: `INSERT INTO organization_units (organization_id, code, label, sort_order)
+            VALUES (?, ?, ?, ?)`,
+      args: [orgId, unit.code, unit.label, unit.sortOrder ?? index],
+    });
+  }
+}
+
+/**
+ * Idempotent: keeps org #1 as AGIMI, copies legacy app_settings, and marks setup complete.
+ * Does not modify orders, employees, vehicles, or other operational data.
+ */
+export async function ensureDefaultOrganization(client: Client) {
+  const orgId = LEGACY_AGIMI_ORGANIZATION_ID;
+  const now = new Date().toISOString();
+
+  const existing = await client.execute(
+    "SELECT id FROM organizations WHERE id = 1 LIMIT 1"
+  );
+  const hasOrg = rowsFromExecute(existing).length > 0;
+
+  if (!hasOrg) {
+    await client.execute({
+      sql: `INSERT INTO organizations (id, slug, name, status, created_at, activated_at)
+            VALUES (?, ?, ?, 'active', ?, ?)`,
+      args: [orgId, LEGACY_AGIMI_SLUG, LEGACY_AGIMI_NAME, now, now],
+    });
+  } else {
+    await client.execute({
+      sql: `UPDATE organizations
+            SET slug = ?, name = ?, status = 'active', activated_at = COALESCE(activated_at, ?)
+            WHERE id = ?`,
+      args: [LEGACY_AGIMI_SLUG, LEGACY_AGIMI_NAME, now, orgId],
+    });
+  }
+
+  await client.execute({
+    sql: `INSERT OR IGNORE INTO organization_onboarding
+          (organization_id, current_step, completed_at, updated_at)
+          VALUES (?, 'complete', ?, ?)`,
+    args: [orgId, now, now],
+  });
+  await client.execute({
+    sql: `UPDATE organization_onboarding
+          SET current_step = 'complete', completed_at = COALESCE(completed_at, ?), updated_at = ?
+          WHERE organization_id = ?`,
+    args: [now, now, orgId],
+  });
+
+  await copyLegacyAppSettingsToOrganization(client, orgId, now);
+  await ensureLegacyAgimiProfile(client, orgId, now);
+  await ensureLegacyAgimiUnits(client, orgId);
 }
