@@ -170,38 +170,70 @@ export async function createCustomerReturn(input: {
     productName: string;
   }> = [];
 
+  const grouped = new Map<number, ReturnLineInput[]>();
   for (const line of input.lines) {
     if (!isReturnCondition(line.condition)) {
       return { ok: false as const, error: "Invalid return condition." };
     }
-    const item = byItem.get(line.orderItemId);
+    const list = grouped.get(line.orderItemId) ?? [];
+    list.push(line);
+    grouped.set(line.orderItemId, list);
+  }
+
+  for (const [orderItemId, itemLines] of grouped) {
+    const item = byItem.get(orderItemId);
     if (!item) {
       return { ok: false as const, error: "Unknown product line on this invoice." };
     }
-    const qty = roundQty(item.unit, Number(line.quantity));
-    if (!Number.isFinite(qty) || qty <= 0) {
+
+    const byCondition = new Map<ReturnCondition, number>();
+    let notes: string | null = null;
+    for (const line of itemLines) {
+      const qty = roundQty(item.unit, Number(line.quantity));
+      if (!Number.isFinite(qty) || qty <= 0) continue;
+      byCondition.set(
+        line.condition,
+        roundQty(item.unit, (byCondition.get(line.condition) ?? 0) + qty)
+      );
+      if (!notes && line.notes?.trim()) notes = line.notes.trim();
+    }
+
+    const total = roundQty(
+      item.unit,
+      [...byCondition.values()].reduce((sum, qty) => sum + qty, 0)
+    );
+    if (total <= 0) {
       return {
         ok: false as const,
         error: `Enter how much of “${item.productName}” was returned (${item.unitLabel}).`,
       };
     }
-    if (qty > item.returnable + 0.001) {
+    if (total > item.returnable + 0.001) {
       return {
         ok: false as const,
-        error: `Only ${item.returnable} ${item.unitLabel} can still be returned for “${item.productName}”.`,
+        error: `Only ${item.returnable} ${item.unitLabel} can still be returned for “${item.productName}” (you entered ${total}).`,
       };
     }
 
-    resolvedLines.push({
-      orderItemId: line.orderItemId,
-      quantity: qty,
-      unit: item.unit,
-      condition: line.condition,
-      quantityM2: item.unit === "m2" ? qty : 0,
-      loosePieces: item.unit === "piece" ? Math.round(qty) : 0,
-      notes: line.notes?.trim() || null,
-      productName: item.productName,
-    });
+    for (const [condition, qty] of byCondition) {
+      resolvedLines.push({
+        orderItemId,
+        quantity: qty,
+        unit: item.unit,
+        condition,
+        quantityM2: item.unit === "m2" ? qty : 0,
+        loosePieces: item.unit === "piece" ? Math.round(qty) : 0,
+        notes,
+        productName: item.productName,
+      });
+    }
+  }
+
+  if (!resolvedLines.length) {
+    return {
+      ok: false as const,
+      error: "Select at least one product and enter how much was returned.",
+    };
   }
 
   const inserted = await dbOne(
@@ -265,6 +297,17 @@ export async function createCustomerReturn(input: {
   };
 }
 
+export type ReturnProductBreakdown = {
+  orderItemId: number;
+  productName: string;
+  unit: string;
+  total: number;
+  untouched: number;
+  chipped: number;
+  broken: number;
+  notes: string | null;
+};
+
 export type CustomerReturnSummary = {
   id: number;
   orderId: number;
@@ -275,13 +318,40 @@ export type CustomerReturnSummary = {
   postedAt: string | null;
   lines: Array<{
     id: number;
+    orderItemId: number;
     productName: string;
     quantity: number;
     unit: string;
     condition: string;
     notes: string | null;
   }>;
+  products: ReturnProductBreakdown[];
 };
+
+export function summarizeReturnProducts(
+  lines: CustomerReturnSummary["lines"]
+): ReturnProductBreakdown[] {
+  const byItem = new Map<number, ReturnProductBreakdown>();
+  for (const line of lines) {
+    const existing = byItem.get(line.orderItemId) ?? {
+      orderItemId: line.orderItemId,
+      productName: line.productName,
+      unit: line.unit,
+      total: 0,
+      untouched: 0,
+      chipped: 0,
+      broken: 0,
+      notes: null as string | null,
+    };
+    existing.total += line.quantity;
+    if (line.condition === "untouched") existing.untouched += line.quantity;
+    if (line.condition === "chipped") existing.chipped += line.quantity;
+    if (line.condition === "broken") existing.broken += line.quantity;
+    if (!existing.notes && line.notes) existing.notes = line.notes;
+    byItem.set(line.orderItemId, existing);
+  }
+  return [...byItem.values()];
+}
 
 export async function listCustomerReturns(limit = 50): Promise<CustomerReturnSummary[]> {
   const db = await getDb();
@@ -301,6 +371,7 @@ export async function listCustomerReturns(limit = 50): Promise<CustomerReturnSum
           .select({
             id: customerReturnLines.id,
             returnId: customerReturnLines.returnId,
+            orderItemId: customerReturnLines.orderItemId,
             quantity: customerReturnLines.quantity,
             unit: customerReturnLines.unit,
             condition: customerReturnLines.condition,
@@ -323,6 +394,7 @@ export async function listCustomerReturns(limit = 50): Promise<CustomerReturnSum
     const list = linesByReturn.get(row.returnId) ?? [];
     list.push({
       id: row.id,
+      orderItemId: row.orderItemId,
       productName:
         row.productName?.trim() || row.productEan?.trim() || "Product",
       quantity: row.quantity,
@@ -333,14 +405,18 @@ export async function listCustomerReturns(limit = 50): Promise<CustomerReturnSum
     linesByReturn.set(row.returnId, list);
   }
 
-  return headers.map((h) => ({
-    id: h.id,
-    orderId: h.orderId,
-    invoiceNumber: h.invoiceNumber,
-    status: h.status,
-    notes: h.notes,
-    createdAt: h.createdAt,
-    postedAt: h.postedAt,
-    lines: linesByReturn.get(h.id) ?? [],
-  }));
+  return headers.map((h) => {
+    const lines = linesByReturn.get(h.id) ?? [];
+    return {
+      id: h.id,
+      orderId: h.orderId,
+      invoiceNumber: h.invoiceNumber,
+      status: h.status,
+      notes: h.notes,
+      createdAt: h.createdAt,
+      postedAt: h.postedAt,
+      lines,
+      products: summarizeReturnProducts(lines),
+    };
+  });
 }

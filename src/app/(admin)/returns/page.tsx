@@ -5,6 +5,7 @@ import {
   checklistToReturnLines,
   CustomerReturnChecklist,
   emptyReturnChecklist,
+  formatQty,
   type ReturnChecklistState,
 } from "@/components/CustomerReturnChecklist";
 import { InvoiceNumberField } from "@/components/InvoiceNumberField";
@@ -14,6 +15,7 @@ import { RETURN_CONDITION_LABELS } from "@/lib/customer-return-conditions";
 import type {
   CustomerReturnSummary,
   ReturnableLine,
+  ReturnProductBreakdown,
 } from "@/lib/services/customer-returns";
 
 type LookupResult = {
@@ -26,10 +28,24 @@ type LookupResult = {
   hasOpenReturnable: boolean;
 };
 
-function formatQty(unit: string, qty: number): string {
-  if (unit === "m2") return `${Math.round(qty * 100) / 100} m²`;
-  if (unit === "piece") return `${Math.round(qty)} pcs`;
-  return String(Math.round(qty * 10) / 10);
+function formatBreakdown(product: ReturnProductBreakdown): string {
+  const parts: string[] = [];
+  if (product.untouched > 0) {
+    parts.push(
+      `${RETURN_CONDITION_LABELS.untouched}: ${formatQty(product.unit, product.untouched)}`
+    );
+  }
+  if (product.chipped > 0) {
+    parts.push(
+      `${RETURN_CONDITION_LABELS.chipped}: ${formatQty(product.unit, product.chipped)}`
+    );
+  }
+  if (product.broken > 0) {
+    parts.push(
+      `${RETURN_CONDITION_LABELS.broken}: ${formatQty(product.unit, product.broken)}`
+    );
+  }
+  return parts.join(" · ");
 }
 
 export default function ReturnsPage() {
@@ -87,9 +103,11 @@ export default function ReturnsPage() {
   async function postReturn(e: React.FormEvent) {
     e.preventDefault();
     if (!lookup) return;
-    const lines = checklistToReturnLines(checklist);
+    const lines = checklistToReturnLines(checklist, lookup.lines);
     if (!lines.length) {
-      setError("Select at least one product and enter how much was returned.");
+      setError(
+        "Select at least one product and enter a quantity for untouched, chipped, or broken."
+      );
       return;
     }
     setPosting(true);
@@ -111,9 +129,7 @@ export default function ReturnsPage() {
         return;
       }
 
-      setSuccess(
-        `Return recorded for ${data.invoiceNumber} (${data.lineCount} line(s)).`
-      );
+      setSuccess(`Return recorded for ${data.invoiceNumber}.`);
       setLookup(null);
       setChecklist({});
       setReturnNotes("");
@@ -223,16 +239,28 @@ export default function ReturnsPage() {
                 {row.notes ? (
                   <p className="mt-1 text-sm text-zinc-600">{row.notes}</p>
                 ) : null}
-                {row.lines.length ? (
-                  <ul className="mt-2 space-y-1 border-t border-zinc-100 pt-2 text-sm text-zinc-700">
-                    {row.lines.map((line) => (
-                      <li key={line.id}>
-                        {line.productName} — {formatQty(line.unit, line.quantity)}
-                        {" · "}
-                        {RETURN_CONDITION_LABELS[
-                          line.condition as keyof typeof RETURN_CONDITION_LABELS
-                        ] ?? line.condition}
-                        {line.notes ? ` · ${line.notes}` : ""}
+                {row.products.length ? (
+                  <ul className="mt-2 space-y-2 border-t border-zinc-100 pt-2 text-sm text-zinc-700">
+                    {row.products.map((product) => (
+                      <li key={product.orderItemId}>
+                        <span className="font-medium text-zinc-900">
+                          {product.productName}
+                        </span>
+                        {" — total "}
+                        {formatQty(product.unit, product.total)}
+                        {product.unit === "m2"
+                          ? " m²"
+                          : product.unit === "piece"
+                            ? " pcs"
+                            : ` ${product.unit}`}
+                        <span className="mt-0.5 block text-zinc-600">
+                          {formatBreakdown(product)}
+                        </span>
+                        {product.notes ? (
+                          <span className="mt-0.5 block text-zinc-500">
+                            {product.notes}
+                          </span>
+                        ) : null}
                       </li>
                     ))}
                   </ul>
