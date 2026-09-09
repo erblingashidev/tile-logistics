@@ -4,6 +4,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { dbAll, dbOne } from "@/lib/db/query";
 import { invoiceImportQueue } from "@/lib/db/schema";
+import { getTenantOrganizationId } from "@/lib/organizations/tenant-context";
 import {
   folderDateFromFilePath,
   folderDateLabelToIso,
@@ -254,11 +255,13 @@ export async function enqueueExcelFile(
     ? await findOrderByInvoiceNumber(parsed.invoiceNumber)
     : null;
 
+  const organizationId = getTenantOrganizationId();
   if (duplicateOrder) {
     const inserted = await dbOne(
       db
         .insert(invoiceImportQueue)
         .values({
+          organizationId,
           status: "approved",
           sourceFileName: path.basename(absolutePath),
           sourceFilePath: absolutePath,
@@ -288,6 +291,7 @@ export async function enqueueExcelFile(
     db
       .insert(invoiceImportQueue)
       .values({
+        organizationId,
         status: "pending",
         sourceFileName: path.basename(absolutePath),
         sourceFilePath: absolutePath,
@@ -923,11 +927,17 @@ export async function linkImportQueueToOrder(options: {
 export async function pendingImportQueueCount(): Promise<number> {
   await syncPendingImportQueueWithOrders();
   const db = await getDb();
+  const organizationId = getTenantOrganizationId();
   const rows = await dbAll(
     db
       .select({ id: invoiceImportQueue.id })
       .from(invoiceImportQueue)
-      .where(eq(invoiceImportQueue.status, "pending"))
+      .where(
+        and(
+          eq(invoiceImportQueue.organizationId, organizationId),
+          eq(invoiceImportQueue.status, "pending")
+        )
+      )
   );
   return rows.length;
 }

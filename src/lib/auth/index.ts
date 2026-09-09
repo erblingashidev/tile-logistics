@@ -56,11 +56,15 @@ export async function loginEmployee(
   );
   if (!row?.passwordHash) return null;
   if (!verifyPassword(password, row.passwordHash)) return null;
+  const { DEFAULT_ORGANIZATION_ID } = await import(
+    "@/lib/organizations/constants"
+  );
   return {
     role: "employee",
     employeeId: row.id,
     name: row.name,
     roles: parseEmployeeRoles(row.roles),
+    organizationId: row.organizationId ?? DEFAULT_ORGANIZATION_ID,
   };
 }
 
@@ -90,6 +94,11 @@ export async function requireSession(): Promise<SessionUser> {
 export async function requireAdmin(): Promise<Extract<SessionUser, { role: "admin" }>> {
   const session = await requireSession();
   if (session.role !== "admin") throw new Error("Forbidden");
+  const { resolveSessionOrganizationId, bindTenantOrganization } = await import(
+    "@/lib/organizations/tenant-context"
+  );
+  const organizationId = resolveSessionOrganizationId(session);
+  if (organizationId) bindTenantOrganization(organizationId);
   return session;
 }
 
@@ -115,6 +124,11 @@ export async function requireEmployee(): Promise<
 > {
   const session = await requireSession();
   if (session.role !== "employee") throw new Error("Forbidden");
+  const { resolveSessionOrganizationId, bindTenantOrganization } = await import(
+    "@/lib/organizations/tenant-context"
+  );
+  const organizationId = resolveSessionOrganizationId(session);
+  if (organizationId) bindTenantOrganization(organizationId);
   return session;
 }
 

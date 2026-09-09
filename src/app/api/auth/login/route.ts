@@ -17,10 +17,22 @@ import {
   repairAgimiAdminLogin,
 } from "@/lib/services/organizations";
 import { isLegacyAgimiOrganization } from "@/lib/organizations/constants";
+import {
+  checkRateLimit,
+  clientIpFromRequest,
+} from "@/lib/auth/rate-limit";
 
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
+  const ip = clientIpFromRequest(request);
+  if (!checkRateLimit(`login:${ip}`, 12, 60_000)) {
+    return NextResponse.json(
+      { error: "Too many login attempts. Try again in a minute." },
+      { status: 429 }
+    );
+  }
+
   const body = await request.json();
   const username = String(body.username ?? "").trim();
   const password = String(body.password ?? "");

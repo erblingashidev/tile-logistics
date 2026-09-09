@@ -1,6 +1,8 @@
 import { getDb } from "@/lib/db";
 import { activityLogs } from "@/lib/db/schema";
 import type { LogCategory } from "@/lib/log-messages";
+import { tryGetTenantOrganizationId } from "@/lib/organizations/tenant-context";
+import { DEFAULT_ORGANIZATION_ID } from "@/lib/organizations/constants";
 
 export async function logActivity(
   action: string,
@@ -15,6 +17,8 @@ export async function logActivity(
   const db = await getDb();
   const now = new Date().toISOString();
   await db.insert(activityLogs).values({
+    organizationId:
+      tryGetTenantOrganizationId() ?? DEFAULT_ORGANIZATION_ID,
     action,
     entityType,
     entityId: entityId ?? undefined,

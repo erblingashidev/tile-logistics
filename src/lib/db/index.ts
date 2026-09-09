@@ -456,6 +456,47 @@ async function ensureOrganizationsSchema(client: Client) {
   await ensureDefaultOrganization(client);
 }
 
+const LEGACY_TENANT_ORGANIZATION_ID = 1;
+
+async function ensureTenantDataIsolation(client: Client) {
+  const tenantTables = [
+    "orders",
+    "employees",
+    "vehicles",
+    "products",
+    "activity_logs",
+    "invoice_import_queue",
+  ] as const;
+
+  for (const table of tenantTables) {
+    const cols = await tableColumns(client, table);
+    if (!cols.size) continue;
+    await addColumnIfMissing(
+      client,
+      table,
+      "organization_id",
+      "organization_id INTEGER NOT NULL DEFAULT 1 REFERENCES organizations(id) ON DELETE CASCADE",
+      cols
+    );
+    await client.execute({
+      sql: `UPDATE ${table}
+            SET organization_id = ?
+            WHERE organization_id IS NULL OR organization_id <= 0`,
+      args: [LEGACY_TENANT_ORGANIZATION_ID],
+    });
+    await client.execute(
+      `CREATE INDEX IF NOT EXISTS idx_${table}_organization_id ON ${table}(organization_id)`
+    );
+  }
+
+  await client.execute(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_org_invoice ON orders(organization_id, invoice_number)"
+  );
+  await client.execute(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_vehicles_org_plate ON vehicles(organization_id, plate_number)"
+  );
+}
+
 async function ensureOrganizationAdminColumns(client: Client) {
   const adminCols = await tableColumns(client, "admins");
   if (!adminCols.size) return;
@@ -1239,6 +1280,7 @@ export async function getDb() {
         await ensureOrganizationsSchema(clientInstance);
         await ensureAdminsTable(clientInstance);
         await ensureOrganizationAdminColumns(clientInstance);
+        await ensureTenantDataIsolation(clientInstance);
         await ensureOrderDeliveryLinksTable(clientInstance);
         await ensureOrderSchemaPatches(clientInstance);
         await ensureNullableAssignmentTimestamps(clientInstance);

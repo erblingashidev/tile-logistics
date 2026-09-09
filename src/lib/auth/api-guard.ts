@@ -2,6 +2,15 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import type { SessionUser } from "@/lib/auth/session";
 import { isSalesStaff } from "@/lib/employee-categories";
+import {
+  bindTenantOrganization,
+  resolveSessionOrganizationId,
+} from "@/lib/organizations/tenant-context";
+
+function bindSessionTenant(session: SessionUser): void {
+  const organizationId = resolveSessionOrganizationId(session);
+  if (organizationId) bindTenantOrganization(organizationId);
+}
 
 export async function requireApiSession(): Promise<
   | { ok: true; session: SessionUser }
@@ -14,7 +23,27 @@ export async function requireApiSession(): Promise<
       response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
     };
   }
+  bindSessionTenant(session);
   return { ok: true, session };
+}
+
+export async function requireApiTenantSession(): Promise<
+  | { ok: true; session: SessionUser; organizationId: number }
+  | { ok: false; response: NextResponse }
+> {
+  const auth = await requireApiSession();
+  if (!auth.ok) return auth;
+  const organizationId = resolveSessionOrganizationId(auth.session);
+  if (!organizationId) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Select a company before accessing this data." },
+        { status: 403 }
+      ),
+    };
+  }
+  return { ok: true, session: auth.session, organizationId };
 }
 
 export async function requireSalesStaffSession(): Promise<

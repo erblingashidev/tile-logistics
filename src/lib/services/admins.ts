@@ -21,6 +21,10 @@ import {
   LEGACY_AGIMI_ORGANIZATION_ID,
   repairAgimiAdminLogin,
 } from "@/lib/services/organizations";
+import {
+  getTenantOrganizationId,
+  tryGetTenantOrganizationId,
+} from "@/lib/organizations/tenant-context";
 
 export const MIN_ADMIN_PASSWORD_LENGTH = 6;
 
@@ -168,13 +172,19 @@ async function createLinkedEmployee(input: {
   passwordHash: string;
   title: string | null;
   employeeRole: EmployeeRole;
+  organizationId?: number;
 }) {
   const db = await getDb();
   const now = new Date().toISOString();
+  const organizationId =
+    input.organizationId ??
+    tryGetTenantOrganizationId() ??
+    LEGACY_AGIMI_ORGANIZATION_ID;
   const inserted = await dbOne(
     db
       .insert(employees)
       .values({
+        organizationId,
         name: input.name,
         status: "off_duty",
         roles: serializeEmployeeRoles([input.employeeRole]),
@@ -304,8 +314,18 @@ export async function resolveAdminIdForSession(input: {
 
 export async function listAdmins(): Promise<AdminProfile[]> {
   const db = await getDb();
+  const organizationId = getTenantOrganizationId();
   const rows = await dbAll(
-    db.select().from(admins).orderBy(desc(admins.createdAt))
+    db
+      .select()
+      .from(admins)
+      .where(
+        and(
+          eq(admins.organizationId, organizationId),
+          eq(admins.isPlatformAdmin, 0)
+        )
+      )
+      .orderBy(desc(admins.createdAt))
   );
   return Promise.all(rows.map((row) => loadAdminProfile(row.id))).then((profiles) =>
     profiles.filter((profile): profile is AdminProfile => profile != null)
@@ -393,10 +413,12 @@ export async function createAdmin(payload: AdminPayload): Promise<AdminProfile> 
 
   const db = await getDb();
   const now = new Date().toISOString();
+  const organizationId = getTenantOrganizationId();
   const inserted = await dbOne(
     db
       .insert(admins)
       .values({
+        organizationId,
         name,
         username,
         passwordHash,
@@ -421,6 +443,7 @@ export async function createAdmin(payload: AdminPayload): Promise<AdminProfile> 
     passwordHash,
     title,
     employeeRole,
+    organizationId,
   });
   await db
     .update(admins)

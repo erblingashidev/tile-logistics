@@ -18,6 +18,7 @@ import {
 } from "@/lib/constants";
 import { logActivity } from "@/lib/logger";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
+import { getTenantOrganizationId } from "@/lib/organizations/tenant-context";
 import {
   clearEmployeeWarehouseZones,
   getEmployeeWarehouseZones,
@@ -337,7 +338,11 @@ async function getEmployeeActiveAssignments(employeeId: number) {
 export async function listEmployees(roleFilter?: EmployeeRole) {
   const db = await getDb();
   const rows = await dbAll(
-    db.select().from(employees).orderBy(desc(employees.updatedAt))
+    db
+      .select()
+      .from(employees)
+      .where(eq(employees.organizationId, getTenantOrganizationId()))
+      .orderBy(desc(employees.updatedAt))
   );
   const enriched = await Promise.all(
     rows.map(async (e) =>
@@ -350,7 +355,15 @@ export async function listEmployees(roleFilter?: EmployeeRole) {
 export async function getEmployee(id: number) {
   const db = await getDb();
   const row = await dbOne(
-    db.select().from(employees).where(eq(employees.id, id))
+    db
+      .select()
+      .from(employees)
+      .where(
+        and(
+          eq(employees.id, id),
+          eq(employees.organizationId, getTenantOrganizationId())
+        )
+      )
   );
   if (!row) return null;
   return enrichEmployeeRow(row, await getEmployeeActiveAssignments(id));
@@ -370,10 +383,12 @@ export async function createEmployee(payload: EmployeePayload) {
 
   const db = await getDb();
   const now = new Date().toISOString();
+  const organizationId = getTenantOrganizationId();
   const inserted = await dbOne(
     db
       .insert(employees)
       .values({
+        organizationId,
         name: payload.name,
         status: payload.status ?? "available",
         roles: serializeEmployeeRoles(payload.roles),

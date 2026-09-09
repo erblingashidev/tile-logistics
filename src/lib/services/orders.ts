@@ -74,6 +74,7 @@ import {
 import { MAX_DELIVERY_ROUNDS, normalizeOrderUnit, type OrderStatus, type EmployeeRole } from "@/lib/constants";
 import { isDeliveryRoundsEnabled } from "@/lib/services/feature-flags";
 import { getLocationById, resolveLocation } from "@/lib/locations";
+import { getTenantOrganizationId } from "@/lib/organizations/tenant-context";
 import {
   suggestRoutes,
   type RoutePlanFilters,
@@ -263,7 +264,7 @@ export async function listOrders(filters?: {
   salesEmployeeId?: number;
 }) {
   const db = await getDb();
-  const conditions = [];
+  const conditions = [eq(orders.organizationId, getTenantOrganizationId())];
 
   if (filters?.dateFrom) conditions.push(gte(orders.orderDate, filters.dateFrom));
   if (filters?.dateTo) conditions.push(lte(orders.orderDate, filters.dateTo));
@@ -438,7 +439,15 @@ export async function listOrders(filters?: {
 export async function getOrder(id: number) {
   const db = await getDb();
   const order = await dbOne(
-    db.select().from(orders).where(eq(orders.id, id))
+    db
+      .select()
+      .from(orders)
+      .where(
+        and(
+          eq(orders.id, id),
+          eq(orders.organizationId, getTenantOrganizationId())
+        )
+      )
   );
   if (!order) return null;
   const proofs = await listDeliveryProofs(id);
@@ -597,16 +606,25 @@ export async function findOrderByInvoiceNumber(invoiceNumber: string) {
   if (!normalized) return null;
 
   const db = await getDb();
+  const orgId = getTenantOrganizationId();
   const exact = await dbOne(
     db
       .select({ id: orders.id, invoiceNumber: orders.invoiceNumber })
       .from(orders)
-      .where(eq(orders.invoiceNumber, normalized))
+      .where(
+        and(
+          eq(orders.organizationId, orgId),
+          eq(orders.invoiceNumber, normalized)
+        )
+      )
   );
   if (exact) return exact;
 
   const rows = await dbAll(
-    db.select({ id: orders.id, invoiceNumber: orders.invoiceNumber }).from(orders)
+    db
+      .select({ id: orders.id, invoiceNumber: orders.invoiceNumber })
+      .from(orders)
+      .where(eq(orders.organizationId, orgId))
   );
 
   for (const row of rows) {
@@ -806,10 +824,12 @@ export async function createOrder(
     payload.region
   );
 
+  const organizationId = getTenantOrganizationId();
   const inserted = await dbOne(
     db
       .insert(orders)
       .values({
+        organizationId,
         invoiceNumber,
         customerName: payload.customerName,
         location: locFields.location,
@@ -2243,11 +2263,17 @@ export async function listOrdersForEmployee(
   const roles = options?.roles ?? [];
   const db = await getDb();
 
+  const organizationId = getTenantOrganizationId();
   const employee = await dbOne(
     db
       .select({ assignedVehicleId: employees.assignedVehicleId })
       .from(employees)
-      .where(eq(employees.id, employeeId))
+      .where(
+        and(
+          eq(employees.id, employeeId),
+          eq(employees.organizationId, organizationId)
+        )
+      )
   );
 
   let ids: number[] = [];
@@ -2535,12 +2561,15 @@ export async function getReportData(filters: {
 
 export async function getDashboardStats() {
   const db = await getDb();
+  const organizationId = getTenantOrganizationId();
   const asOf = todayDateString();
   const workDateSql = sql`coalesce(nullif(trim(${orders.requestedDeliveryDate}), ''), ${orders.orderDate})`;
   const openStatuses = sql`${orders.status} NOT IN ('delivered', 'cancelled')`;
   const isToday = sql`${workDateSql} = ${asOf}`;
   const isOverdue = sql`${workDateSql} < ${asOf}`;
   const noAssignment = sql`NOT EXISTS (SELECT 1 FROM assignments a WHERE a.order_id = ${orders.id})`;
+  const orgOrders = eq(orders.organizationId, organizationId);
+  const orgVehicles = eq(vehicles.organizationId, organizationId);
 
   const [todayRow, unassignedRow, overdueRow, vehiclesAvailableRow] =
     await Promise.all([
@@ -2548,7 +2577,7 @@ export async function getDashboardStats() {
         db
           .select({ count: sql<number>`count(*)` })
           .from(orders)
-          .where(and(isToday, openStatuses))
+          .where(and(orgOrders, isToday, openStatuses))
       ),
       dbOne(
         db
@@ -2557,19 +2586,19 @@ export async function getDashboardStats() {
             pallets: sql<number>`coalesce(sum(${orders.totalPallets}), 0)`,
           })
           .from(orders)
-          .where(and(isToday, openStatuses, noAssignment))
+          .where(and(orgOrders, isToday, openStatuses, noAssignment))
       ),
       dbOne(
         db
           .select({ count: sql<number>`count(*)` })
           .from(orders)
-          .where(and(isOverdue, openStatuses))
+          .where(and(orgOrders, isOverdue, openStatuses))
       ),
       dbOne(
         db
           .select({ count: sql<number>`count(*)` })
           .from(vehicles)
-          .where(eq(vehicles.status, "available"))
+          .where(and(orgVehicles, eq(vehicles.status, "available")))
       ),
     ]);
 

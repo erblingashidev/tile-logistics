@@ -36,6 +36,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireApiSession();
+  if (!auth.ok) return auth.response;
+
   const body = (await request.json()) as VehiclePayload;
   if (!body.name || !body.plateNumber) {
     return NextResponse.json(

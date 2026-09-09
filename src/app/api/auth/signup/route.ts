@@ -4,10 +4,22 @@ import {
   OrganizationError,
   submitOrganizationApplication,
 } from "@/lib/services/organizations";
+import {
+  checkRateLimit,
+  clientIpFromRequest,
+} from "@/lib/auth/rate-limit";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  const ip = clientIpFromRequest(request);
+  if (!checkRateLimit(`signup:${ip}`, 5, 60_000)) {
+    return NextResponse.json(
+      { error: "Too many signup attempts. Try again later." },
+      { status: 429 }
+    );
+  }
+
   try {
     const body = (await request.json()) as {
       orgName?: string;

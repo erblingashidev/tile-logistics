@@ -1,4 +1,4 @@
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { dbAll, dbOne } from "@/lib/db/query";
 import { vehicles } from "@/lib/db/schema";
@@ -12,6 +12,7 @@ import {
   VEHICLE_CATEGORY_LABELS,
 } from "@/lib/constants";
 import { logActivity } from "@/lib/logger";
+import { getTenantOrganizationId } from "@/lib/organizations/tenant-context";
 import {
   formatStatusLabel,
   vehicleCreatedMessage,
@@ -87,7 +88,11 @@ async function hydrateVehicles(
 export async function listVehicles(options?: ListVehiclesOptions) {
   const db = await getDb();
   let rows = await dbAll(
-    db.select().from(vehicles).orderBy(desc(vehicles.updatedAt))
+    db
+      .select()
+      .from(vehicles)
+      .where(eq(vehicles.organizationId, getTenantOrganizationId()))
+      .orderBy(desc(vehicles.updatedAt))
   );
 
   if (options?.forTransport || options?.category === "delivery") {
@@ -106,7 +111,15 @@ export async function listTransportVehicles() {
 export async function getVehicle(id: number) {
   const db = await getDb();
   const vehicle = await dbOne(
-    db.select().from(vehicles).where(eq(vehicles.id, id))
+    db
+      .select()
+      .from(vehicles)
+      .where(
+        and(
+          eq(vehicles.id, id),
+          eq(vehicles.organizationId, getTenantOrganizationId())
+        )
+      )
   );
   if (!vehicle) return null;
   const [hydrated] = await hydrateVehicles([vehicle]);
@@ -120,9 +133,11 @@ export async function createVehicle(payload: VehiclePayload) {
     payload.category ?? DEFAULT_VEHICLE_CATEGORY
   );
   const capacity = resolveVehicleCapacity(category, payload);
+  const organizationId = getTenantOrganizationId();
   const [inserted] = await db
     .insert(vehicles)
     .values({
+      organizationId,
       name: payload.name,
       plateNumber: payload.plateNumber,
       maxWeightKg: capacity.maxWeightKg,
