@@ -36,7 +36,11 @@
     "refresh:import-queue": "esbuild scripts/refresh-import-queue.ts --bundle --platform=node --format=cjs --outfile=.tmp/refresh-import-queue.cjs --external:@libsql/client --external:fs --external:path --external:os --external:crypto && node .tmp/refresh-import-queue.cjs --local",
     "refresh:import-queue:turso": "esbuild scripts/refresh-import-queue.ts --bundle --platform=node --format=cjs --outfile=.tmp/refresh-import-queue.cjs --external:@libsql/client --external:fs --external:path --external:os --external:crypto && node .tmp/refresh-import-queue.cjs --turso",
     "test:prodata-api": "tsx scripts/test-prodata-api.ts",
-    "prodata:login": "tsx scripts/prodata-login.ts"
+    "prodata:login": "tsx scripts/prodata-login.ts",
+    "list-admins": "tsx scripts/list-admins.ts",
+    "list-admins:turso": "DB_TARGET=turso tsx scripts/list-admins.ts",
+    "reset-admin-password": "tsx scripts/reset-admin-password.ts",
+    "reset-admin-password:turso": "DB_TARGET=turso tsx scripts/reset-admin-password.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",

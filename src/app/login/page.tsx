@@ -50,11 +50,15 @@ export default function LoginPage() {
         <p className="mt-1 text-sm text-zinc-500">{sq.login.subtitle}</p>
         <p className="mt-4 text-base font-medium text-zinc-900">{sq.login.title}</p>
         <p className="mt-2 text-sm text-zinc-600">{sq.login.existingAccount}</p>
+        <p className="mt-1 text-xs text-zinc-500">
+          Username is not case-sensitive. Platform owner accounts choose a company after login.
+        </p>
 
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
           <Input
             label={sq.login.username}
             autoComplete="username"
+            placeholder="e.g. erblingashi"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             required
