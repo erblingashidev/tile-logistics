@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
+import { LEGACY_AGIMI_ORGANIZATION_ID } from "@/lib/services/organizations";
 import {
   employeeLoginRedirect,
 } from "@/lib/employee-categories";
@@ -26,7 +27,14 @@ export default async function AdminLayout({
   if (session.role === "admin") {
     const platformAdmin =
       session.adminId === 0 || session.isPlatformAdmin === true;
-    if (!platformAdmin && session.onboardingComplete === false) {
+    const legacyAgimiAdmin =
+      session.organizationId == null ||
+      session.organizationId === LEGACY_AGIMI_ORGANIZATION_ID;
+    if (
+      !platformAdmin &&
+      session.onboardingComplete === false &&
+      !legacyAgimiAdmin
+    ) {
       redirect("/onboarding");
     }
   }

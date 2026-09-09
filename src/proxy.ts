@@ -18,6 +18,7 @@ import {
   FEATURE_FLAGS_COOKIE,
   parseFeatureFlagsCookie,
 } from "@/lib/features/cookie";
+import { LEGACY_AGIMI_ORGANIZATION_ID } from "@/lib/services/organizations";
 
 const PUBLIC_PREFIXES = [
   "/login",
@@ -172,7 +173,14 @@ export async function proxy(request: NextRequest) {
       return NextResponse.redirect(new URL("/", request.url));
     }
 
-    if (!platformAdmin && session.onboardingComplete === false) {
+    const legacyAgimiAdmin =
+      session.organizationId == null ||
+      session.organizationId === LEGACY_AGIMI_ORGANIZATION_ID;
+    if (
+      !platformAdmin &&
+      session.onboardingComplete === false &&
+      !legacyAgimiAdmin
+    ) {
       const allowed = ONBOARDING_ALLOWED_PREFIXES.some((p) =>
         pathname.startsWith(p)
       );

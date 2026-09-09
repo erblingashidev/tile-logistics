@@ -115,6 +115,25 @@ export const CATEGORY_PRESETS: Record<
   },
 };
 
+/** Pre-onboarding AGIMI tenant — always treated as fully set up. */
+export function legacyAgimiCompanyProfile(): CompanyProfile {
+  const preset = CATEGORY_PRESETS.tile_dealer;
+  return {
+    companyCategory: preset.companyCategory ?? "tile_dealer",
+    productFocus: preset.productFocus ?? "tiles",
+    modules: {
+      vehicles: true,
+      dispatch: true,
+      warehouse: true,
+      returns: true,
+      employeePortal: true,
+      useInvoices: true,
+      ...preset.modules,
+    },
+    onboardingComplete: true,
+  };
+}
+
 export function slugifyCompanyName(name: string): string {
   return name
     .trim()

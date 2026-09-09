@@ -49,6 +49,7 @@ export default function LoginPage() {
         <p className="text-lg font-semibold text-zinc-900">{BRAND.name}</p>
         <p className="mt-1 text-sm text-zinc-500">{sq.login.subtitle}</p>
         <p className="mt-4 text-base font-medium text-zinc-900">{sq.login.title}</p>
+        <p className="mt-2 text-sm text-zinc-600">{sq.login.existingAccount}</p>
 
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
           <Input
@@ -70,13 +71,17 @@ export default function LoginPage() {
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? sq.login.submitting : sq.login.submit}
           </Button>
-          <p className="text-center text-sm text-zinc-500">
-            New company?{" "}
-            <Link href="/signup" className="font-medium text-zinc-900 underline">
-              Request access
-            </Link>
-          </p>
         </form>
+
+        <div className="mt-6 rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-center text-sm text-zinc-600">
+          <p>{sq.login.newCompany}</p>
+          <Link
+            href="/signup"
+            className="mt-1 inline-block font-medium text-zinc-900 underline"
+          >
+            {sq.login.requestAccess}
+          </Link>
+        </div>
       </Card>
     </div>
   );

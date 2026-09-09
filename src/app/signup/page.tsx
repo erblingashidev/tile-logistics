@@ -68,7 +68,14 @@ export default function SignupPage() {
       <Card className="w-full max-w-lg p-6">
         <p className="text-lg font-semibold text-zinc-900">{BRAND.name}</p>
         <p className="mt-1 text-sm text-zinc-500">
-          Register your company. Access is granted after platform approval.
+          For new companies only. Access is granted after platform approval.
+        </p>
+        <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          Already have an AGIMI account?{" "}
+          <Link href="/login" className="font-medium underline">
+            Log in here
+          </Link>{" "}
+          — your orders and data are not affected.
         </p>
 
         {success ? (

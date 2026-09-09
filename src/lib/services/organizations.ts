@@ -5,6 +5,7 @@ import {
   CATEGORY_PRESETS,
   COMPANY_PROFILE_SETTING_KEY,
   DEFAULT_COMPANY_PROFILE,
+  legacyAgimiCompanyProfile,
   parseCompanyProfile,
   profileToFeatureFlags,
   slugifyCompanyName,
@@ -122,6 +123,18 @@ async function setOrgSetting(orgId: number, key: string, value: string) {
 export async function getOrganizationProfile(
   organizationId: number
 ): Promise<CompanyProfile> {
+  if (organizationId === LEGACY_AGIMI_ORGANIZATION_ID) {
+    const raw = await getOrgSetting(organizationId, COMPANY_PROFILE_SETTING_KEY);
+    if (!raw) return legacyAgimiCompanyProfile();
+    try {
+      const profile = parseCompanyProfile(JSON.parse(raw));
+      if (!profile.onboardingComplete) return legacyAgimiCompanyProfile();
+      return profile;
+    } catch {
+      return legacyAgimiCompanyProfile();
+    }
+  }
+
   const raw = await getOrgSetting(organizationId, COMPANY_PROFILE_SETTING_KEY);
   if (!raw) return { ...DEFAULT_COMPANY_PROFILE };
   try {
@@ -190,6 +203,7 @@ export async function replaceOrganizationUnits(
 }
 
 export async function isOnboardingComplete(organizationId: number) {
+  if (organizationId === LEGACY_AGIMI_ORGANIZATION_ID) return true;
   const profile = await getOrganizationProfile(organizationId);
   return profile.onboardingComplete;
 }
@@ -527,29 +541,33 @@ async function copyLegacyAppSettingsToOrganization(
 
 async function ensureLegacyAgimiProfile(client: Client, orgId: number, updatedAt: string) {
   const existing = await readClientSetting(client, orgId, COMPANY_PROFILE_SETTING_KEY);
-  if (existing) return;
+  const profileJson = JSON.stringify(legacyAgimiCompanyProfile());
 
-  const preset = CATEGORY_PRESETS.tile_dealer;
-  const profile = {
-    companyCategory: preset.companyCategory ?? "tile_dealer",
-    productFocus: preset.productFocus ?? "tiles",
-    modules: {
-      vehicles: true,
-      dispatch: true,
-      warehouse: true,
-      returns: true,
-      employeePortal: true,
-      useInvoices: true,
-      ...preset.modules,
-    },
-    onboardingComplete: true,
-  };
+  if (!existing) {
+    await client.execute({
+      sql: `INSERT INTO organization_settings (organization_id, key, value, updated_at)
+            VALUES (?, ?, ?, ?)`,
+      args: [orgId, COMPANY_PROFILE_SETTING_KEY, profileJson, updatedAt],
+    });
+    return;
+  }
 
-  await client.execute({
-    sql: `INSERT INTO organization_settings (organization_id, key, value, updated_at)
-          VALUES (?, ?, ?, ?)`,
-    args: [orgId, COMPANY_PROFILE_SETTING_KEY, JSON.stringify(profile), updatedAt],
-  });
+  try {
+    const parsed = parseCompanyProfile(JSON.parse(existing));
+    if (!parsed.onboardingComplete) {
+      await client.execute({
+        sql: `UPDATE organization_settings SET value = ?, updated_at = ?
+              WHERE organization_id = ? AND key = ?`,
+        args: [profileJson, updatedAt, orgId, COMPANY_PROFILE_SETTING_KEY],
+      });
+    }
+  } catch {
+    await client.execute({
+      sql: `UPDATE organization_settings SET value = ?, updated_at = ?
+            WHERE organization_id = ? AND key = ?`,
+      args: [profileJson, updatedAt, orgId, COMPANY_PROFILE_SETTING_KEY],
+    });
+  }
 }
 
 async function ensureLegacyAgimiUnits(client: Client, orgId: number) {

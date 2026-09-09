@@ -10,7 +10,10 @@ import { dbOne } from "@/lib/db/query";
 import { admins } from "@/lib/db/schema";
 import { applyFeatureFlagsCookie } from "@/lib/features/cookie";
 import { getFeatureFlagsForSession } from "@/lib/services/feature-flags";
-import { isOnboardingComplete } from "@/lib/services/organizations";
+import {
+  isOnboardingComplete,
+  LEGACY_AGIMI_ORGANIZATION_ID,
+} from "@/lib/services/organizations";
 
 export const runtime = "nodejs";
 
@@ -30,11 +33,19 @@ export async function POST() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const organizationId = row.organizationId ?? null;
-    const onboardingComplete =
-      organizationId != null
-        ? await isOnboardingComplete(organizationId)
-        : true;
+    let organizationId = row.organizationId ?? LEGACY_AGIMI_ORGANIZATION_ID;
+    if (row.organizationId == null) {
+      const now = new Date().toISOString();
+      await db
+        .update(admins)
+        .set({ organizationId, updatedAt: now })
+        .where(eq(admins.id, row.id));
+    }
+
+    let onboardingComplete = await isOnboardingComplete(organizationId);
+    if (organizationId === LEGACY_AGIMI_ORGANIZATION_ID) {
+      onboardingComplete = true;
+    }
 
     const user = {
       role: "admin" as const,
