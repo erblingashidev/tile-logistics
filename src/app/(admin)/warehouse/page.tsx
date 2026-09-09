@@ -7,6 +7,12 @@ import { WarehouseNav } from "@/components/warehouse/WarehouseNav";
 
 const workflow = [
   {
+    href: "/warehouse/returns",
+    title: "Customer returns",
+    description:
+      "Scan the original invoice and record returned tiles (m²) or bags with condition.",
+  },
+  {
     href: "/warehouse/unload",
     title: "Unloading",
     description: "Truck arrives — scan lot barcode, enter m² → STAGING.",
@@ -38,12 +44,6 @@ const catalog = [
 ];
 
 const operations = [
-  {
-    href: "/warehouse/returns",
-    title: "Customer returns",
-    description:
-      "Scan the original invoice and record returned tiles (m²) or bags with condition.",
-  },
   {
     href: "/warehouse/inventory",
     title: "Annual inventory",

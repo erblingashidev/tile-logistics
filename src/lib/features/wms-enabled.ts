@@ -8,9 +8,20 @@ const WMS_PORTAL_PREFIXES = [
   "/portal/inventory",
   "/portal/wms",
   "/portal/reports",
+  "/portal/returns",
 ] as const;
 
+/** Customer returns — available even when the warehouse module is off. */
+export function isCustomerReturnsPath(pathname: string): boolean {
+  return (
+    pathname === "/warehouse/returns" ||
+    pathname.startsWith("/warehouse/returns/") ||
+    pathname.startsWith("/api/warehouse/returns")
+  );
+}
+
 export function isWmsAdminPath(pathname: string): boolean {
+  if (isCustomerReturnsPath(pathname)) return false;
   return (
     pathname === WMS_ADMIN_PREFIX ||
     pathname.startsWith(`${WMS_ADMIN_PREFIX}/`)

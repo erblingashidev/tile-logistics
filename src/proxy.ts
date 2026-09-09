@@ -47,7 +47,8 @@ function employeePathAllowed(
     pathname.startsWith("/portal/unload") ||
     pathname.startsWith("/portal/mapping") ||
     pathname.startsWith("/portal/inventory") ||
-    pathname.startsWith("/portal/wms");
+    pathname.startsWith("/portal/wms") ||
+    pathname.startsWith("/portal/returns");
 
   if (!wmsEnabled && (isDepotPage || pathname.startsWith("/api/wms"))) {
     return false;

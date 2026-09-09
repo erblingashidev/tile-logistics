@@ -16,6 +16,7 @@ function buildNavGroups(flags: FeatureFlags) {
       items: [
         { href: "/", label: "Dashboard" },
         { href: "/orders", label: "Orders" },
+        { href: "/warehouse/returns", label: "Returns" },
         ...(flags.operationsSuite
           ? [
               { href: "/dispatch", label: "Dispatch" },
