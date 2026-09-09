@@ -471,11 +471,12 @@ async function ensureTenantDataIsolation(client: Client) {
   for (const table of tenantTables) {
     const cols = await tableColumns(client, table);
     if (!cols.size) continue;
+    // SQLite cannot ADD COLUMN with REFERENCES + non-null default in one step.
     await addColumnIfMissing(
       client,
       table,
       "organization_id",
-      "organization_id INTEGER NOT NULL DEFAULT 1 REFERENCES organizations(id) ON DELETE CASCADE",
+      "organization_id INTEGER DEFAULT 1",
       cols
     );
     await client.execute({

@@ -25,6 +25,7 @@ import {
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
+  try {
   const ip = clientIpFromRequest(request);
   if (!checkRateLimit(`login:${ip}`, 12, 60_000)) {
     return NextResponse.json(
@@ -101,4 +102,11 @@ export async function POST(request: NextRequest) {
   applyFeatureFlagsCookie(response, await getFeatureFlagsForSession(user));
 
   return response;
+  } catch (err) {
+    console.error("[auth/login POST]", err);
+    return NextResponse.json(
+      { error: "Login failed — please try again in a moment." },
+      { status: 500 }
+    );
+  }
 }
