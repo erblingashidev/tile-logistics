@@ -1,4 +1,8 @@
 import type { EmployeeRole } from "@/lib/constants";
+import {
+  isLegacyAgimiOrganization,
+  LEGACY_AGIMI_ORGANIZATION_ID,
+} from "@/lib/organizations/constants";
 
 import { getAuthSecret } from "@/lib/config/auth-env";
 
@@ -102,6 +106,13 @@ export async function verifySessionToken(
     };
     if (!parsed.exp || parsed.exp < Date.now()) return null;
     if (parsed.role === "admin") {
+      const organizationId =
+        typeof parsed.organizationId === "number"
+          ? parsed.organizationId
+          : parsed.organizationId === null
+            ? null
+            : undefined;
+      const legacyAgimi = isLegacyAgimiOrganization(organizationId);
       return {
         role: "admin",
         adminId: typeof parsed.adminId === "number" ? parsed.adminId : 0,
@@ -111,14 +122,13 @@ export async function verifySessionToken(
           typeof parsed.title === "string" || parsed.title === null
             ? parsed.title
             : null,
-        organizationId:
-          typeof parsed.organizationId === "number"
-            ? parsed.organizationId
-            : parsed.organizationId === null
-              ? null
-              : undefined,
+        organizationId: legacyAgimi
+          ? LEGACY_AGIMI_ORGANIZATION_ID
+          : organizationId,
         isPlatformAdmin: parsed.isPlatformAdmin === true,
-        onboardingComplete: parsed.onboardingComplete === true,
+        onboardingComplete: legacyAgimi
+          ? true
+          : parsed.onboardingComplete === true,
       };
     }
     if (

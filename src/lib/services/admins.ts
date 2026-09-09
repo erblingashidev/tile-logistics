@@ -17,8 +17,8 @@ import {
 import { logActivity } from "@/lib/logger";
 import type { SessionUser } from "@/lib/auth/session";
 import {
-  isOnboardingComplete,
   LEGACY_AGIMI_ORGANIZATION_ID,
+  repairAgimiAdminLogin,
 } from "@/lib/services/organizations";
 
 export const MIN_ADMIN_PASSWORD_LENGTH = 6;
@@ -339,16 +339,7 @@ export async function loginAdminFromDb(
     await syncLinkedEmployee(row, {});
   }
 
-  let organizationId = row.organizationId ?? null;
-  if (organizationId == null) {
-    organizationId = LEGACY_AGIMI_ORGANIZATION_ID;
-    await db
-      .update(admins)
-      .set({ organizationId, updatedAt: now })
-      .where(eq(admins.id, row.id));
-  }
-
-  const onboardingComplete = await isOnboardingComplete(organizationId);
+  await repairAgimiAdminLogin(row.id);
 
   return {
     role: "admin",
@@ -356,9 +347,9 @@ export async function loginAdminFromDb(
     name: row.name,
     username: row.username,
     title: row.title ?? null,
-    organizationId,
+    organizationId: LEGACY_AGIMI_ORGANIZATION_ID,
     isPlatformAdmin: row.isPlatformAdmin === 1,
-    onboardingComplete,
+    onboardingComplete: true,
   };
 }
 

@@ -215,6 +215,42 @@ export async function isOnboardingComplete(organizationId: number) {
   return profile.onboardingComplete;
 }
 
+/** Restore AGIMI org profile, module flags, and units from legacy global settings. */
+export async function ensureLegacyAgimiOrganizationReady() {
+  await saveOrganizationProfile(
+    LEGACY_AGIMI_ORGANIZATION_ID,
+    legacyAgimiCompanyProfile()
+  );
+
+  for (const key of Object.values(FEATURE_FLAG_SETTING_KEYS)) {
+    const existing = await getOrgSetting(LEGACY_AGIMI_ORGANIZATION_ID, key);
+    if (existing != null) continue;
+    const legacy = await getAppSetting(key);
+    if (legacy != null) {
+      await setOrgSetting(LEGACY_AGIMI_ORGANIZATION_ID, key, legacy);
+    }
+  }
+
+  const units = await listOrganizationUnits(LEGACY_AGIMI_ORGANIZATION_ID);
+  if (!units.length) {
+    await replaceOrganizationUnits(
+      LEGACY_AGIMI_ORGANIZATION_ID,
+      CATEGORY_PRESETS.tile_dealer.suggestedUnits ?? []
+    );
+  }
+}
+
+/** Pin an admin to AGIMI org #1 and ensure legacy settings exist. */
+export async function repairAgimiAdminLogin(adminId: number) {
+  await ensureLegacyAgimiOrganizationReady();
+  const db = await getDb();
+  const now = nowIso();
+  await db
+    .update(admins)
+    .set({ organizationId: LEGACY_AGIMI_ORGANIZATION_ID, updatedAt: now })
+    .where(eq(admins.id, adminId));
+}
+
 export async function getOrganizationById(id: number) {
   const db = await getDb();
   return dbOne(db.select().from(organizations).where(eq(organizations.id, id)));

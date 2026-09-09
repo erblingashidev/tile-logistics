@@ -474,7 +474,7 @@ async function ensureOrganizationAdminColumns(client: Client) {
     adminCols
   );
   await client.execute(
-    "UPDATE admins SET organization_id = 1 WHERE organization_id IS NULL"
+    "UPDATE admins SET organization_id = 1 WHERE organization_id IS NULL OR organization_id != 1"
   );
   await client.execute(
     "UPDATE admins SET is_platform_admin = 1 WHERE id = (SELECT MIN(id) FROM admins)"

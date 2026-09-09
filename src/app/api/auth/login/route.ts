@@ -10,7 +10,11 @@ import {
 } from "@/lib/auth";
 import { applyFeatureFlagsCookie } from "@/lib/features/cookie";
 import { getFeatureFlagsForSession } from "@/lib/services/feature-flags";
-import { LEGACY_AGIMI_ORGANIZATION_ID } from "@/lib/services/organizations";
+import {
+  ensureLegacyAgimiOrganizationReady,
+  LEGACY_AGIMI_ORGANIZATION_ID,
+  repairAgimiAdminLogin,
+} from "@/lib/services/organizations";
 
 export const runtime = "nodejs";
 
@@ -35,28 +39,18 @@ export async function POST(request: NextRequest) {
   }
 
   if (user.role === "admin") {
-    if (
-      !user.organizationId ||
-      user.organizationId === LEGACY_AGIMI_ORGANIZATION_ID
-    ) {
-      user.organizationId = LEGACY_AGIMI_ORGANIZATION_ID;
-      user.onboardingComplete = true;
+    if (user.adminId > 0) {
+      await repairAgimiAdminLogin(user.adminId);
+    } else {
+      await ensureLegacyAgimiOrganizationReady();
     }
+    user.organizationId = LEGACY_AGIMI_ORGANIZATION_ID;
+    user.onboardingComplete = true;
   }
 
   const token = await createSessionToken(user);
-  let redirect =
+  const redirect =
     user.role === "admin" ? "/" : employeeLoginRedirect(user.roles);
-  if (
-    user.role === "admin" &&
-    user.organizationId !== LEGACY_AGIMI_ORGANIZATION_ID &&
-    user.onboardingComplete === false
-  ) {
-    redirect = "/onboarding";
-  }
-  if (user.role === "admin" && user.isPlatformAdmin) {
-    redirect = "/";
-  }
 
   const response = NextResponse.json({
     user: {
