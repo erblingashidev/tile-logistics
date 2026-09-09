@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import { BRAND } from "@/lib/brand";
 import { listOrders } from "@/lib/services/orders";
 import {
   buildOrderLineRows,
@@ -69,7 +70,7 @@ export async function buildOrdersExcel(
   const usedNames = new Set<string>(["About", "Print list", "Order Summary", "Line Items"]);
 
   appendMetaSheet(wb, [
-    { Field: "Report", Value: "AGIMI Logistics — Orders export" },
+    { Field: "Report", Value: `${BRAND.name} — Orders export` },
     { Field: "Generated", Value: generatedAt },
     { Field: "Orders", Value: String(orders.length) },
     {
@@ -325,8 +326,8 @@ export async function buildDailyOperationsExcel(reportDate?: string) {
 
   return {
     buffer: await workbookToBuffer(wb),
-    filename: `AGIMI-operations-${date}.xlsx`,
-    title: `AGIMI Operations ${date}`,
+    filename: `${BRAND.name.replace(/\s+/g, "-")}-operations-${date}.xlsx`,
+    title: `${BRAND.name} Operations ${date}`,
     orderCount: stats.scheduled,
     stats,
   };

@@ -463,7 +463,7 @@ export function InvoiceImportPanel({
   return (
     <CollapsibleCard
       className="mb-4"
-      title="Import AGIMI document"
+      title="Import invoice document"
       headerTone="muted"
       expanded={expanded}
       onExpandedChange={setExpanded}

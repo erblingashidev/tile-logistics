@@ -127,7 +127,7 @@ export function agimiDocumentKindLabel(kind: AgimiDocumentKind): string {
   if (kind === "sales_invoice") return "Faturë";
   if (kind === "delivery_note") return "Fletë dërgese";
   if (kind === "service_sheet") return "Fletë shërbimi";
-  return "AGIMI document";
+  return "Document";
 }
 
 export function documentKindFromInvoiceNumber(invoiceNumber: string | null): AgimiDocumentKind | null {
@@ -2098,7 +2098,7 @@ export function parsedInvoiceToOrderPayload(
     parsed.salesAgent ? `Referenti: ${parsed.salesAgent}` : null,
     parsed.customerPhone ? `Phone: ${parsed.customerPhone}` : null,
     parsed.fiscalNumber ? `Fiscal no: ${parsed.fiscalNumber}` : null,
-    `Imported from AGIMI ${agimiDocumentKindLabel(parsed.documentKind)}`,
+    `Imported from ${agimiDocumentKindLabel(parsed.documentKind)}`,
   ]
     .filter(Boolean)
     .join(" · ");

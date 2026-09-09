@@ -259,8 +259,8 @@ export async function importInvoiceFromText(
       status: 422,
       error:
         mode === "preview"
-          ? "Could not recognize this AGIMI invoice. Try Excel from Pro-Data Print Preview, a PDF export, or fill the form manually."
-          : "Could not recognize an AGIMI invoice. Use Excel (.xlsx) or a PDF of the full invoice.",
+          ? "Could not recognize this invoice. Try Excel from Pro-Data Print Preview, a PDF export, or fill the form manually."
+          : "Could not recognize an invoice. Use Excel (.xlsx) or a PDF of the full invoice.",
       rawPreview: trimmed.slice(0, 800),
     };
   }
@@ -324,7 +324,7 @@ export async function importInvoiceFromExcel(
       ok: false,
       status: 422,
       error:
-        "Could not recognize this AGIMI Excel export. Use Pro-Data Print Preview (.xlsx) or fill the form manually.",
+        "Could not recognize this Excel export. Use Pro-Data Print Preview (.xlsx) or fill the form manually.",
     };
   }
 

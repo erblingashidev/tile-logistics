@@ -1,6 +1,6 @@
 # Tile Logistics
 
-Warehouse and delivery operations for AGIMI tile distribution.
+Multi-company warehouse and delivery operations for tile and building materials.
 
 ## Two databases (local vs live)
 

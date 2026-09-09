@@ -1,7 +1,9 @@
 /** Albanian UI — warehouse staff portal only (/portal/*) */
 
+import { BRAND } from "@/lib/brand";
+
 export const sq = {
-  appName: "AGIMI Logjistikë",
+  appName: BRAND.name,
   refresh: "Rifresko",
   logout: "Dil",
   depotLink: "Depo",
@@ -152,7 +154,7 @@ export const sq = {
 
   login: {
     title: "Hyr në sistem",
-    subtitle: "Për llogari ekzistuese — AGIMI, depo, shofer, admin",
+    subtitle: "Për llogari ekzistuese — depo, shofer, admin",
     existingAccount:
       "Ke llogari dhe kompaninë të gatshme? Shkruaj emrin dhe fjalëkalimin më poshtë.",
     username: "Emri i përdoruesit",

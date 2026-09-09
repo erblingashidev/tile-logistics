@@ -232,7 +232,7 @@ export async function searchNominatimKosovo(
 
   const res = await fetch(url.toString(), {
     headers: {
-      "User-Agent": "AGIMI-Warehouse-Logistics/1.0 (tile-logistics app)",
+      "User-Agent": "Tile-Logistics/1.0 (tile-logistics app)",
     },
     next: { revalidate: 86400 },
   });
@@ -311,7 +311,7 @@ export async function reverseNominatimKosovo(
 
   const res = await fetch(url.toString(), {
     headers: {
-      "User-Agent": "AGIMI-Warehouse-Logistics/1.0 (tile-logistics app)",
+      "User-Agent": "Tile-Logistics/1.0 (tile-logistics app)",
     },
     next: { revalidate: 86400 },
   });

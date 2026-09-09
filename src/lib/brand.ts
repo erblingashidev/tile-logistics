@@ -1,8 +1,11 @@
+const appName = process.env.NEXT_PUBLIC_APP_NAME?.trim() || "Tile Logistics";
+
 export const BRAND = {
-  name: "AGIMI Warehouse",
-  shortName: "AGIMI",
-  tagline: "Warehouse operations — Kosovo",
+  name: appName,
+  shortName: appName,
+  tagline: "Orders, warehouse, fleet & delivery",
   warehouse: {
+    displayName: "Main warehouse — Shkabaj",
     address: "Shkabaj, 10000 Prishtinë",
     city: "Prishtinë",
     country: "Kosovo",

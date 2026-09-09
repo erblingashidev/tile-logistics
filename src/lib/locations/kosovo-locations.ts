@@ -1,3 +1,5 @@
+import { BRAND } from "@/lib/brand";
+
 /** OpenStreetMap-based locations for Kosovo (XK). Coordinates from OSM / Geofabrik 2026. */
 
 export interface LocationEntry {
@@ -17,10 +19,10 @@ export interface LocationEntry {
   postalCode?: string;
 }
 
-/** AGIMI Warehouse — Shkabaj, 10000 Prishtinë (Google Maps pin: Agimi Company) */
+/** Default depot — Shkabaj, 10000 Prishtinë */
 export const WAREHOUSE_LOCATION: LocationEntry = {
   id: "agimi-warehouse-shkabaj",
-  name: "AGIMI Warehouse — Shkabaj",
+  name: BRAND.warehouse.displayName,
   city: "Prishtinë",
   region: "Prishtinë",
   type: "warehouse",
