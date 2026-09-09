@@ -1,5 +1,6 @@
 import { orderWorkDate, todayDateString } from "@/lib/delivery-schedule";
 import type { ExportOrder } from "@/lib/export/order-rows";
+import { getDailyReportReturns } from "@/lib/services/customer-returns";
 import { listOrders } from "@/lib/services/orders";
 
 export type DailyOrderBucket =
@@ -177,12 +178,15 @@ export async function getDailyReportOrders(reportDate?: string) {
       ? Math.round((delayedCount / waiting.length) * 100)
       : 0;
 
+  const returns = await getDailyReportReturns(date);
+
   return {
     reportDate: date,
     orders,
     dayOrders,
     delayedOrders: delayed,
     scheduledOrders: scheduled,
+    returns,
     stats: {
       /** All rows included in the report (day + delayed backlog). */
       total: orders.length,

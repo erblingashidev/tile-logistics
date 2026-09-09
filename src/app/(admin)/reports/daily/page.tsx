@@ -30,6 +30,21 @@ interface OrderPreview {
   picker: string;
 }
 
+interface ReturnPreviewRow {
+  returnId: number;
+  invoiceNumber: string;
+  customerName: string;
+  productName: string;
+  unit: string;
+  total: number;
+  untouched: number;
+  chipped: number;
+  broken: number;
+  returnNotes: string | null;
+  productNotes: string | null;
+  recordedAt: string;
+}
+
 interface DailyPreview {
   reportDate: string;
   orderCount: number;
@@ -53,6 +68,15 @@ interface DailyPreview {
   dayOrders: OrderPreview[];
   scheduledOrders: OrderPreview[];
   delayedOrders: OrderPreview[];
+  returns: {
+    returnCount: number;
+    productLineCount: number;
+    totalsByUnit: Record<
+      string,
+      { total: number; untouched: number; chipped: number; broken: number }
+    >;
+    rows: ReturnPreviewRow[];
+  };
   pickers: Array<{
     name: string;
     orders: number;
@@ -68,6 +92,13 @@ interface DailyPreview {
     firstAssigned: string;
     lastCompleted: string;
   }>;
+}
+
+function formatReturnQty(unit: string, qty: number): string {
+  if (qty <= 0) return "—";
+  if (unit === "m2") return `${Math.round(qty * 100) / 100} m²`;
+  if (unit === "piece") return `${Math.round(qty)} pcs`;
+  return String(Math.round(qty * 10) / 10);
 }
 
 function pipelineTone(
@@ -373,6 +404,15 @@ export default function DailyReportsPage() {
             />
             <StatCard label="Partial" value={preview.partial} />
             <StatCard
+              label="Customer returns"
+              value={preview.returns?.returnCount ?? 0}
+              hint={
+                preview.returns?.productLineCount
+                  ? `${preview.returns.productLineCount} product line(s)`
+                  : "Recorded on this date"
+              }
+            />
+            <StatCard
               label="Delayed of open"
               value={`${preview.delayedShareOfOpen}%`}
               hint={`${preview.delayed} of ${preview.inProgress} still open`}
@@ -487,6 +527,71 @@ export default function DailyReportsPage() {
                 empty="No delayed orders for this date."
                 showOverdue
               />
+            </Card>
+          </PageSection>
+
+          <PageSection title="Customer returns" className="mt-8">
+            <Card className="overflow-x-auto p-0">
+              {!preview.returns?.rows?.length ? (
+                <p className="p-4 text-sm text-zinc-500">
+                  No customer returns recorded on this date.
+                </p>
+              ) : (
+                <table className="w-full text-left text-sm">
+                  <thead className="border-b border-zinc-200 bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500">
+                    <tr>
+                      <th className="px-4 py-3">Invoice</th>
+                      <th className="px-4 py-3">Customer</th>
+                      <th className="px-4 py-3">Product</th>
+                      <th className="px-4 py-3">Total</th>
+                      <th className="px-4 py-3">Untouched</th>
+                      <th className="px-4 py-3">Chipped</th>
+                      <th className="px-4 py-3">Broken</th>
+                      <th className="px-4 py-3">Notes</th>
+                      <th className="px-4 py-3">Recorded</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.returns.rows.map((row) => (
+                      <tr
+                        key={`${row.returnId}-${row.productName}`}
+                        className="border-b border-zinc-100 last:border-0"
+                      >
+                        <td className="px-4 py-3 font-medium">
+                          <Link
+                            href={`/orders?search=${encodeURIComponent(row.invoiceNumber)}&workDay=all`}
+                            className="font-mono text-blue-700 underline hover:text-blue-900"
+                          >
+                            {row.invoiceNumber}
+                          </Link>
+                        </td>
+                        <td className="px-4 py-3">{row.customerName}</td>
+                        <td className="px-4 py-3">{row.productName}</td>
+                        <td className="px-4 py-3 tabular-nums font-medium">
+                          {formatReturnQty(row.unit, row.total)}
+                        </td>
+                        <td className="px-4 py-3 tabular-nums text-zinc-600">
+                          {formatReturnQty(row.unit, row.untouched)}
+                        </td>
+                        <td className="px-4 py-3 tabular-nums text-zinc-600">
+                          {formatReturnQty(row.unit, row.chipped)}
+                        </td>
+                        <td className="px-4 py-3 tabular-nums text-zinc-600">
+                          {formatReturnQty(row.unit, row.broken)}
+                        </td>
+                        <td className="max-w-[14rem] px-4 py-3 text-zinc-600">
+                          {[row.returnNotes, row.productNotes]
+                            .filter(Boolean)
+                            .join(" · ") || "—"}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-zinc-600">
+                          {row.recordedAt.replace("T", " ").slice(0, 16)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </Card>
           </PageSection>
 

@@ -24,6 +24,7 @@ import {
 } from "@/lib/export/excel-styled";
 import {
   buildDailyOrderRows,
+  buildDailyReturnRows,
   buildOrdersByPickerRows,
   buildPickerPerformanceRows,
   buildReportSummaryRows,
@@ -227,8 +228,14 @@ export async function buildPartialDeliveriesExcel(filters: {
 
 /** Daily operations Excel — date in filename, color-coded rows. */
 export async function buildDailyOperationsExcel(reportDate?: string) {
-  const { reportDate: date, orders, dayOrders, delayedOrders, stats } =
-    await getDailyReportOrders(reportDate);
+  const {
+    reportDate: date,
+    orders,
+    dayOrders,
+    delayedOrders,
+    returns,
+    stats,
+  } = await getDailyReportOrders(reportDate);
   const generatedAt = new Date().toLocaleString("en-GB", {
     dateStyle: "short",
     timeStyle: "short",
@@ -248,7 +255,7 @@ export async function buildDailyOperationsExcel(reportDate?: string) {
   addSummarySheet(
     wb,
     sanitizeSheetName("Summary", usedNames),
-    buildReportSummaryRows(date, stats, generatedAt)
+    buildReportSummaryRows(date, stats, generatedAt, returns.stats)
   );
 
   addStyledDataSheet(
@@ -303,6 +310,14 @@ export async function buildDailyOperationsExcel(reportDate?: string) {
       sanitizeSheetName("Completed today", usedNames),
       buildDailyOrderRows(completedTodayOrders, date),
       { rowStatus: classifyOrderExportRow, highlightColumn: "Pipeline" }
+    );
+  }
+
+  if (returns.rows.length > 0) {
+    addStyledDataSheet(
+      wb,
+      sanitizeSheetName("Returns", usedNames),
+      buildDailyReturnRows(returns.rows)
     );
   }
 

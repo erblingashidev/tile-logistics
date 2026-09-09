@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
       request.nextUrl.searchParams.get("date")?.trim() ||
       new Date().toISOString().slice(0, 10);
 
-    const { orders, dayOrders, delayedOrders, scheduledOrders, stats } =
+    const { orders, dayOrders, delayedOrders, scheduledOrders, returns, stats } =
       await getDailyReportOrders(date);
     const pickerRows = buildPickerPerformanceRows(orders, date);
 
@@ -71,6 +71,25 @@ export async function GET(request: NextRequest) {
       dayOrders: dayOrders.map((o) => mapOrderRow(o, date)),
       scheduledOrders: scheduledOrders.map((o) => mapOrderRow(o, date)),
       delayedOrders: delayedOrders.map((o) => mapOrderRow(o, date)),
+      returns: {
+        returnCount: returns.stats.returnCount,
+        productLineCount: returns.stats.productLineCount,
+        totalsByUnit: returns.stats.totalsByUnit,
+        rows: returns.rows.map((row) => ({
+          returnId: row.returnId,
+          invoiceNumber: row.invoiceNumber,
+          customerName: row.customerName,
+          productName: row.productName,
+          unit: row.unit,
+          total: row.total,
+          untouched: row.untouched,
+          chipped: row.chipped,
+          broken: row.broken,
+          returnNotes: row.returnNotes,
+          productNotes: row.productNotes,
+          recordedAt: row.recordedAt,
+        })),
+      },
       pickers: pickerRows.map((row) => ({
         name: row.Picker,
         orders: row.Orders,

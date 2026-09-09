@@ -1,8 +1,13 @@
+import { formatM2 } from "@/lib/calculations";
 import { orderWorkDate } from "@/lib/delivery-schedule";
 import type { ExportOrder } from "@/lib/export/order-rows";
 import {
   completedOnReportDate,
 } from "@/lib/services/daily-operations-report";
+import type {
+  DailyReturnProductRow,
+  DailyReturnStats,
+} from "@/lib/services/customer-returns";
 import {
   daysBetweenDates,
   formatExportDateTime,
@@ -10,6 +15,43 @@ import {
 
 function roundMoney(n: number) {
   return Math.round(n * 100) / 100;
+}
+
+function formatReturnQty(unit: string, qty: number): string | number {
+  if (qty <= 0) return "";
+  if (unit === "m2") return formatM2(qty);
+  if (unit === "piece") return Math.round(qty);
+  return Math.round(qty * 10) / 10;
+}
+
+function formatReturnUnit(unit: string): string {
+  if (unit === "m2") return "m²";
+  if (unit === "piece") return "pcs";
+  return unit;
+}
+
+export function buildDailyReturnRows(rows: DailyReturnProductRow[]) {
+  return [...rows]
+    .sort((a, b) => {
+      const byInvoice = a.invoiceNumber.localeCompare(b.invoiceNumber, "sq", {
+        numeric: true,
+      });
+      if (byInvoice !== 0) return byInvoice;
+      return a.productName.localeCompare(b.productName, "sq");
+    })
+    .map((row) => ({
+      Invoice: row.invoiceNumber,
+      Customer: row.customerName,
+      Product: row.productName,
+      Unit: formatReturnUnit(row.unit),
+      "Total returned": formatReturnQty(row.unit, row.total),
+      Untouched: formatReturnQty(row.unit, row.untouched),
+      Chipped: formatReturnQty(row.unit, row.chipped),
+      Broken: formatReturnQty(row.unit, row.broken),
+      "Return notes": row.returnNotes ?? "",
+      "Product notes": row.productNotes ?? "",
+      "Recorded at": formatExportDateTime(row.recordedAt),
+    }));
 }
 
 function staffMember(
@@ -335,6 +377,57 @@ export function buildGroupLeaderSummaryRows(
   return buildStaffPerformanceRows(orders, reportDate, "group_leader");
 }
 
+function returnSummaryLines(returnStats?: DailyReturnStats): Array<{
+  Metric: string;
+  Value: string | number;
+}> {
+  if (!returnStats || returnStats.returnCount <= 0) {
+    return [
+      { Metric: "Customer returns recorded", Value: 0 },
+      { Metric: "Return product lines", Value: 0 },
+    ];
+  }
+
+  const lines: Array<{ Metric: string; Value: string | number }> = [
+    {
+      Metric: "Customer returns recorded",
+      Value: returnStats.returnCount,
+    },
+    {
+      Metric: "Return product lines",
+      Value: returnStats.productLineCount,
+    },
+  ];
+
+  for (const [unit, totals] of Object.entries(returnStats.totalsByUnit)) {
+    const label = formatReturnUnit(unit);
+    lines.push({
+      Metric: `Returned total (${label})`,
+      Value: formatReturnQty(unit, totals.total) || 0,
+    });
+    if (totals.untouched > 0) {
+      lines.push({
+        Metric: `Returned untouched (${label})`,
+        Value: formatReturnQty(unit, totals.untouched),
+      });
+    }
+    if (totals.chipped > 0) {
+      lines.push({
+        Metric: `Returned chipped (${label})`,
+        Value: formatReturnQty(unit, totals.chipped),
+      });
+    }
+    if (totals.broken > 0) {
+      lines.push({
+        Metric: `Returned broken (${label})`,
+        Value: formatReturnQty(unit, totals.broken),
+      });
+    }
+  }
+
+  return lines;
+}
+
 export function buildReportSummaryRows(
   reportDate: string,
   stats: {
@@ -356,7 +449,8 @@ export function buildReportSummaryRows(
     delayedValue?: number;
     totalValue: number;
   },
-  generatedAt: string
+  generatedAt: string,
+  returnStats?: DailyReturnStats
 ) {
   return [
     { Metric: "Report date", Value: reportDate },
@@ -403,6 +497,7 @@ export function buildReportSummaryRows(
       Value: roundMoney(stats.completedTodayValue),
     },
     { Metric: "Total value in report (€)", Value: roundMoney(stats.totalValue) },
+    ...returnSummaryLines(returnStats),
   ];
 }
 

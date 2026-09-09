@@ -1,10 +1,11 @@
-import { desc, eq, inArray } from "drizzle-orm";
+import { desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { dbAll, dbOne } from "@/lib/db/query";
 import {
   customerReturnLines,
   customerReturns,
   orderItems,
+  orders,
 } from "@/lib/db/schema";
 import {
   isReturnCondition,
@@ -351,6 +352,154 @@ export function summarizeReturnProducts(
     byItem.set(line.orderItemId, existing);
   }
   return [...byItem.values()];
+}
+
+export type DailyReturnProductRow = {
+  returnId: number;
+  orderId: number;
+  invoiceNumber: string;
+  customerName: string;
+  productName: string;
+  unit: string;
+  total: number;
+  untouched: number;
+  chipped: number;
+  broken: number;
+  returnNotes: string | null;
+  productNotes: string | null;
+  recordedAt: string;
+};
+
+export type DailyReturnUnitTotals = {
+  total: number;
+  untouched: number;
+  chipped: number;
+  broken: number;
+};
+
+export type DailyReturnStats = {
+  returnCount: number;
+  productLineCount: number;
+  totalsByUnit: Record<string, DailyReturnUnitTotals>;
+};
+
+export function computeDailyReturnStats(
+  rows: DailyReturnProductRow[]
+): DailyReturnStats {
+  const totalsByUnit: Record<string, DailyReturnUnitTotals> = {};
+  const returnIds = new Set<number>();
+
+  for (const row of rows) {
+    returnIds.add(row.returnId);
+    const bucket = totalsByUnit[row.unit] ?? {
+      total: 0,
+      untouched: 0,
+      chipped: 0,
+      broken: 0,
+    };
+    bucket.total += row.total;
+    bucket.untouched += row.untouched;
+    bucket.chipped += row.chipped;
+    bucket.broken += row.broken;
+    totalsByUnit[row.unit] = bucket;
+  }
+
+  return {
+    returnCount: returnIds.size,
+    productLineCount: rows.length,
+    totalsByUnit,
+  };
+}
+
+export async function getDailyReportReturns(
+  reportDate: string
+): Promise<{ rows: DailyReturnProductRow[]; stats: DailyReturnStats }> {
+  const date = reportDate.trim();
+  const db = await getDb();
+  const headers = await dbAll(
+    db
+      .select({
+        id: customerReturns.id,
+        orderId: customerReturns.orderId,
+        invoiceNumber: customerReturns.invoiceNumber,
+        notes: customerReturns.notes,
+        createdAt: customerReturns.createdAt,
+        postedAt: customerReturns.postedAt,
+        customerName: orders.customerName,
+      })
+      .from(customerReturns)
+      .innerJoin(orders, eq(customerReturns.orderId, orders.id))
+      .where(
+        sql`substr(coalesce(${customerReturns.postedAt}, ${customerReturns.createdAt}), 1, 10) = ${date}`
+      )
+      .orderBy(desc(customerReturns.postedAt))
+  );
+
+  if (!headers.length) {
+    return {
+      rows: [],
+      stats: { returnCount: 0, productLineCount: 0, totalsByUnit: {} },
+    };
+  }
+
+  const returnIds = headers.map((h) => h.id);
+  const allLines = await dbAll(
+    db
+      .select({
+        returnId: customerReturnLines.returnId,
+        orderItemId: customerReturnLines.orderItemId,
+        quantity: customerReturnLines.quantity,
+        unit: customerReturnLines.unit,
+        condition: customerReturnLines.condition,
+        notes: customerReturnLines.notes,
+        productName: orderItems.productName,
+        productEan: orderItems.productEan,
+      })
+      .from(customerReturnLines)
+      .innerJoin(orderItems, eq(customerReturnLines.orderItemId, orderItems.id))
+      .where(inArray(customerReturnLines.returnId, returnIds))
+  );
+
+  const linesByReturn = new Map<number, CustomerReturnSummary["lines"]>();
+  for (const row of allLines) {
+    const list = linesByReturn.get(row.returnId) ?? [];
+    list.push({
+      id: 0,
+      orderItemId: row.orderItemId,
+      productName:
+        row.productName?.trim() || row.productEan?.trim() || "Product",
+      quantity: row.quantity,
+      unit: row.unit,
+      condition: row.condition,
+      notes: row.notes,
+    });
+    linesByReturn.set(row.returnId, list);
+  }
+
+  const rows: DailyReturnProductRow[] = [];
+  for (const header of headers) {
+    const products = summarizeReturnProducts(linesByReturn.get(header.id) ?? []);
+    const recordedAt = header.postedAt ?? header.createdAt;
+    for (const product of products) {
+      rows.push({
+        returnId: header.id,
+        orderId: header.orderId,
+        invoiceNumber: header.invoiceNumber,
+        customerName: header.customerName?.trim() || "Customer",
+        productName: product.productName,
+        unit: product.unit,
+        total: product.total,
+        untouched: product.untouched,
+        chipped: product.chipped,
+        broken: product.broken,
+        returnNotes: header.notes,
+        productNotes: product.notes,
+        recordedAt,
+      });
+    }
+  }
+
+  return { rows, stats: computeDailyReturnStats(rows) };
 }
 
 export async function listCustomerReturns(limit = 50): Promise<CustomerReturnSummary[]> {
