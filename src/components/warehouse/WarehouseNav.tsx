@@ -8,6 +8,7 @@ const links = [
   { href: "/warehouse", label: "Overview", exact: true },
   { href: "/warehouse/unload", label: "Unloading" },
   { href: "/warehouse/mapping", label: "Mapping" },
+  { href: "/warehouse/returns", label: "Returns" },
   { href: "/warehouse/stock", label: "Stock levels" },
   { href: "/warehouse/products", label: "Product lots" },
   { href: "/warehouse/locations", label: "Rows & sectors" },

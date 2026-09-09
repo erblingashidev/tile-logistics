@@ -40,8 +40,10 @@ export interface ReceiveStockInput {
   batchCode?: string;
   productionDate?: string;
   shipmentRef?: string;
-  /** opening = first registration; receive = truck unload. */
-  movementType?: "receive" | "opening";
+  /** opening = first registration; receive = truck unload; return = customer return. */
+  movementType?: "receive" | "opening" | "return";
+  referenceType?: string;
+  referenceId?: number;
   notes?: string;
 }
 
@@ -158,6 +160,19 @@ export async function ensureStagingLocation() {
     zone: "Staging",
     label: "Unloaded (not put away)",
     notes: "Truck unload before assigning a bin. Move stock from here to putaway.",
+  });
+}
+
+export async function ensureReturnLocation(input: {
+  code: string;
+  label: string;
+  notes?: string;
+}) {
+  return getOrCreateWarehouseLocation({
+    code: input.code,
+    zone: "Returns",
+    label: input.label,
+    notes: input.notes,
   });
 }
 
@@ -400,7 +415,12 @@ export async function receiveStock(input: ReceiveStockInput) {
         .join(" + ") || "0"),
   };
 
-  const movementType = input.movementType === "opening" ? "opening" : "receive";
+  const movementType =
+    input.movementType === "opening"
+      ? "opening"
+      : input.movementType === "return"
+        ? "return"
+        : "receive";
   const db = await getDb();
   const now = new Date().toISOString();
   const balance = await getOrCreateBalance(product.id, locationId);
@@ -422,8 +442,8 @@ export async function receiveStock(input: ReceiveStockInput) {
     quantityM2: qty.quantityM2,
     fullPallets,
     loosePieces,
-    referenceType: movementType,
-    referenceId: null,
+    referenceType: input.referenceType ?? movementType,
+    referenceId: input.referenceId ?? null,
     employeeId: input.employeeId ?? null,
     notes: input.notes?.trim() || null,
     createdAt: now,
@@ -431,11 +451,18 @@ export async function receiveStock(input: ReceiveStockInput) {
 
   const location = await getWarehouseLocation(locationId);
 
+  const actionLabel =
+    movementType === "opening"
+      ? "Opening"
+      : movementType === "return"
+        ? "Return received"
+        : "Received";
+
   await logActivity(
     "create",
     "stock",
     product.id,
-    `${movementType === "opening" ? "Opening" : "Received"} ${formatM2(qty.quantityM2)} m² · ${ean}`,
+    `${actionLabel} ${formatM2(qty.quantityM2)} m² · ${ean}`,
     {
       category: "system",
       details: {

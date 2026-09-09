@@ -320,6 +320,41 @@ async function ensureWarehouseSchemaPatches(client: Client) {
     )
   `);
 
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS customer_returns (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      invoice_number TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'posted',
+      notes TEXT,
+      employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL,
+      posted_at TEXT
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS customer_return_lines (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      return_id INTEGER NOT NULL REFERENCES customer_returns(id) ON DELETE CASCADE,
+      order_item_id INTEGER NOT NULL REFERENCES order_items(id) ON DELETE CASCADE,
+      quantity REAL NOT NULL,
+      unit TEXT NOT NULL,
+      condition TEXT NOT NULL,
+      quantity_m2 REAL NOT NULL DEFAULT 0,
+      loose_pieces INTEGER NOT NULL DEFAULT 0,
+      notes TEXT
+    )
+  `);
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_customer_returns_order ON customer_returns(order_id)"
+  );
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_customer_returns_invoice ON customer_returns(invoice_number)"
+  );
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_customer_return_lines_item ON customer_return_lines(order_item_id)"
+  );
+
   const productCols = await tableColumns(client, "products");
   const productColumnMigrations: Array<[string, string]> = [
     ["unit", "unit TEXT NOT NULL DEFAULT 'm2'"],

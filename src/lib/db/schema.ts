@@ -347,6 +347,40 @@ export const stockMovements = sqliteTable("stock_movements", {
   createdAt: text("created_at").notNull(),
 });
 
+/** Customer return header — linked to original invoice/order. */
+export const customerReturns = sqliteTable("customer_returns", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  orderId: integer("order_id")
+    .notNull()
+    .references(() => orders.id, { onDelete: "cascade" }),
+  invoiceNumber: text("invoice_number").notNull(),
+  status: text("status").notNull().default("posted"),
+  notes: text("notes"),
+  employeeId: integer("employee_id").references(() => employees.id, {
+    onDelete: "set null",
+  }),
+  createdAt: text("created_at").notNull(),
+  postedAt: text("posted_at"),
+});
+
+/** Per-line qty returned from an order, with tile condition. */
+export const customerReturnLines = sqliteTable("customer_return_lines", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  returnId: integer("return_id")
+    .notNull()
+    .references(() => customerReturns.id, { onDelete: "cascade" }),
+  orderItemId: integer("order_item_id")
+    .notNull()
+    .references(() => orderItems.id, { onDelete: "cascade" }),
+  quantity: real("quantity").notNull(),
+  unit: text("unit").notNull(),
+  /** untouched | chipped | broken */
+  condition: text("condition").notNull(),
+  quantityM2: real("quantity_m2").notNull().default(0),
+  loosePieces: integer("loose_pieces").notNull().default(0),
+  notes: text("notes"),
+});
+
 /** Picker took stock from an outdoor row when preparing an order. */
 export const orderPickLines = sqliteTable("order_pick_lines", {
   id: integer("id").primaryKey({ autoIncrement: true }),

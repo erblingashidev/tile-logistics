@@ -39,6 +39,12 @@ const catalog = [
 
 const operations = [
   {
+    href: "/warehouse/returns",
+    title: "Customer returns",
+    description:
+      "Scan the original invoice and record returned tiles (m²) or bags with condition.",
+  },
+  {
     href: "/warehouse/inventory",
     title: "Annual inventory",
     description: "Open a count session and close sectors when done.",
