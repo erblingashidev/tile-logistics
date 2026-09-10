@@ -11,6 +11,7 @@ import {
 } from "@/components/company/CompanyProfileProvider";
 import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 import { WAREHOUSE_SIDEBAR_LINKS } from "@/components/warehouse/WarehouseNav";
+import { platformAdminNeedsOrgPicker } from "@/lib/auth/platform-admin";
 import type { CompanyModuleFlags } from "@/lib/company-profile";
 import type { FeatureFlags } from "@/lib/features/catalog";
 
@@ -185,9 +186,15 @@ export function AppShell({
   const { organizationName } = useCompanyProfile();
   const [userName, setUserName] = useState<string | null>(null);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
+  const [organizationId, setOrganizationId] = useState<number | null>(null);
+  const [authLoaded, setAuthLoaded] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const isPlatformPickerPage =
+    pathname.startsWith("/platform/companies") ||
+    pathname.startsWith("/platform/applications");
 
   useEffect(() => {
+    setAuthLoaded(false);
     fetch("/api/auth/me", { cache: "no-store" })
       .then((r) => {
         if (!r.ok) {
@@ -200,11 +207,34 @@ export function AppShell({
       .then((data) => {
         setUserName(data?.user?.name ?? null);
         setIsPlatformAdmin(data?.user?.isPlatformAdmin === true);
+        setOrganizationId(
+          typeof data?.user?.organizationId === "number"
+            ? data.user.organizationId
+            : null
+        );
       })
       .catch(() => {
         router.replace("/login");
+      })
+      .finally(() => {
+        setAuthLoaded(true);
       });
   }, [pathname, router]);
+
+  const showCompanyNav = authLoaded
+    ? !platformAdminNeedsOrgPicker(
+        isPlatformAdmin
+          ? {
+              role: "admin",
+              adminId: 0,
+              name: "",
+              username: "",
+              organizationId,
+              isPlatformAdmin: true,
+            }
+          : null
+      )
+    : !isPlatformPickerPage;
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -219,6 +249,7 @@ export function AppShell({
   return (
     <div className="min-h-screen bg-[var(--background)]">
       <div className="flex min-h-screen">
+        {showCompanyNav && (
         <aside className="sticky top-0 hidden h-screen w-56 shrink-0 self-start flex-col bg-[var(--sidebar)] lg:flex">
           <div className="border-b border-white/10 px-5 py-6">
             <p className="text-[15px] font-semibold tracking-tight text-white">
@@ -249,19 +280,22 @@ export function AppShell({
             </button>
           </div>
         </aside>
+        )}
 
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/90">
             <div className="flex items-center justify-between gap-3 px-4 py-3 lg:px-8 lg:py-4">
               <div className="flex min-w-0 items-center gap-3 lg:hidden">
-                <button
-                  type="button"
-                  aria-label={mobileNavOpen ? "Close menu" : "Open menu"}
-                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded border border-zinc-200 text-zinc-700"
-                  onClick={() => setMobileNavOpen((open) => !open)}
-                >
-                  <MenuIcon open={mobileNavOpen} />
-                </button>
+                {showCompanyNav ? (
+                  <button
+                    type="button"
+                    aria-label={mobileNavOpen ? "Close menu" : "Open menu"}
+                    className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded border border-zinc-200 text-zinc-700"
+                    onClick={() => setMobileNavOpen((open) => !open)}
+                  >
+                    <MenuIcon open={mobileNavOpen} />
+                  </button>
+                ) : null}
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-zinc-900">
                     {title ?? BRAND.name}
@@ -309,7 +343,7 @@ export function AppShell({
             </div>
           </header>
 
-          {mobileNavOpen && (
+          {showCompanyNav && mobileNavOpen && (
             <div className="fixed inset-0 z-50 lg:hidden">
               <button
                 type="button"
