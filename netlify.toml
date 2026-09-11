@@ -11,6 +11,22 @@
 [build.environment]
   NODE_VERSION = "20"
 
+# Work proxies often cache the prerendered login HTML after a deploy, then
+# the page loads JS chunks that no longer exist. Never store these documents.
+[[headers]]
+  for = "/login"
+  [headers.values]
+    Cache-Control = "private, no-store, no-cache, must-revalidate"
+    CDN-Cache-Control = "no-store"
+    Netlify-CDN-Cache-Control = "no-store"
+
+[[headers]]
+  for = "/signup"
+  [headers.values]
+    Cache-Control = "private, no-store, no-cache, must-revalidate"
+    CDN-Cache-Control = "no-store"
+    Netlify-CDN-Cache-Control = "no-store"
+
 # Optional: redirect www → apex (uncomment and set your domain)
 # [[redirects]]
 #   from = "https://www.example.com/*"
