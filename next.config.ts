@@ -1,10 +1,17 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   serverExternalPackages: ["@libsql/client", "pdf-parse"],
+  ...(process.env.COMMIT_REF || process.env.DEPLOY_ID
+    ? { deploymentId: process.env.COMMIT_REF || process.env.DEPLOY_ID }
+    : {}),
   experimental: {
     proxyClientMaxBodySize: "100mb",
     serverActions: {
       bodySizeLimit: "100mb",
+    },
+    staleTimes: {
+      dynamic: 0,
+      static: 30,
     },
   },
   async headers() {
@@ -14,8 +21,10 @@ const nextConfig = {
       { key: "Netlify-CDN-Cache-Control", value: "no-store" },
     ];
     return [
-      { source: "/login", headers: noStore },
-      { source: "/signup", headers: noStore },
+      {
+        source: "/((?!_next/static|_next/image|favicon.ico).*)",
+        headers: noStore,
+      },
     ];
   },
 };

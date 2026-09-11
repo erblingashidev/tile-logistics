@@ -20,6 +20,16 @@ export function ClientRecovery() {
     };
 
     const onError = (event: ErrorEvent) => {
+      const target = event.target;
+      if (target && target !== window) {
+        const el = target as HTMLElement & { src?: string; href?: string };
+        const url = el.src || el.href || "";
+        if (url.includes("/_next/static/")) {
+          event.preventDefault();
+          void reloadFreshApp();
+          return;
+        }
+      }
       if (!isStaleAssetError(event.message) && !isStaleAssetError(event.error)) {
         return;
       }
@@ -28,7 +38,7 @@ export function ClientRecovery() {
     };
 
     window.addEventListener("unhandledrejection", onRejection);
-    window.addEventListener("error", onError);
+    window.addEventListener("error", onError, true);
 
     const okTimer = window.setTimeout(() => {
       markRecoverySuccessful();
@@ -37,7 +47,7 @@ export function ClientRecovery() {
     return () => {
       window.clearTimeout(okTimer);
       window.removeEventListener("unhandledrejection", onRejection);
-      window.removeEventListener("error", onError);
+      window.removeEventListener("error", onError, true);
     };
   }, []);
 

@@ -1,4 +1,5 @@
 const RELOAD_COUNT_KEY = "app-stale-reload-count";
+export const STALE_ASSET_RELOAD_KEY = "app-stale-asset-reload";
 const MAX_RELOADS = 2;
 
 export function storageGet(key: string): string | null {
@@ -78,4 +79,5 @@ export async function reloadFreshApp(): Promise<boolean> {
 
 export function markRecoverySuccessful() {
   storageRemove(RELOAD_COUNT_KEY);
+  storageRemove(STALE_ASSET_RELOAD_KEY);
 }
