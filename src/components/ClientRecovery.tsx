@@ -5,11 +5,14 @@ import {
   isStaleAssetError,
   markRecoverySuccessful,
   reloadFreshApp,
+  stripRecoveryQuery,
 } from "@/lib/client-recovery";
 
-/** Auto-recover when a stale tab or work proxy serves JS from a previous deploy. */
+/** Auto-recover when a stale tab serves JS from a previous deploy. */
 export function ClientRecovery() {
   useEffect(() => {
+    stripRecoveryQuery();
+
     const onRejection = (event: PromiseRejectionEvent) => {
       if (!isStaleAssetError(event.reason)) return;
       event.preventDefault();

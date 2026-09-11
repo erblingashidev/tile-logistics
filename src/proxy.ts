@@ -101,6 +101,12 @@ function employeePathAllowed(
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  if (request.nextUrl.searchParams.has("_r")) {
+    const clean = request.nextUrl.clone();
+    clean.searchParams.delete("_r");
+    return NextResponse.redirect(clean);
+  }
+
   if (
     PUBLIC_PREFIXES.some((p) => pathname.startsWith(p)) ||
     pathname.match(/\.(ico|svg|png|jpg|webp)$/)

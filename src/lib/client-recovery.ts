@@ -1,5 +1,4 @@
 const RELOAD_COUNT_KEY = "app-stale-reload-count";
-const ERROR_RESET_KEY = "app-error-reset-count";
 const MAX_RELOADS = 2;
 
 export function storageGet(key: string): string | null {
@@ -54,7 +53,17 @@ export async function clearClientCaches() {
   }
 }
 
-/** Bypass browser and proxy caches after a deploy or failed chunk load. */
+/** Drop leftover cache-bust query params without triggering another navigation. */
+export function stripRecoveryQuery() {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("_r")) return;
+  url.searchParams.delete("_r");
+  const next = `${url.pathname}${url.search}${url.hash}`;
+  window.history.replaceState(window.history.state, "", next);
+}
+
+/** Reload the current URL after clearing caches. Does not add query params. */
 export async function reloadFreshApp(): Promise<boolean> {
   if (typeof window === "undefined") return false;
   const count = Number(storageGet(RELOAD_COUNT_KEY) || "0");
@@ -62,24 +71,11 @@ export async function reloadFreshApp(): Promise<boolean> {
   storageSet(RELOAD_COUNT_KEY, String(count + 1));
   await clearClientCaches();
   const url = new URL(window.location.href);
-  url.searchParams.set("_r", String(Date.now()));
-  window.location.replace(url.toString());
+  url.searchParams.delete("_r");
+  window.location.replace(`${url.pathname}${url.search}${url.hash}`);
   return true;
 }
 
 export function markRecoverySuccessful() {
   storageRemove(RELOAD_COUNT_KEY);
-  storageRemove(ERROR_RESET_KEY);
-}
-
-export async function recoverFromRenderError(
-  reset: () => void
-): Promise<boolean> {
-  const resets = Number(storageGet(ERROR_RESET_KEY) || "0");
-  if (resets < 1) {
-    storageSet(ERROR_RESET_KEY, String(resets + 1));
-    reset();
-    return true;
-  }
-  return reloadFreshApp();
 }
