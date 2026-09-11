@@ -1,8 +1,19 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { requireAdmin } from "@/lib/auth";
+import { platformAdminNeedsOrgPicker } from "@/lib/auth/platform-admin";
 import { DEFAULT_ORGANIZATION_ID } from "@/lib/organizations/constants";
-import { warehouseOsmUrl } from "@/lib/organizations/warehouse";
+import {
+  resolveSessionOrganizationId,
+  runWithTenantOrganization,
+  TenantRequiredError,
+} from "@/lib/organizations/tenant-context";
+import {
+  resolveProfileWarehouse,
+  warehouseOsmUrl,
+} from "@/lib/organizations/warehouse";
+import { effectiveFeatureFlags, FEATURE_FLAG_DEFAULTS } from "@/lib/features/catalog";
 import { getFeatureFlags } from "@/lib/services/feature-flags";
 import { getOrganizationWarehouse } from "@/lib/services/organizations";
 import { getDashboardStats } from "@/lib/services/orders";
@@ -11,15 +22,51 @@ import { Badge, Card, StatLink } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
+const EMPTY_STATS = {
+  totalOrders: 0,
+  unassignedOrders: 0,
+  totalPalletsPending: 0,
+  overdueOrders: 0,
+  vehiclesAvailable: 0,
+};
+
 export default async function DashboardPage() {
   const session = await requireAdmin();
-  const organizationId = session.organizationId ?? DEFAULT_ORGANIZATION_ID;
-  const [stats, pendingImports, flags, warehouse] = await Promise.all([
-    getDashboardStats(),
-    pendingImportQueueCount(),
-    getFeatureFlags(),
-    getOrganizationWarehouse(organizationId),
-  ]);
+  if (platformAdminNeedsOrgPicker(session)) {
+    redirect("/platform/companies");
+  }
+  const organizationId =
+    resolveSessionOrganizationId(session) ??
+    (typeof session.organizationId === "number" && session.organizationId > 0
+      ? session.organizationId
+      : DEFAULT_ORGANIZATION_ID);
+  if (!organizationId || organizationId <= 0) {
+    redirect("/platform/companies");
+  }
+
+  return runWithTenantOrganization(organizationId, () =>
+    renderDashboard(organizationId)
+  );
+}
+
+async function renderDashboard(organizationId: number) {
+  let stats = EMPTY_STATS;
+  let pendingImports = 0;
+  let flags = effectiveFeatureFlags(FEATURE_FLAG_DEFAULTS);
+  let warehouse = resolveProfileWarehouse(organizationId);
+  try {
+    [stats, pendingImports, flags, warehouse] = await Promise.all([
+      getDashboardStats(),
+      pendingImportQueueCount(),
+      getFeatureFlags(organizationId),
+      getOrganizationWarehouse(organizationId),
+    ]);
+  } catch (error) {
+    if (error instanceof TenantRequiredError) {
+      redirect("/platform/companies");
+    }
+    console.error("[dashboard] Failed to load stats", error);
+  }
   const depotMapUrl = warehouseOsmUrl(warehouse);
   const modules = [
     { href: "/orders", label: "Orders" },
