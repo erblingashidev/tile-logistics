@@ -3,12 +3,11 @@
 import { useEffect } from "react";
 import {
   isStaleAssetError,
-  markRecoverySuccessful,
   reloadFreshApp,
   stripRecoveryQuery,
 } from "@/lib/client-recovery";
 
-/** Auto-recover when a stale tab serves JS from a previous deploy. */
+/** Auto-recover when a stale tab loads JS chunks from a previous deploy. */
 export function ClientRecovery() {
   useEffect(() => {
     stripRecoveryQuery();
@@ -20,16 +19,6 @@ export function ClientRecovery() {
     };
 
     const onError = (event: ErrorEvent) => {
-      const target = event.target;
-      if (target && target !== window) {
-        const el = target as HTMLElement & { src?: string; href?: string };
-        const url = el.src || el.href || "";
-        if (url.includes("/_next/static/")) {
-          event.preventDefault();
-          void reloadFreshApp();
-          return;
-        }
-      }
       if (!isStaleAssetError(event.message) && !isStaleAssetError(event.error)) {
         return;
       }
@@ -38,16 +27,10 @@ export function ClientRecovery() {
     };
 
     window.addEventListener("unhandledrejection", onRejection);
-    window.addEventListener("error", onError, true);
-
-    const okTimer = window.setTimeout(() => {
-      markRecoverySuccessful();
-    }, 4000);
-
+    window.addEventListener("error", onError);
     return () => {
-      window.clearTimeout(okTimer);
       window.removeEventListener("unhandledrejection", onRejection);
-      window.removeEventListener("error", onError, true);
+      window.removeEventListener("error", onError);
     };
   }, []);
 

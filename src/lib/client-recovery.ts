@@ -1,5 +1,4 @@
 const RELOAD_COUNT_KEY = "app-stale-reload-count";
-export const STALE_ASSET_RELOAD_KEY = "app-stale-asset-reload";
 const MAX_RELOADS = 2;
 
 export function storageGet(key: string): string | null {
@@ -71,13 +70,13 @@ export async function reloadFreshApp(): Promise<boolean> {
   if (count >= MAX_RELOADS) return false;
   storageSet(RELOAD_COUNT_KEY, String(count + 1));
   await clearClientCaches();
+  try {
+    sessionStorage.removeItem("app-stale-asset-reload");
+  } catch {
+    // ignore
+  }
   const url = new URL(window.location.href);
   url.searchParams.delete("_r");
   window.location.replace(`${url.pathname}${url.search}${url.hash}`);
   return true;
-}
-
-export function markRecoverySuccessful() {
-  storageRemove(RELOAD_COUNT_KEY);
-  storageRemove(STALE_ASSET_RELOAD_KEY);
 }

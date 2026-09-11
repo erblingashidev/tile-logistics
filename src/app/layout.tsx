@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ClientRecovery } from "@/components/ClientRecovery";
 import { BRAND } from "@/lib/brand";
-import { STALE_ASSET_RECOVERY_SCRIPT } from "@/lib/stale-asset-recovery-script";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -26,8 +25,6 @@ export const viewport = {
   viewportFit: "cover",
 };
 
-export const dynamic = "force-dynamic";
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -40,9 +37,6 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body suppressHydrationWarning className="min-h-full font-sans">
-        <script
-          dangerouslySetInnerHTML={{ __html: STALE_ASSET_RECOVERY_SCRIPT }}
-        />
         <ClientRecovery />
         {children}
       </body>
