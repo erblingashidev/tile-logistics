@@ -15,6 +15,15 @@ import {
 import { adjustStockToCount } from "@/lib/services/stock";
 import { upsertProduct } from "@/lib/services/products";
 import { listDistinctWarehouseZones } from "@/lib/services/warehouse-zones";
+import { resolveTenantOrganizationId } from "@/lib/organizations/tenant-context";
+
+async function tenantOrgId() {
+  return resolveTenantOrganizationId();
+}
+
+async function sessionOrgFilter() {
+  return eq(inventorySessions.organizationId, await tenantOrgId());
+}
 
 export async function listInventorySessions() {
   const db = await getDb();
@@ -22,6 +31,7 @@ export async function listInventorySessions() {
     db
       .select()
       .from(inventorySessions)
+      .where(await sessionOrgFilter())
       .orderBy(desc(inventorySessions.startedAt))
   );
 }
@@ -32,7 +42,12 @@ export async function getOpenInventorySession() {
     db
       .select()
       .from(inventorySessions)
-      .where(eq(inventorySessions.status, "open"))
+      .where(
+        and(
+          eq(inventorySessions.status, "open"),
+          await sessionOrgFilter()
+        )
+      )
       .orderBy(desc(inventorySessions.startedAt))
   );
 }
@@ -43,7 +58,9 @@ export async function getInventorySession(sessionId: number) {
     db
       .select()
       .from(inventorySessions)
-      .where(eq(inventorySessions.id, sessionId))
+      .where(
+        and(eq(inventorySessions.id, sessionId), await sessionOrgFilter())
+      )
   );
 }
 
@@ -62,6 +79,7 @@ async function snapshotBookStock(sessionId: number) {
   );
   if (existing) return;
 
+  const orgId = await tenantOrgId();
   const rows = await dbAll(
     db
       .select({
@@ -75,6 +93,7 @@ async function snapshotBookStock(sessionId: number) {
         warehouseLocations,
         eq(stockBalances.locationId, warehouseLocations.id)
       )
+      .where(eq(stockBalances.organizationId, orgId))
   );
 
   const now = new Date().toISOString();
@@ -106,6 +125,7 @@ export async function startInventorySession(input: {
     db
       .insert(inventorySessions)
       .values({
+        organizationId: await tenantOrgId(),
         name: input.name.trim(),
         status: "open",
         startedAt: now,
@@ -123,7 +143,9 @@ export async function startInventorySession(input: {
       db
         .select()
         .from(inventorySessions)
-        .where(eq(inventorySessions.id, inserted!.id))
+        .where(
+          and(eq(inventorySessions.id, inserted!.id), await sessionOrgFilter())
+        )
     ),
   };
 }
@@ -265,7 +287,7 @@ export async function closeSectorCount(input: {
     db
       .select()
       .from(inventorySessions)
-      .where(eq(inventorySessions.id, sector.sessionId))
+      .where(and(eq(inventorySessions.id, sector.sessionId), await sessionOrgFilter()))
   );
   if (!session || session.status !== "open") {
     return { ok: false as const, error: "Sesioni i inventarit nuk është aktiv." };
@@ -325,7 +347,7 @@ export async function addInventoryLine(input: {
     db
       .select()
       .from(inventorySessions)
-      .where(eq(inventorySessions.id, input.sessionId))
+      .where(and(eq(inventorySessions.id, input.sessionId), await sessionOrgFilter()))
   );
   if (!session || session.status !== "open") {
     return { ok: false as const, error: "Sesioni i inventarit nuk është aktiv." };
@@ -401,7 +423,7 @@ export async function updateInventorySession(input: {
     db
       .select()
       .from(inventorySessions)
-      .where(eq(inventorySessions.id, input.sessionId))
+      .where(and(eq(inventorySessions.id, input.sessionId), await sessionOrgFilter()))
   );
   if (!session) {
     return { ok: false as const, error: "Sesioni i inventarit nuk u gjet." };
@@ -420,7 +442,7 @@ export async function updateInventorySession(input: {
         ? { notes: input.notes.trim() || null }
         : {}),
     })
-    .where(eq(inventorySessions.id, input.sessionId));
+    .where(and(eq(inventorySessions.id, input.sessionId), await sessionOrgFilter()));
 
   return {
     ok: true as const,
@@ -428,7 +450,7 @@ export async function updateInventorySession(input: {
       db
         .select()
         .from(inventorySessions)
-        .where(eq(inventorySessions.id, input.sessionId))
+        .where(and(eq(inventorySessions.id, input.sessionId), await sessionOrgFilter()))
     ),
   };
 }
@@ -463,7 +485,7 @@ export async function deleteInventorySession(sessionId: number) {
 
   await db
     .delete(inventorySessions)
-    .where(eq(inventorySessions.id, sessionId));
+    .where(and(eq(inventorySessions.id, sessionId), await sessionOrgFilter()));
 
   return {
     ok: true as const,
@@ -478,7 +500,7 @@ export async function cancelInventorySession(sessionId: number) {
     db
       .select()
       .from(inventorySessions)
-      .where(eq(inventorySessions.id, sessionId))
+      .where(and(eq(inventorySessions.id, sessionId), await sessionOrgFilter()))
   );
   if (!session || session.status !== "open") {
     return { ok: false as const, error: "Sesioni i inventarit nuk është aktiv." };
@@ -497,7 +519,7 @@ export async function cancelInventorySession(sessionId: number) {
   await db
     .update(inventorySessions)
     .set({ status: "cancelled", closedAt: now })
-    .where(eq(inventorySessions.id, sessionId));
+    .where(and(eq(inventorySessions.id, sessionId), await sessionOrgFilter()));
 
   return { ok: true as const };
 }
@@ -551,7 +573,7 @@ export async function reopenSectorCount(input: { sectorCountId: number }) {
     db
       .select()
       .from(inventorySessions)
-      .where(eq(inventorySessions.id, sector.sessionId))
+      .where(and(eq(inventorySessions.id, sector.sessionId), await sessionOrgFilter()))
   );
   if (!session || session.status !== "open") {
     return { ok: false as const, error: "Sesioni i inventarit nuk është aktiv." };
@@ -627,7 +649,7 @@ export async function updateInventoryLine(input: {
     db
       .select()
       .from(inventorySessions)
-      .where(eq(inventorySessions.id, existing.sessionId))
+      .where(and(eq(inventorySessions.id, existing.sessionId), await sessionOrgFilter()))
   );
   if (!session || !sessionAllowsAdminLineEdits(session.status)) {
     return {
@@ -700,7 +722,7 @@ export async function deleteInventoryLine(lineId: number) {
     db
       .select()
       .from(inventorySessions)
-      .where(eq(inventorySessions.id, existing.sessionId))
+      .where(and(eq(inventorySessions.id, existing.sessionId), await sessionOrgFilter()))
   );
   if (!session || !sessionAllowsAdminLineEdits(session.status)) {
     return {
@@ -790,6 +812,8 @@ export async function getVarianceReport(reportId: number) {
       .where(eq(inventoryVarianceReports.id, reportId))
   );
   if (!report) return null;
+  const session = await getInventorySession(report.sessionId);
+  if (!session) return null;
 
   const lines = await dbAll(
     db
@@ -821,6 +845,8 @@ export async function getVarianceReport(reportId: number) {
 export async function listVarianceReports(sessionId?: number) {
   const db = await getDb();
   if (sessionId) {
+    const session = await getInventorySession(sessionId);
+    if (!session) return [];
     return dbAll(
       db
         .select()
@@ -829,13 +855,19 @@ export async function listVarianceReports(sessionId?: number) {
         .orderBy(desc(inventoryVarianceReports.createdAt))
     );
   }
+  const orgId = await tenantOrgId();
   return dbAll(
     db
-      .select()
+      .select({ report: inventoryVarianceReports })
       .from(inventoryVarianceReports)
+      .innerJoin(
+        inventorySessions,
+        eq(inventoryVarianceReports.sessionId, inventorySessions.id)
+      )
+      .where(eq(inventorySessions.organizationId, orgId))
       .orderBy(desc(inventoryVarianceReports.createdAt))
       .limit(20)
-  );
+  ).then((rows) => rows.map((r) => r.report));
 }
 
 /** Finalize inventory: apply counted stock + variance report vs book and last report. */
@@ -845,7 +877,7 @@ export async function closeInventorySession(sessionId: number) {
     db
       .select()
       .from(inventorySessions)
-      .where(eq(inventorySessions.id, sessionId))
+      .where(and(eq(inventorySessions.id, sessionId), await sessionOrgFilter()))
   );
   if (!session || session.status !== "open") {
     return { ok: false as const, error: "Sesioni nuk është i hapur." };
@@ -981,7 +1013,7 @@ export async function closeInventorySession(sessionId: number) {
   await db
     .update(inventorySessions)
     .set({ status: "closed", closedAt: now })
-    .where(eq(inventorySessions.id, sessionId));
+    .where(and(eq(inventorySessions.id, sessionId), await sessionOrgFilter()));
 
   return {
     ok: true as const,

@@ -40,7 +40,9 @@ This document maps the **existing codebase** to the multi-tenant SaaS specificat
 
 - `resolveSessionOrganizationId`, `resolveTenantOrganizationId()` (session + `x-organization-id` / `x-organization-slug` headers from proxy).
 - `assertSessionCanAccessOrganization` on **`requireApiTenantSession`**.
-- **`runApiCompanyAdmin`** used on **employees** and **company profile** APIs only (as of audit).
+- **`runApiCompanyAdmin`** / **`runApiWithTenant`** on employees, company profile, warehouse locations/inventory/reports, admins, vehicles (POST), and core **orders** routes.
+- **`src/lib/auth/permissions.ts`** maps employee roles → permission keys (Phase 5 foundation).
+- Platform **`PATCH /api/platform/organizations/[id]`** for suspend / trial / inactive / active.
 - Edge **`src/proxy.ts`** avoids DB; slug forwarded for Node resolution.
 
 ### Shared-schema isolation (partial)

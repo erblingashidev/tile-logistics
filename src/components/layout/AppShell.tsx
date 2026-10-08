@@ -332,6 +332,16 @@ export function AppShell({
         )}
 
         <div className="flex min-w-0 flex-1 flex-col">
+          {isPlatformAdmin &&
+            organizationId != null &&
+            organizationName &&
+            !isPlatformPickerPage && (
+              <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-xs text-amber-950 lg:px-8">
+                Platform view — you are managing{" "}
+                <span className="font-semibold">{organizationName}</span>. Data
+                is isolated to this company.
+              </div>
+            )}
           <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/90">
             <div className="flex items-center justify-between gap-3 px-4 py-3 lg:px-8 lg:py-4">
               <div className="flex min-w-0 items-center gap-3 lg:hidden">

@@ -796,6 +796,51 @@ async function ensureLegacyAgimiUnits(client: Client, orgId: number) {
   }
 }
 
+const PLATFORM_SETTABLE_STATUSES = new Set([
+  "active",
+  "suspended",
+  "trial",
+  "inactive",
+]);
+
+/** Platform admin: change tenant lifecycle (active / suspended / trial / inactive). */
+export async function setOrganizationStatus(
+  organizationId: number,
+  status: string
+) {
+  const normalized = status.trim().toLowerCase();
+  if (!PLATFORM_SETTABLE_STATUSES.has(normalized)) {
+    throw new OrganizationError(
+      "Status must be active, suspended, trial, or inactive."
+    );
+  }
+  const org = await getOrganizationById(organizationId);
+  if (!org) throw new OrganizationError("Organization not found.");
+
+  const db = await getControlPlaneDb();
+  const now = nowIso();
+  await db
+    .update(organizations)
+    .set({
+      status: normalized,
+      activatedAt:
+        normalized === "active"
+          ? org.activatedAt ?? now
+          : org.activatedAt,
+    })
+    .where(eq(organizations.id, organizationId));
+
+  await logActivity(
+    "update",
+    "organization",
+    organizationId,
+    `Organization status → ${normalized}`,
+    { category: "system", details: { status: normalized } }
+  );
+
+  return getOrganizationById(organizationId);
+}
+
 /**
  * Idempotent: keeps org #1 as AGIMI, copies legacy app_settings, and marks setup complete.
  * Does not modify orders, employees, vehicles, or other operational data.

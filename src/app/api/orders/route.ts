@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireApiSession, requireApiSessionNoSalesWrite } from "@/lib/auth/api-guard";
+import {
+  runApiWithTenant,
+  runApiWithTenantNoSalesWrite,
+} from "@/lib/auth/api-guard";
 import {
   listOrders,
   createOrder,
@@ -11,9 +14,7 @@ import { todayDateString, parseWorkDayFilter } from "@/lib/delivery-schedule";
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
-  const auth = await requireApiSession();
-  if (!auth.ok) return auth.response;
-
+  return runApiWithTenant(async () => {
   try {
     const sp = request.nextUrl.searchParams;
     const orders = await listOrders({
@@ -64,12 +65,11 @@ export async function GET(request: NextRequest) {
       err instanceof Error ? err.message : "Failed to load orders";
     return NextResponse.json({ error: message }, { status: 500 });
   }
+  });
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireApiSessionNoSalesWrite(request.method);
-  if (!auth.ok) return auth.response;
-
+  return runApiWithTenantNoSalesWrite(request.method, async () => {
   const body = (await request.json()) as OrderPayload & {
     importQueueId?: number;
   };
@@ -112,4 +112,5 @@ export async function POST(request: NextRequest) {
     const message = err instanceof Error ? err.message : "Failed to create order";
     return NextResponse.json({ error: message }, { status: 500 });
   }
+  });
 }

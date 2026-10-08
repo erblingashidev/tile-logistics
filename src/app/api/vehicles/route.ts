@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireApiSession } from "@/lib/auth/api-guard";
+import {
+  runApiCompanyAdmin,
+  runApiWithTenant,
+} from "@/lib/auth/api-guard";
 import {
   listVehicles,
   createVehicle,
@@ -22,22 +25,20 @@ function parseListOptions(searchParams: URLSearchParams) {
 }
 
 export async function GET(request: NextRequest) {
-  const auth = await requireApiSession();
-  if (!auth.ok) return auth.response;
-
-  try {
-    const options = parseListOptions(request.nextUrl.searchParams);
-    return NextResponse.json(await listVehicles(options));
-  } catch (err) {
-    const message =
-      err instanceof Error ? err.message : "Failed to load vehicles";
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
+  return runApiWithTenant(async () => {
+    try {
+      const options = parseListOptions(request.nextUrl.searchParams);
+      return NextResponse.json(await listVehicles(options));
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to load vehicles";
+      return NextResponse.json({ error: message }, { status: 500 });
+    }
+  });
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireApiSession();
-  if (!auth.ok) return auth.response;
+  return runApiCompanyAdmin(async () => {
 
   const body = (await request.json()) as VehiclePayload;
   if (!body.name || !body.plateNumber) {
@@ -55,4 +56,5 @@ export async function POST(request: NextRequest) {
       { status: 409 }
     );
   }
+  });
 }

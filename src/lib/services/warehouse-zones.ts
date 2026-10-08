@@ -8,6 +8,11 @@ import {
 } from "@/lib/db/schema";
 import { WAREHOUSE_ZONE_PRESETS } from "@/lib/constants";
 import { logActivity } from "@/lib/logger";
+import { resolveTenantOrganizationId } from "@/lib/organizations/tenant-context";
+
+async function tenantOrgId() {
+  return resolveTenantOrganizationId();
+}
 
 export function normalizeWarehouseZone(zone: string): string {
   return zone.trim();
@@ -19,6 +24,7 @@ export async function listDistinctWarehouseZones() {
     db
       .selectDistinct({ zone: warehouseLocations.zone })
       .from(warehouseLocations)
+      .where(eq(warehouseLocations.organizationId, await tenantOrgId()))
   );
 
   const fromLocations = rows

@@ -178,3 +178,32 @@ export async function requireApiSessionNoSalesWrite(
   if (blocked) return { ok: false, response: blocked };
   return auth;
 }
+
+/** Tenant-bound session; blocks sales staff from mutating methods. */
+export async function requireApiTenantSessionNoSalesWrite(
+  method: string
+): Promise<
+  | { ok: true; session: SessionUser; organizationId: number }
+  | { ok: false; response: NextResponse }
+> {
+  const auth = await requireApiTenantSession();
+  if (!auth.ok) return auth;
+  const blocked = salesWriteForbidden(auth.session, method);
+  if (blocked) return { ok: false, response: blocked };
+  return auth;
+}
+
+/** Run handler with tenant context; enforces sales read-only on writes. */
+export async function runApiWithTenantNoSalesWrite<T>(
+  method: string,
+  fn: (ctx: {
+    session: SessionUser;
+    organizationId: number;
+  }) => Promise<T>
+): Promise<T | NextResponse> {
+  const auth = await requireApiTenantSessionNoSalesWrite(method);
+  if (!auth.ok) return auth.response;
+  return runWithTenantOrganizationAsync(auth.organizationId, () =>
+    fn({ session: auth.session, organizationId: auth.organizationId })
+  );
+}

@@ -36,6 +36,15 @@ import {
   isWednesday,
   wednesdayLabel,
 } from "@/lib/warehouse-report-week";
+import { resolveTenantOrganizationId } from "@/lib/organizations/tenant-context";
+
+async function tenantOrgId() {
+  return resolveTenantOrganizationId();
+}
+
+async function reportOrgFilter() {
+  return eq(warehouseReports.organizationId, await tenantOrgId());
+}
 
 const UPLOAD_ROOT = getUploadRoot();
 
@@ -156,7 +165,12 @@ export async function listEmployeeReports(employeeId: number, limit = 20) {
     db
       .select()
       .from(warehouseReports)
-      .where(eq(warehouseReports.employeeId, employeeId))
+      .where(
+        and(
+          eq(warehouseReports.employeeId, employeeId),
+          await reportOrgFilter()
+        )
+      )
       .orderBy(desc(warehouseReports.createdAt))
       .limit(limit)
   );
@@ -306,7 +320,8 @@ export async function submitWarehouseReport(input: SubmitWarehouseReportInput) {
             eq(warehouseReports.employeeId, input.employeeId),
             eq(warehouseReports.reportType, "weekly"),
             eq(warehouseReports.reportWeek, reportWeek),
-            eq(warehouseReports.scope, scope)
+            eq(warehouseReports.scope, scope),
+            await reportOrgFilter()
           )
         )
     );
@@ -344,6 +359,7 @@ export async function submitWarehouseReport(input: SubmitWarehouseReportInput) {
     db
       .insert(warehouseReports)
       .values({
+        organizationId: await tenantOrgId(),
         employeeId: input.employeeId,
         reportType: input.reportType,
         scope,
@@ -439,7 +455,10 @@ export async function submitWarehouseReport(input: SubmitWarehouseReportInput) {
 async function getReportRow(id: number) {
   const db = await getDb();
   return dbOne(
-    db.select().from(warehouseReports).where(eq(warehouseReports.id, id))
+    db
+      .select()
+      .from(warehouseReports)
+      .where(and(eq(warehouseReports.id, id), await reportOrgFilter()))
   );
 }
 
@@ -452,7 +471,11 @@ export async function listWarehouseReportsForWeek(reportWeek: string) {
 
   const db = await getDb();
   const allRows = await dbAll(
-    db.select().from(warehouseReports).orderBy(desc(warehouseReports.createdAt))
+    db
+      .select()
+      .from(warehouseReports)
+      .where(await reportOrgFilter())
+      .orderBy(desc(warehouseReports.createdAt))
   );
 
   const weekly = allRows.filter(
@@ -498,7 +521,9 @@ export async function deleteWarehouseReport(id: number) {
   );
   deleteReportPhotoFiles(photos.map((p) => p.photoPath));
 
-  await db.delete(warehouseReports).where(eq(warehouseReports.id, id));
+  await db
+    .delete(warehouseReports)
+    .where(and(eq(warehouseReports.id, id), await reportOrgFilter()));
 
   const employee = await getEmployee(row.employeeId);
   await logActivity(
@@ -551,7 +576,7 @@ export async function updateWarehouseReportAdmin(
         : {}),
       updatedAt: now,
     })
-    .where(eq(warehouseReports.id, id));
+    .where(and(eq(warehouseReports.id, id), await reportOrgFilter()));
 
   if (input.photos?.length) {
     const existingPhotos = await dbAll(
@@ -684,7 +709,12 @@ export async function listPendingReportEditRequests() {
         eq(warehouseReportEditRequests.reportId, warehouseReports.id)
       )
       .innerJoin(employees, eq(warehouseReportEditRequests.employeeId, employees.id))
-      .where(eq(warehouseReportEditRequests.status, "pending"))
+      .where(
+        and(
+          eq(warehouseReportEditRequests.status, "pending"),
+          await reportOrgFilter()
+        )
+      )
       .orderBy(desc(warehouseReportEditRequests.createdAt))
   );
 
@@ -709,11 +739,18 @@ export async function approveReportEditRequest(
     return { ok: false as const, error: "This request was already reviewed." };
   }
 
+  const report = await getReportRow(request.reportId);
+  if (!report) {
+    return { ok: false as const, error: "Report not found" };
+  }
+
   const now = new Date().toISOString();
   await db
     .update(warehouseReports)
     .set({ body: request.proposedBody, updatedAt: now })
-    .where(eq(warehouseReports.id, request.reportId));
+    .where(
+      and(eq(warehouseReports.id, request.reportId), await reportOrgFilter())
+    );
 
   await db
     .update(warehouseReportEditRequests)

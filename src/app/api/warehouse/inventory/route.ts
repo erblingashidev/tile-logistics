@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth";
+import { runApiCompanyAdmin } from "@/lib/auth/api-guard";
 import {
   addInventoryLine,
   cancelInventorySession,
@@ -24,8 +24,7 @@ import {
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
-  try {
-    await requireAdmin();
+  return runApiCompanyAdmin(async () => {
     const url = new URL(request.url);
     const sessionId = url.searchParams.get("sessionId");
     const reportId = url.searchParams.get("reportId");
@@ -53,14 +52,11 @@ export async function GET(request: Request) {
     const sessions = await listInventorySessions();
     const latestReport = (await listVarianceReports())[0] ?? null;
     return NextResponse.json({ sessions, open, latestReport });
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  });
 }
 
 export async function POST(request: Request) {
-  try {
-    await requireAdmin();
+  return runApiCompanyAdmin(async () => {
     const body = await request.json();
 
     if (body.action === "start") {
@@ -183,7 +179,5 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
-  } catch {
-    return NextResponse.json({ error: "Bad request" }, { status: 400 });
-  }
+  });
 }

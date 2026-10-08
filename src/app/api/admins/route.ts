@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireApiAdmin } from "@/lib/auth/api-guard";
+import { runApiCompanyAdmin } from "@/lib/auth/api-guard";
 import {
   AdminCredentialError,
   createAdmin,
@@ -10,21 +10,18 @@ import {
 export const runtime = "nodejs";
 
 export async function GET() {
-  const auth = await requireApiAdmin();
-  if (!auth.ok) return auth.response;
-
-  try {
-    return NextResponse.json(await listAdmins());
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Failed to load admins";
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
+  return runApiCompanyAdmin(async () => {
+    try {
+      return NextResponse.json(await listAdmins());
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load admins";
+      return NextResponse.json({ error: message }, { status: 500 });
+    }
+  });
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireApiAdmin();
-  if (!auth.ok) return auth.response;
-
+  return runApiCompanyAdmin(async () => {
   const body = (await request.json()) as AdminPayload;
   if (!body.name?.trim()) {
     return NextResponse.json({ error: "Name is required" }, { status: 400 });
@@ -45,4 +42,5 @@ export async function POST(request: NextRequest) {
     }
     throw err;
   }
+  });
 }

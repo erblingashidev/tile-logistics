@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth";
+import { runApiCompanyAdmin } from "@/lib/auth/api-guard";
 import { listWarehouseReportsForWeek } from "@/lib/services/warehouse-reports";
 import { formatReportWeek, previousReportWeeks } from "@/lib/warehouse-report-week";
 
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
-  try {
-    await requireAdmin();
+  return runApiCompanyAdmin(async () => {
     const week =
       request.nextUrl.searchParams.get("week")?.trim() ||
       formatReportWeek(new Date());
@@ -17,7 +16,5 @@ export async function GET(request: NextRequest) {
       ...data,
       availableWeeks: previousReportWeeks(8),
     });
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  });
 }
