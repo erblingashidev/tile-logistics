@@ -76,6 +76,24 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+async function tryEnsureTenantDatabase(organizationId: number) {
+  const orgRow = await getOrganizationById(organizationId);
+  if (!orgRow) return;
+  const { ensureOrganizationTenantDatabase, TENANT_DATABASE_PROVISION_ERROR_KEY } =
+    await import("@/lib/db/tenant-database");
+  try {
+    await ensureOrganizationTenantDatabase(orgRow.id, orgRow.slug);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[organizations] Tenant database ensure failed:", message);
+    await setOrganizationSetting(
+      organizationId,
+      TENANT_DATABASE_PROVISION_ERROR_KEY,
+      message
+    );
+  }
+}
+
 async function getOrgSetting(orgId: number, key: string) {
   const db = await getControlPlaneDb();
   const row = await dbOne(
@@ -506,10 +524,7 @@ export async function approveOrganizationApplication(
     updatedAt: now,
   });
 
-  const { provisionOrganizationDatabase } = await import(
-    "@/lib/db/tenant-database"
-  );
-  await provisionOrganizationDatabase(org.id, org.slug);
+  await tryEnsureTenantDatabase(org.id);
 
   const admin = await dbOne(
     db
@@ -616,6 +631,7 @@ export async function updateOrganizationCompanySettings(input: {
       .set({ name: companyName })
       .where(eq(organizations.id, input.organizationId));
   }
+  await tryEnsureTenantDatabase(input.organizationId);
   return profile;
 }
 
@@ -651,6 +667,8 @@ export async function completeOnboarding(input: {
     .update(organizationOnboarding)
     .set({ currentStep: "complete", completedAt: now, updatedAt: now })
     .where(eq(organizationOnboarding.organizationId, input.organizationId));
+
+  await tryEnsureTenantDatabase(input.organizationId);
 
   return profile;
 }

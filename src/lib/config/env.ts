@@ -70,3 +70,21 @@ export function getTursoConfig(): { url: string; authToken: string } | null {
   }
   return { url, authToken };
 }
+
+/** Turso Platform API — auto-create one libSQL database per company on Netlify. */
+export function getTursoPlatformConfig(): {
+  organization: string;
+  token: string;
+  group: string;
+  dbNamePrefix: string;
+} | null {
+  const token =
+    process.env.TURSO_PLATFORM_TOKEN?.trim() ||
+    process.env.TURSO_API_TOKEN?.trim();
+  const organization = process.env.TURSO_ORGANIZATION?.trim();
+  if (!token || !organization) return null;
+  const group = process.env.TURSO_GROUP?.trim() || "default";
+  const dbNamePrefix =
+    process.env.TURSO_TENANT_DB_PREFIX?.trim() || "logistics-core-";
+  return { organization, token, group, dbNamePrefix };
+}

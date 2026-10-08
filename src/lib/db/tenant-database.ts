@@ -2,7 +2,11 @@ import fs from "fs";
 import path from "path";
 import { createClient, type Client } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
-import { getTursoConfig, isNetlify } from "@/lib/config/env";
+import {
+  getTursoConfig,
+  getTursoPlatformConfig,
+} from "@/lib/config/env";
+import { provisionTursoTenantDatabase } from "@/lib/db/turso-platform";
 import * as schema from "@/lib/db/schema";
 import { LEGACY_AGIMI_ORGANIZATION_ID } from "@/lib/organizations/constants";
 import { setOrganizationSetting } from "@/lib/services/organizations";
@@ -10,6 +14,7 @@ import { setOrganizationSetting } from "@/lib/services/organizations";
 export const TENANT_DATABASE_URL_KEY = "tenant_database_url";
 export const TENANT_DATABASE_TOKEN_KEY = "tenant_database_auth_token";
 export const TENANT_DATABASE_ISOLATED_KEY = "tenant_database_isolated";
+export const TENANT_DATABASE_PROVISION_ERROR_KEY = "tenant_database_provision_error";
 
 const tenantDbCache = new Map<number, Promise<ReturnType<typeof drizzle<typeof schema>>>>();
 
@@ -88,9 +93,31 @@ export async function getDedicatedTenantDbIfConfigured(orgId: number) {
   return pending;
 }
 
+async function persistDedicatedDatabase(
+  orgId: number,
+  url: string,
+  authToken: string
+) {
+  const client = createTenantClient(url, authToken || undefined);
+  await client.execute("PRAGMA foreign_keys = ON");
+  const { bootstrapOperationalDatabase } = await import("@/lib/db/index");
+  await bootstrapOperationalDatabase(client);
+
+  const now = new Date().toISOString();
+  await setOrgSetting(orgId, TENANT_DATABASE_URL_KEY, url);
+  await setOrgSetting(orgId, TENANT_DATABASE_TOKEN_KEY, authToken);
+  await setOrgSetting(orgId, TENANT_DATABASE_ISOLATED_KEY, "true");
+  await setOrgSetting(orgId, "tenant_database_provisioned_at", now);
+  await setOrgSetting(orgId, TENANT_DATABASE_PROVISION_ERROR_KEY, "");
+
+  tenantDbCache.delete(orgId);
+}
+
 /**
- * Create an isolated SQLite database for a company (local / dev).
- * On Netlify+Turso without per-tenant URLs, companies stay on shared DB with row-level isolation.
+ * Create an isolated database for a company.
+ * - Turso Platform API configured → new libSQL DB per company on approve.
+ * - Local dev (no Turso) → SQLite file under data/tenants/.
+ * - Turso control plane only → shared cluster until Platform API is configured.
  */
 export async function provisionOrganizationDatabase(
   orgId: number,
@@ -105,32 +132,31 @@ export async function provisionOrganizationDatabase(
     return { mode: "dedicated", url: existing.url };
   }
 
+  if (getTursoPlatformConfig()) {
+    const { url, authToken } = await provisionTursoTenantDatabase(orgId, slug);
+    await persistDedicatedDatabase(orgId, url, authToken);
+    return { mode: "dedicated", url };
+  }
+
   const turso = getTursoConfig();
-  if (turso && isNetlify()) {
-    // Shared Turso cluster: logical isolation until a dedicated Turso DB URL is registered.
+  if (turso) {
     await setOrgSetting(orgId, TENANT_DATABASE_ISOLATED_KEY, "false");
     return { mode: "shared" };
   }
 
   const filePath = tenantDatabasePath(orgId, slug);
   const url = `file:${filePath}`;
-  const client = createTenantClient(url);
-  await client.execute("PRAGMA foreign_keys = ON");
-  const { bootstrapOperationalDatabase } = await import("@/lib/db/index");
-  await bootstrapOperationalDatabase(client);
+  await persistDedicatedDatabase(orgId, url, "");
 
-  const now = new Date().toISOString();
-  await setOrgSetting(orgId, TENANT_DATABASE_URL_KEY, url);
-  await setOrgSetting(orgId, TENANT_DATABASE_ISOLATED_KEY, "true");
-  await setOrgSetting(orgId, TENANT_DATABASE_TOKEN_KEY, "");
-  await setOrgSetting(
-    orgId,
-    "tenant_database_provisioned_at",
-    now
-  );
-
-  tenantDbCache.delete(orgId);
   return { mode: "dedicated", url };
+}
+
+/** Idempotent — call after onboarding or settings save if first provision was skipped. */
+export async function ensureOrganizationTenantDatabase(
+  organizationId: number,
+  slug: string
+) {
+  return provisionOrganizationDatabase(organizationId, slug);
 }
 
 /** Platform admin: attach an external Turso database to a company. */
