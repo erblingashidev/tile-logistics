@@ -4,7 +4,7 @@ This app is a **Next.js 16** full-stack project (admin dashboard + employee port
 
 > **Prefer no Turso / automatic SQLite per company?** Use **[HOSTING-SELF.md](./HOSTING-SELF.md)** (Docker on your VPS + real domain). Netlify is serverless and **cannot** keep SQLite files on disk.
 
-> **Plugin / deploy errors on Netlify:** `netlify.toml` no longer pins `@netlify/plugin-nextjs` (Netlify installs the OpenNext adapter automatically). Clear the site’s **Publish directory** override in the Netlify UI if it still points at a custom folder.
+> **Publish directory error:** Set **Publish directory** to `.next` (same as `netlify.toml`). Do not leave it empty or `/` — that equals the repo root and breaks the Next adapter. Do not pin `@netlify/plugin-nextjs` in `package.json`; Netlify installs OpenNext automatically.
 
 ## Production database — choose one
 
