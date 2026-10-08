@@ -98,7 +98,7 @@ export default function SignupPage() {
             />
             <Input
               label="Company URL slug"
-              hint="Used internally to identify your company"
+              hint="Your app URL will be logistics-core.netlify.app/your-slug"
               value={slug}
               onChange={(e) => {
                 setSlugTouched(true);

@@ -43,6 +43,7 @@ import {
   LEGACY_AGIMI_SLUG,
 } from "@/lib/organizations/constants";
 import { MIN_ADMIN_PASSWORD_LENGTH } from "@/lib/services/admins";
+import type { SessionUser } from "@/lib/auth/session";
 
 export {
   DEFAULT_ORGANIZATION_ID,
@@ -260,6 +261,46 @@ export async function repairAgimiAdminLogin(adminId: number) {
 export async function getOrganizationById(id: number) {
   const db = await getDb();
   return dbOne(db.select().from(organizations).where(eq(organizations.id, id)));
+}
+
+export async function getOrganizationBySlug(slug: string) {
+  const normalized = slug.trim().toLowerCase();
+  if (!normalized) return null;
+  const db = await getDb();
+  return dbOne(
+    db.select().from(organizations).where(eq(organizations.slug, normalized))
+  );
+}
+
+export async function getOrganizationSlug(
+  organizationId: number
+): Promise<string> {
+  const org = await getOrganizationById(organizationId);
+  return org?.slug?.trim() || LEGACY_AGIMI_SLUG;
+}
+
+export async function enrichSessionWithOrganizationSlug(
+  user: SessionUser
+): Promise<SessionUser> {
+  if (user.role === "admin") {
+    const platformAdmin =
+      user.adminId === 0 || user.isPlatformAdmin === true;
+    if (
+      platformAdmin &&
+      (user.organizationId == null || user.organizationId <= 0)
+    ) {
+      return { ...user, organizationSlug: null };
+    }
+  }
+  const orgId =
+    user.organizationId != null && user.organizationId > 0
+      ? user.organizationId
+      : LEGACY_AGIMI_ORGANIZATION_ID;
+  const slug = await getOrganizationSlug(orgId);
+  if (user.role === "admin") {
+    return { ...user, organizationSlug: slug };
+  }
+  return { ...user, organizationSlug: slug };
 }
 
 export type OrganizationSummary = {

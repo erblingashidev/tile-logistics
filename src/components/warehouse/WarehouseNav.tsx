@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
+import { useOrgPath } from "@/components/organization/OrgPathProvider";
 
 const links = [
   { href: "/warehouse", label: "Overview", exact: true },
@@ -22,6 +23,7 @@ function isActive(pathname: string, href: string, exact?: boolean) {
 
 export function WarehouseNav() {
   const pathname = usePathname();
+  const { orgPath } = useOrgPath();
   const { warehouseWms } = useFeatureFlags();
 
   if (!warehouseWms) return null;
@@ -37,7 +39,7 @@ export function WarehouseNav() {
           return (
             <Link
               key={item.href}
-              href={item.href}
+              href={orgPath(item.href)}
               className={`rounded-lg px-3 py-2 text-sm font-medium whitespace-nowrap transition ${
                 active
                   ? "bg-white text-zinc-900 shadow-sm ring-1 ring-zinc-200/70"

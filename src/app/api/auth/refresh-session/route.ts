@@ -12,6 +12,7 @@ import { applyFeatureFlagsCookie } from "@/lib/features/cookie";
 import { getFeatureFlagsForSession } from "@/lib/services/feature-flags";
 import { isLegacyAgimiOrganization } from "@/lib/organizations/constants";
 import {
+  enrichSessionWithOrganizationSlug,
   isOnboardingComplete,
   LEGACY_AGIMI_ORGANIZATION_ID,
   repairAgimiAdminLogin,
@@ -56,7 +57,7 @@ export async function POST() {
       onboardingComplete = await isOnboardingComplete(organizationId);
     }
 
-    const user = {
+    const user = await enrichSessionWithOrganizationSlug({
       role: "admin" as const,
       adminId: row.id,
       name: row.name,
@@ -65,7 +66,7 @@ export async function POST() {
       organizationId,
       isPlatformAdmin,
       onboardingComplete,
-    };
+    });
 
     const token = await createSessionToken(user);
     const response = NextResponse.json({ ok: true, onboardingComplete });

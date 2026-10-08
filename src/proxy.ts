@@ -23,6 +23,14 @@ import {
   platformOrgPickerPathAllowed,
 } from "@/lib/auth/platform-admin";
 import { isLegacyAgimiOrganization } from "@/lib/organizations/constants";
+import {
+  parseTenantPath,
+  pathUsesTenantPrefix,
+  resolveSessionTenantSlug,
+  tenantPath,
+  tenantPathForSession,
+} from "@/lib/organizations/paths";
+import type { SessionUser } from "@/lib/auth/session";
 
 const PUBLIC_PREFIXES = [
   "/login",
@@ -98,8 +106,13 @@ function employeePathAllowed(
   return false;
 }
 
+function appUrl(request: NextRequest, session: SessionUser, internalPath: string) {
+  return new URL(tenantPathForSession(session, internalPath), request.url);
+}
+
 export async function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  const rawPathname = request.nextUrl.pathname;
+  const { tenantSlug: urlSlug, pathname } = parseTenantPath(rawPathname);
 
   if (request.nextUrl.searchParams.has("_r")) {
     const clean = request.nextUrl.clone();
@@ -125,11 +138,12 @@ export async function proxy(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("from", pathname);
+    loginUrl.searchParams.set("from", rawPathname);
     return NextResponse.redirect(loginUrl);
   }
 
   const session = await verifySessionToken(token);
+  const sessionSlug = session ? resolveSessionTenantSlug(session) : null;
   const wmsEnabled = parseFeatureFlagsCookie(
     request.cookies.get(FEATURE_FLAGS_COOKIE)?.value
   ).warehouseWms;
@@ -139,7 +153,7 @@ export async function proxy(request: NextRequest) {
       ? NextResponse.json({ error: "Unauthorized" }, { status: 401 })
       : NextResponse.redirect(
           new URL(
-            `/login?from=${encodeURIComponent(pathname)}`,
+            `/login?from=${encodeURIComponent(rawPathname)}`,
             request.url
           )
         );
@@ -153,19 +167,36 @@ export async function proxy(request: NextRequest) {
     return response;
   }
 
+  if (
+    !pathname.startsWith("/api/") &&
+    pathUsesTenantPrefix(pathname) &&
+    sessionSlug
+  ) {
+    if (!urlSlug) {
+      return NextResponse.redirect(
+        new URL(tenantPath(sessionSlug, pathname), request.url)
+      );
+    }
+    if (urlSlug !== sessionSlug) {
+      return NextResponse.redirect(
+        new URL(tenantPath(sessionSlug, pathname), request.url)
+      );
+    }
+  }
+
   if (session.role === "employee") {
     if (!employeePathAllowed(pathname, session.roles, wmsEnabled)) {
       if (pathname.startsWith("/api/")) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
       return NextResponse.redirect(
-        new URL(employeeLoginRedirect(session.roles), request.url)
+        appUrl(request, session, employeeLoginRedirect(session.roles))
       );
     }
   }
 
   if (session.role === "admin" && pathname.startsWith("/portal")) {
-    return NextResponse.redirect(new URL("/", request.url));
+    return NextResponse.redirect(appUrl(request, session, "/"));
   }
 
   if (session.role === "admin") {
@@ -180,7 +211,7 @@ export async function proxy(request: NextRequest) {
       if (pathname.startsWith("/api/")) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
-      return NextResponse.redirect(new URL("/", request.url));
+      return NextResponse.redirect(appUrl(request, session, "/"));
     }
 
     if (platformAdmin && platformAdminNeedsOrgPicker(session)) {
@@ -212,7 +243,7 @@ export async function proxy(request: NextRequest) {
             { status: 403 }
           );
         }
-        return NextResponse.redirect(new URL("/onboarding", request.url));
+        return NextResponse.redirect(appUrl(request, session, "/onboarding"));
       }
     }
 
@@ -220,24 +251,34 @@ export async function proxy(request: NextRequest) {
       const target = platformAdminNeedsOrgPicker(session)
         ? "/platform/companies"
         : "/";
-      return NextResponse.redirect(new URL(target, request.url));
+      return NextResponse.redirect(
+        target.startsWith("/platform")
+          ? new URL(target, request.url)
+          : appUrl(request, session, target)
+      );
     }
 
     if (session.onboardingComplete && pathname.startsWith("/onboarding")) {
-      return NextResponse.redirect(new URL("/", request.url));
+      return NextResponse.redirect(appUrl(request, session, "/"));
     }
   }
 
   if (!wmsEnabled) {
     if (session.role === "admin" && isWmsAdminPath(pathname)) {
-      return NextResponse.redirect(new URL("/orders", request.url));
+      return NextResponse.redirect(appUrl(request, session, "/orders"));
     }
     if (session.role === "employee" && isWmsPortalPath(pathname)) {
-      return NextResponse.redirect(new URL("/portal", request.url));
+      return NextResponse.redirect(appUrl(request, session, "/portal"));
     }
     if (pathname.startsWith("/api/") && isWmsApiPath(pathname)) {
       return NextResponse.json({ error: "Warehouse module is turned off" }, { status: 403 });
     }
+  }
+
+  if (urlSlug) {
+    const rewriteUrl = request.nextUrl.clone();
+    rewriteUrl.pathname = pathname;
+    return NextResponse.rewrite(rewriteUrl);
   }
 
   return NextResponse.next();

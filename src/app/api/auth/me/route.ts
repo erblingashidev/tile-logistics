@@ -32,6 +32,7 @@ export async function GET() {
               createdAt: profile.createdAt,
               lastLoginAt: profile.lastLoginAt,
               organizationId: session.organizationId ?? null,
+              organizationSlug: session.organizationSlug ?? null,
               isPlatformAdmin: session.isPlatformAdmin === true,
               onboardingComplete: session.onboardingComplete !== false,
             },

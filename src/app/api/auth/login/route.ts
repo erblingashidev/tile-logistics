@@ -3,19 +3,17 @@ import {
   createSessionToken,
   sessionCookieOptions,
 } from "@/lib/auth/session";
-import {
-  loginAdmin,
-  loginEmployee,
-  employeeLoginRedirect,
-} from "@/lib/auth";
+import { loginAdmin, loginEmployee } from "@/lib/auth";
 import { applyFeatureFlagsCookie } from "@/lib/features/cookie";
 import { getFeatureFlagsForSession } from "@/lib/services/feature-flags";
 import {
   ensureLegacyAgimiOrganizationReady,
+  enrichSessionWithOrganizationSlug,
   isOnboardingComplete,
   LEGACY_AGIMI_ORGANIZATION_ID,
   repairAgimiAdminLogin,
 } from "@/lib/services/organizations";
+import { postLoginRedirect } from "@/lib/auth/redirects";
 import { isLegacyAgimiOrganization } from "@/lib/organizations/constants";
 import {
   checkRateLimit,
@@ -73,16 +71,9 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const token = await createSessionToken(user);
-  let redirect =
-    user.role === "admin" ? "/" : employeeLoginRedirect(user.roles);
-  if (user.role === "admin") {
-    if (user.adminId === 0 || user.isPlatformAdmin === true) {
-      redirect = "/platform/companies";
-    } else if (user.onboardingComplete === false) {
-      redirect = "/onboarding";
-    }
-  }
+  const sessionUser = await enrichSessionWithOrganizationSlug(user);
+  const token = await createSessionToken(sessionUser);
+  const redirect = postLoginRedirect(sessionUser);
 
   const response = NextResponse.json({
     user: {
@@ -99,7 +90,10 @@ export async function POST(request: NextRequest) {
     token,
     sessionCookieOptions()
   );
-  applyFeatureFlagsCookie(response, await getFeatureFlagsForSession(user));
+  applyFeatureFlagsCookie(
+    response,
+    await getFeatureFlagsForSession(sessionUser)
+  );
 
   return response;
   } catch (err) {

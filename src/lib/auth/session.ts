@@ -18,6 +18,7 @@ export type SessionUser =
       username: string;
       title?: string | null;
       organizationId?: number | null;
+      organizationSlug?: string | null;
       isPlatformAdmin?: boolean;
       onboardingComplete?: boolean;
     }
@@ -27,6 +28,7 @@ export type SessionUser =
       name: string;
       roles: EmployeeRole[];
       organizationId?: number | null;
+      organizationSlug?: string | null;
     };
 
 function encodeBase64Url(data: string): string {
@@ -127,12 +129,19 @@ export async function verifySessionToken(
               ? parsed.title
               : null,
           organizationId: null,
+          organizationSlug: null,
           isPlatformAdmin: true,
           onboardingComplete: true,
         };
       }
 
       const legacyAgimi = isLegacyAgimiOrganization(organizationId);
+      const organizationSlug =
+        typeof parsed.organizationSlug === "string"
+          ? parsed.organizationSlug
+          : legacyAgimi
+            ? "agimi"
+            : null;
       return {
         role: "admin",
         adminId: typeof parsed.adminId === "number" ? parsed.adminId : 0,
@@ -145,6 +154,7 @@ export async function verifySessionToken(
         organizationId: legacyAgimi
           ? LEGACY_AGIMI_ORGANIZATION_ID
           : organizationId,
+        organizationSlug,
         isPlatformAdmin,
         onboardingComplete: legacyAgimi
           ? true
@@ -165,6 +175,13 @@ export async function verifySessionToken(
           typeof parsed.organizationId === "number"
             ? parsed.organizationId
             : undefined,
+        organizationSlug:
+          typeof parsed.organizationSlug === "string"
+            ? parsed.organizationSlug
+            : parsed.organizationId === LEGACY_AGIMI_ORGANIZATION_ID ||
+                parsed.organizationId == null
+              ? "agimi"
+              : null,
       };
     }
     return null;

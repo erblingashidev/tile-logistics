@@ -7,9 +7,11 @@ import {
 import { applyFeatureFlagsCookie } from "@/lib/features/cookie";
 import { getFeatureFlagsForSession } from "@/lib/services/feature-flags";
 import {
+  enrichSessionWithOrganizationSlug,
   getOrganizationById,
   isOnboardingComplete,
 } from "@/lib/services/organizations";
+import { postLoginRedirect } from "@/lib/auth/redirects";
 
 export const runtime = "nodejs";
 
@@ -37,7 +39,7 @@ export async function POST(request: Request) {
     }
 
     const onboardingComplete = await isOnboardingComplete(organizationId);
-    const user = {
+    const user = await enrichSessionWithOrganizationSlug({
       role: "admin" as const,
       adminId: session.adminId,
       name: session.name,
@@ -46,14 +48,15 @@ export async function POST(request: Request) {
       organizationId,
       isPlatformAdmin: true,
       onboardingComplete,
-    };
+    });
 
     const token = await createSessionToken(user);
     const response = NextResponse.json({
       ok: true,
       organizationId,
       organizationName: org.name,
-      redirect: onboardingComplete ? "/" : "/onboarding",
+      organizationSlug: org.slug,
+      redirect: postLoginRedirect(user),
     });
     response.cookies.set(
       sessionCookieOptions().name,

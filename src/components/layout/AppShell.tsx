@@ -14,6 +14,7 @@ import { WAREHOUSE_SIDEBAR_LINKS } from "@/components/warehouse/WarehouseNav";
 import { platformAdminNeedsOrgPicker } from "@/lib/auth/platform-admin";
 import type { CompanyModuleFlags } from "@/lib/company-profile";
 import type { FeatureFlags } from "@/lib/features/catalog";
+import { useOrgPath } from "@/components/organization/OrgPathProvider";
 
 function buildNavGroups(
   flags: FeatureFlags,
@@ -96,6 +97,7 @@ function NavLinks({
 }) {
   const flags = useFeatureFlags();
   const modules = useCompanyModules();
+  const { orgPath } = useOrgPath();
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
 
   useEffect(() => {
@@ -120,7 +122,7 @@ function NavLinks({
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                href={orgPath(item.href)}
                 onClick={onNavigate}
                 className={`block rounded px-3 transition ${
                   mobile ? "py-2.5 text-sm" : "py-2 text-sm"
@@ -183,6 +185,7 @@ export function AppShell({
         : "max-w-7xl";
   const pathname = usePathname();
   const router = useRouter();
+  const { orgPath } = useOrgPath();
   const { organizationName } = useCompanyProfile();
   const [userName, setUserName] = useState<string | null>(null);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
@@ -265,7 +268,7 @@ export function AppShell({
           <div className="border-t border-white/10 p-3">
             {userName && (
               <Link
-                href="/settings"
+                href={orgPath("/settings")}
                 className="mb-2 block truncate rounded px-3 py-2 text-xs text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
               >
                 {userName}
@@ -326,7 +329,7 @@ export function AppShell({
                 )}
                 {userName && (
                   <Link
-                    href="/settings"
+                    href={orgPath("/settings")}
                     className="hidden max-w-[12rem] truncate text-xs text-zinc-500 hover:text-zinc-800 sm:inline"
                   >
                     {userName}

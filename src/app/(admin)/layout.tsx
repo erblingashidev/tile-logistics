@@ -6,6 +6,8 @@ import {
 } from "@/lib/employee-categories";
 import { FeatureFlagsProvider } from "@/components/features/FeatureFlagsProvider";
 import { CompanyProfileProvider } from "@/components/company/CompanyProfileProvider";
+import { OrgPathProvider } from "@/components/organization/OrgPathProvider";
+import { resolveSessionTenantSlug } from "@/lib/organizations/paths";
 
 export const dynamic = "force-dynamic";
 
@@ -36,9 +38,13 @@ export default async function AdminLayout({
     }
   }
 
+  const organizationSlug = resolveSessionTenantSlug(session);
+
   return (
-    <FeatureFlagsProvider>
-      <CompanyProfileProvider>{children}</CompanyProfileProvider>
-    </FeatureFlagsProvider>
+    <OrgPathProvider organizationSlug={organizationSlug}>
+      <FeatureFlagsProvider>
+        <CompanyProfileProvider>{children}</CompanyProfileProvider>
+      </FeatureFlagsProvider>
+    </OrgPathProvider>
   );
 }

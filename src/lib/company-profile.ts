@@ -4,6 +4,31 @@ export const COMPANY_CATEGORIES = [
   { id: "tile_dealer", label: "Tile dealer", description: "Tiles, m², pallets, deliveries" },
   { id: "building_materials", label: "Building materials", description: "Mixed products, bags, weight" },
   { id: "wholesale", label: "Wholesale / distribution", description: "Pieces, boxes, simple logistics" },
+  {
+    id: "third_party_logistics",
+    label: "3PL / fulfillment",
+    description: "Multi-client warehousing, pick-pack-ship, returns",
+  },
+  {
+    id: "ecommerce_fulfillment",
+    label: "E‑commerce fulfillment",
+    description: "Online orders, fast dispatch, parcel-focused warehouse",
+  },
+  {
+    id: "transport_carrier",
+    label: "Transport & carrier",
+    description: "Fleet-first, linehaul and last-mile, light warehouse",
+  },
+  {
+    id: "cold_chain",
+    label: "Cold chain / food logistics",
+    description: "Temperature-sensitive storage and timed deliveries",
+  },
+  {
+    id: "manufacturing_warehouse",
+    label: "Manufacturing warehouse",
+    description: "Raw materials in, finished goods out, internal stock",
+  },
   { id: "general", label: "General", description: "Configure everything yourself" },
 ] as const;
 
@@ -131,6 +156,80 @@ export const CATEGORY_PRESETS: Record<
     productFocus: "general",
     modules: { ...DEFAULT_COMPANY_MODULES },
     suggestedUnits: [{ code: "piece", label: "pieces", sortOrder: 0 }],
+  },
+  third_party_logistics: {
+    companyCategory: "third_party_logistics",
+    productFocus: "mixed",
+    modules: {
+      vehicles: true,
+      dispatch: true,
+      warehouse: true,
+      returns: true,
+      employeePortal: true,
+      useInvoices: false,
+    },
+    suggestedUnits: [
+      { code: "piece", label: "units", sortOrder: 0 },
+      { code: "pallet", label: "pallets", sortOrder: 1 },
+    ],
+  },
+  ecommerce_fulfillment: {
+    companyCategory: "ecommerce_fulfillment",
+    productFocus: "general",
+    modules: {
+      vehicles: true,
+      dispatch: true,
+      warehouse: true,
+      returns: true,
+      employeePortal: true,
+      useInvoices: false,
+    },
+    suggestedUnits: [{ code: "piece", label: "units", sortOrder: 0 }],
+  },
+  transport_carrier: {
+    companyCategory: "transport_carrier",
+    productFocus: "general",
+    modules: {
+      vehicles: true,
+      dispatch: true,
+      warehouse: false,
+      returns: false,
+      employeePortal: true,
+      useInvoices: false,
+    },
+    suggestedUnits: [{ code: "piece", label: "pieces", sortOrder: 0 }],
+  },
+  cold_chain: {
+    companyCategory: "cold_chain",
+    productFocus: "general",
+    modules: {
+      vehicles: true,
+      dispatch: true,
+      warehouse: true,
+      returns: true,
+      employeePortal: true,
+      useInvoices: true,
+    },
+    suggestedUnits: [
+      { code: "piece", label: "cases", sortOrder: 0 },
+      { code: "kg", label: "kg", sortOrder: 1 },
+    ],
+  },
+  manufacturing_warehouse: {
+    companyCategory: "manufacturing_warehouse",
+    productFocus: "mixed",
+    modules: {
+      vehicles: true,
+      dispatch: true,
+      warehouse: true,
+      returns: true,
+      employeePortal: false,
+      useInvoices: true,
+    },
+    suggestedUnits: [
+      { code: "piece", label: "units", sortOrder: 0 },
+      { code: "kg", label: "kg", sortOrder: 1 },
+    ],
   },
 };
 

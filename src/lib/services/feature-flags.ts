@@ -16,6 +16,7 @@ import {
   LEGACY_AGIMI_ORGANIZATION_ID,
   setOrganizationSetting,
 } from "@/lib/services/organizations";
+import { getSession } from "@/lib/auth";
 import type { SessionUser } from "@/lib/auth/session";
 
 export const MANUAL_DISPATCH_MODE_KEY =
@@ -149,7 +150,16 @@ export async function isSmartDispatchEnabled(): Promise<boolean> {
   return (await getFeatureFlags()).smartDispatch;
 }
 
-export async function isWarehouseWmsEnabled(): Promise<boolean> {
+export async function isWarehouseWmsEnabled(
+  organizationId?: number | null
+): Promise<boolean> {
+  if (organizationId != null && organizationId > 0) {
+    return (await getFeatureFlags(organizationId)).warehouseWms;
+  }
+  const session = await getSession();
+  if (session) {
+    return (await getFeatureFlagsForSession(session)).warehouseWms;
+  }
   return (await getFeatureFlags()).warehouseWms;
 }
 
@@ -169,7 +179,9 @@ export async function assertEmployeeWorkflowEnabled(): Promise<
 export async function assertWarehouseWmsEnabled(): Promise<
   { ok: true } | { ok: false; error: string }
 > {
-  if (!(await isWarehouseWmsEnabled())) {
+  const session = await getSession();
+  const flags = await getFeatureFlagsForSession(session);
+  if (!flags.warehouseWms) {
     return {
       ok: false,
       error: "Warehouse module is turned off in Settings.",
