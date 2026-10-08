@@ -9,6 +9,7 @@ import { getFeatureFlagsForSession } from "@/lib/services/feature-flags";
 import {
   enrichSessionWithOrganizationSlug,
   getOrganizationById,
+  getOrganizationBySlug,
   isOnboardingComplete,
 } from "@/lib/services/organizations";
 import { postLoginRedirect } from "@/lib/auth/redirects";
@@ -18,16 +19,25 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   try {
     const session = await requirePlatformAdmin();
-    const body = (await request.json()) as { organizationId?: number };
-    const organizationId = Number(body.organizationId);
-    if (!Number.isFinite(organizationId) || organizationId <= 0) {
+    const body = (await request.json()) as {
+      organizationId?: number;
+      slug?: string;
+    };
+    let organizationId = Number(body.organizationId);
+    let org =
+      Number.isFinite(organizationId) && organizationId > 0
+        ? await getOrganizationById(organizationId)
+        : null;
+    if (!org && body.slug?.trim()) {
+      org = await getOrganizationBySlug(body.slug);
+      organizationId = org?.id ?? NaN;
+    }
+    if (!org || !Number.isFinite(organizationId) || organizationId <= 0) {
       return NextResponse.json(
-        { error: "Valid organizationId is required." },
+        { error: "Valid organizationId or slug is required." },
         { status: 400 }
       );
     }
-
-    const org = await getOrganizationById(organizationId);
     if (!org) {
       return NextResponse.json({ error: "Company not found." }, { status: 404 });
     }

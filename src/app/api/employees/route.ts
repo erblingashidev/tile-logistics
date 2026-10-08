@@ -7,18 +7,17 @@ import {
   type EmployeePayload,
 } from "@/lib/services/employees";
 import type { EmployeeRole } from "@/lib/constants";
-import { requireApiCompanyAdmin } from "@/lib/auth/api-guard";
+import { runApiCompanyAdmin } from "@/lib/auth/api-guard";
 import { TenantRequiredError } from "@/lib/organizations/tenant-context";
 
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
-  const auth = await requireApiCompanyAdmin();
-  if (!auth.ok) return auth.response;
-
   try {
     const role = request.nextUrl.searchParams.get("role") as EmployeeRole | null;
-    return NextResponse.json(await listEmployees(role ?? undefined));
+    return await runApiCompanyAdmin(async () =>
+      NextResponse.json(await listEmployees(role ?? undefined))
+    );
   } catch (err) {
     if (err instanceof TenantRequiredError) {
       return NextResponse.json({ error: err.message }, { status: 403 });
@@ -30,9 +29,6 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireApiCompanyAdmin();
-  if (!auth.ok) return auth.response;
-
   const body = (await request.json()) as EmployeePayload;
   if (!body.name?.trim()) {
     return NextResponse.json({ error: "name is required" }, { status: 400 });
@@ -45,8 +41,10 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const employee = await createEmployee(body);
-    return NextResponse.json(employee, { status: 201 });
+    return await runApiCompanyAdmin(async () => {
+      const employee = await createEmployee(body);
+      return NextResponse.json(employee, { status: 201 });
+    });
   } catch (error) {
     if (
       error instanceof EmployeeCredentialError ||

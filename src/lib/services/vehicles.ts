@@ -12,7 +12,7 @@ import {
   VEHICLE_CATEGORY_LABELS,
 } from "@/lib/constants";
 import { logActivity } from "@/lib/logger";
-import { getTenantOrganizationId } from "@/lib/organizations/tenant-context";
+import { resolveTenantOrganizationId } from "@/lib/organizations/tenant-context";
 import {
   formatStatusLabel,
   vehicleCreatedMessage,
@@ -91,7 +91,7 @@ export async function listVehicles(options?: ListVehiclesOptions) {
     db
       .select()
       .from(vehicles)
-      .where(eq(vehicles.organizationId, getTenantOrganizationId()))
+      .where(eq(vehicles.organizationId, await resolveTenantOrganizationId()))
       .orderBy(desc(vehicles.updatedAt))
   );
 
@@ -117,7 +117,7 @@ export async function getVehicle(id: number) {
       .where(
         and(
           eq(vehicles.id, id),
-          eq(vehicles.organizationId, getTenantOrganizationId())
+          eq(vehicles.organizationId, await resolveTenantOrganizationId())
         )
       )
   );
@@ -133,7 +133,7 @@ export async function createVehicle(payload: VehiclePayload) {
     payload.category ?? DEFAULT_VEHICLE_CATEGORY
   );
   const capacity = resolveVehicleCapacity(category, payload);
-  const organizationId = getTenantOrganizationId();
+  const organizationId = await resolveTenantOrganizationId();
   const [inserted] = await db
     .insert(vehicles)
     .values({

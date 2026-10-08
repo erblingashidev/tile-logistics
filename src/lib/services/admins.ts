@@ -22,7 +22,7 @@ import {
   repairAgimiAdminLogin,
 } from "@/lib/services/organizations";
 import {
-  getTenantOrganizationId,
+  resolveTenantOrganizationId,
   tryGetTenantOrganizationId,
 } from "@/lib/organizations/tenant-context";
 
@@ -314,7 +314,7 @@ export async function resolveAdminIdForSession(input: {
 
 export async function listAdmins(): Promise<AdminProfile[]> {
   const db = await getDb();
-  const organizationId = getTenantOrganizationId();
+  const organizationId = await resolveTenantOrganizationId();
   const rows = await dbAll(
     db
       .select()
@@ -413,7 +413,7 @@ export async function createAdmin(payload: AdminPayload): Promise<AdminProfile> 
 
   const db = await getDb();
   const now = new Date().toISOString();
-  const organizationId = getTenantOrganizationId();
+  const organizationId = await resolveTenantOrganizationId();
   const inserted = await dbOne(
     db
       .insert(admins)

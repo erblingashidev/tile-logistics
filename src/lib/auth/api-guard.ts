@@ -5,6 +5,7 @@ import { isSalesStaff } from "@/lib/employee-categories";
 import {
   bindTenantOrganization,
   resolveSessionOrganizationId,
+  runWithTenantOrganizationAsync,
 } from "@/lib/organizations/tenant-context";
 
 function bindSessionTenant(session: SessionUser): void {
@@ -100,6 +101,20 @@ export async function requireApiCompanyAdmin(): Promise<
     session: tenant.session as Extract<SessionUser, { role: "admin" }>,
     organizationId: tenant.organizationId,
   };
+}
+
+/** Run a company-scoped API handler with tenant context bound for the whole call stack. */
+export async function runApiCompanyAdmin<T>(
+  fn: (ctx: {
+    session: Extract<SessionUser, { role: "admin" }>;
+    organizationId: number;
+  }) => Promise<T>
+): Promise<T | NextResponse> {
+  const auth = await requireApiCompanyAdmin();
+  if (!auth.ok) return auth.response;
+  return runWithTenantOrganizationAsync(auth.organizationId, () =>
+    fn({ session: auth.session, organizationId: auth.organizationId })
+  );
 }
 
 /** Sales staff may only read orders — block POST/PUT/PATCH/DELETE. */

@@ -118,21 +118,44 @@ export async function verifySessionToken(
             ? null
             : undefined;
 
-      if (isPlatformAdmin && organizationId === null) {
-        return {
-          role: "admin",
-          adminId: typeof parsed.adminId === "number" ? parsed.adminId : 0,
-          name: parsed.name || "Admin",
-          username: typeof parsed.username === "string" ? parsed.username : "",
-          title:
-            typeof parsed.title === "string" || parsed.title === null
-              ? parsed.title
-              : null,
-          organizationId: null,
-          organizationSlug: null,
-          isPlatformAdmin: true,
-          onboardingComplete: true,
-        };
+      if (isPlatformAdmin) {
+        if (organizationId == null) {
+          return {
+            role: "admin",
+            adminId: typeof parsed.adminId === "number" ? parsed.adminId : 0,
+            name: parsed.name || "Admin",
+            username:
+              typeof parsed.username === "string" ? parsed.username : "",
+            title:
+              typeof parsed.title === "string" || parsed.title === null
+                ? parsed.title
+                : null,
+            organizationId: null,
+            organizationSlug: null,
+            isPlatformAdmin: true,
+            onboardingComplete: true,
+          };
+        }
+        if (organizationId > 0) {
+          return {
+            role: "admin",
+            adminId: typeof parsed.adminId === "number" ? parsed.adminId : 0,
+            name: parsed.name || "Admin",
+            username:
+              typeof parsed.username === "string" ? parsed.username : "",
+            title:
+              typeof parsed.title === "string" || parsed.title === null
+                ? parsed.title
+                : null,
+            organizationId,
+            organizationSlug:
+              typeof parsed.organizationSlug === "string"
+                ? parsed.organizationSlug
+                : null,
+            isPlatformAdmin: true,
+            onboardingComplete: parsed.onboardingComplete !== false,
+          };
+        }
       }
 
       const legacyAgimi = isLegacyAgimiOrganization(organizationId);

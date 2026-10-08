@@ -18,7 +18,7 @@ import {
 } from "@/lib/constants";
 import { logActivity } from "@/lib/logger";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
-import { getTenantOrganizationId } from "@/lib/organizations/tenant-context";
+import { resolveTenantOrganizationId } from "@/lib/organizations/tenant-context";
 import {
   clearEmployeeWarehouseZones,
   getEmployeeWarehouseZones,
@@ -341,7 +341,7 @@ export async function listEmployees(roleFilter?: EmployeeRole) {
     db
       .select()
       .from(employees)
-      .where(eq(employees.organizationId, getTenantOrganizationId()))
+      .where(eq(employees.organizationId, await resolveTenantOrganizationId()))
       .orderBy(desc(employees.updatedAt))
   );
   const enriched = await Promise.all(
@@ -361,7 +361,7 @@ export async function getEmployee(id: number) {
       .where(
         and(
           eq(employees.id, id),
-          eq(employees.organizationId, getTenantOrganizationId())
+          eq(employees.organizationId, await resolveTenantOrganizationId())
         )
       )
   );
@@ -383,7 +383,7 @@ export async function createEmployee(payload: EmployeePayload) {
 
   const db = await getDb();
   const now = new Date().toISOString();
-  const organizationId = getTenantOrganizationId();
+  const organizationId = await resolveTenantOrganizationId();
   const inserted = await dbOne(
     db
       .insert(employees)

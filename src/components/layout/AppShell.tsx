@@ -15,6 +15,7 @@ import { platformAdminNeedsOrgPicker } from "@/lib/auth/platform-admin";
 import type { CompanyModuleFlags } from "@/lib/company-profile";
 import type { FeatureFlags } from "@/lib/features/catalog";
 import { useOrgPath } from "@/components/organization/OrgPathProvider";
+import { GLOBAL_PATH_SEGMENTS } from "@/lib/organizations/paths";
 
 function buildNavGroups(
   flags: FeatureFlags,
@@ -252,6 +253,41 @@ export function AppShell({
   useEffect(() => {
     setMobileNavOpen(false);
   }, [pathname]);
+
+  /** Super-admin: URL slug implies active tenant — sync session for /api calls. */
+  useEffect(() => {
+    if (!authLoaded || !isPlatformAdmin || organizationId != null) return;
+    if (isPlatformPickerPage) return;
+    const slug = window.location.pathname.split("/").filter(Boolean)[0]?.toLowerCase();
+    if (!slug || GLOBAL_PATH_SEGMENTS.has(slug)) return;
+
+    let cancelled = false;
+    fetch("/api/platform/switch-organization", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.ok) return;
+        setOrganizationId(
+          typeof data.organizationId === "number" ? data.organizationId : null
+        );
+        router.refresh();
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    authLoaded,
+    isPlatformAdmin,
+    organizationId,
+    isPlatformPickerPage,
+    pathname,
+    router,
+  ]);
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });

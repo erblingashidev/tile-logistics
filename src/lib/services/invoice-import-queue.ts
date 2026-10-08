@@ -4,7 +4,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { dbAll, dbOne } from "@/lib/db/query";
 import { invoiceImportQueue } from "@/lib/db/schema";
-import { getTenantOrganizationId } from "@/lib/organizations/tenant-context";
+import { resolveTenantOrganizationId } from "@/lib/organizations/tenant-context";
 import {
   folderDateFromFilePath,
   folderDateLabelToIso,
@@ -255,7 +255,7 @@ export async function enqueueExcelFile(
     ? await findOrderByInvoiceNumber(parsed.invoiceNumber)
     : null;
 
-  const organizationId = getTenantOrganizationId();
+  const organizationId = await resolveTenantOrganizationId();
   if (duplicateOrder) {
     const inserted = await dbOne(
       db
@@ -927,7 +927,7 @@ export async function linkImportQueueToOrder(options: {
 export async function pendingImportQueueCount(): Promise<number> {
   await syncPendingImportQueueWithOrders();
   const db = await getDb();
-  const organizationId = getTenantOrganizationId();
+  const organizationId = await resolveTenantOrganizationId();
   const rows = await dbAll(
     db
       .select({ id: invoiceImportQueue.id })

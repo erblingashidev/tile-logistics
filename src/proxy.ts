@@ -30,6 +30,10 @@ import {
   tenantPath,
   tenantPathForSession,
 } from "@/lib/organizations/paths";
+import {
+  ORGANIZATION_ID_HEADER,
+  resolveSessionOrganizationId,
+} from "@/lib/organizations/tenant-context";
 import type { SessionUser } from "@/lib/auth/session";
 
 const PUBLIC_PREFIXES = [
@@ -108,6 +112,44 @@ function employeePathAllowed(
 
 function appUrl(request: NextRequest, session: SessionUser, internalPath: string) {
   return new URL(tenantPathForSession(session, internalPath), request.url);
+}
+
+async function resolveProxyOrganizationId(
+  session: SessionUser,
+  urlSlug: string | null
+): Promise<number | null> {
+  const fromSession = resolveSessionOrganizationId(session);
+  if (fromSession) return fromSession;
+
+  if (!urlSlug || session.role !== "admin") return null;
+  const platformAdmin =
+    session.adminId === 0 || session.isPlatformAdmin === true;
+  if (!platformAdmin) return null;
+
+  const { getOrganizationBySlug } = await import(
+    "@/lib/services/organizations"
+  );
+  const org = await getOrganizationBySlug(urlSlug);
+  return org?.status === "active" ? org.id : null;
+}
+
+async function forwardWithTenantHeaders(
+  request: NextRequest,
+  session: SessionUser,
+  urlSlug: string | null,
+  init: { rewrite?: URL } = {}
+): Promise<NextResponse> {
+  const requestHeaders = new Headers(request.headers);
+  const orgId = await resolveProxyOrganizationId(session, urlSlug);
+  if (orgId) {
+    requestHeaders.set(ORGANIZATION_ID_HEADER, String(orgId));
+  }
+  if (init.rewrite) {
+    return NextResponse.rewrite(init.rewrite, {
+      request: { headers: requestHeaders },
+    });
+  }
+  return NextResponse.next({ request: { headers: requestHeaders } });
 }
 
 export async function proxy(request: NextRequest) {
@@ -278,10 +320,12 @@ export async function proxy(request: NextRequest) {
   if (urlSlug) {
     const rewriteUrl = request.nextUrl.clone();
     rewriteUrl.pathname = pathname;
-    return NextResponse.rewrite(rewriteUrl);
+    return forwardWithTenantHeaders(request, session, urlSlug, {
+      rewrite: rewriteUrl,
+    });
   }
 
-  return NextResponse.next();
+  return forwardWithTenantHeaders(request, session, null);
 }
 
 export const config = {

@@ -74,7 +74,7 @@ import {
 import { MAX_DELIVERY_ROUNDS, normalizeOrderUnit, type OrderStatus, type EmployeeRole } from "@/lib/constants";
 import { isDeliveryRoundsEnabled } from "@/lib/services/feature-flags";
 import { getLocationById, resolveLocation } from "@/lib/locations";
-import { getTenantOrganizationId } from "@/lib/organizations/tenant-context";
+import { resolveTenantOrganizationId } from "@/lib/organizations/tenant-context";
 import {
   suggestRoutes,
   type RoutePlanFilters,
@@ -264,7 +264,7 @@ export async function listOrders(filters?: {
   salesEmployeeId?: number;
 }) {
   const db = await getDb();
-  const conditions = [eq(orders.organizationId, getTenantOrganizationId())];
+  const conditions = [eq(orders.organizationId, await resolveTenantOrganizationId())];
 
   if (filters?.dateFrom) conditions.push(gte(orders.orderDate, filters.dateFrom));
   if (filters?.dateTo) conditions.push(lte(orders.orderDate, filters.dateTo));
@@ -445,7 +445,7 @@ export async function getOrder(id: number) {
       .where(
         and(
           eq(orders.id, id),
-          eq(orders.organizationId, getTenantOrganizationId())
+          eq(orders.organizationId, await resolveTenantOrganizationId())
         )
       )
   );
@@ -606,7 +606,7 @@ export async function findOrderByInvoiceNumber(invoiceNumber: string) {
   if (!normalized) return null;
 
   const db = await getDb();
-  const orgId = getTenantOrganizationId();
+  const orgId = await resolveTenantOrganizationId();
   const exact = await dbOne(
     db
       .select({ id: orders.id, invoiceNumber: orders.invoiceNumber })
@@ -824,7 +824,7 @@ export async function createOrder(
     payload.region
   );
 
-  const organizationId = getTenantOrganizationId();
+  const organizationId = await resolveTenantOrganizationId();
   const inserted = await dbOne(
     db
       .insert(orders)
@@ -2263,7 +2263,7 @@ export async function listOrdersForEmployee(
   const roles = options?.roles ?? [];
   const db = await getDb();
 
-  const organizationId = getTenantOrganizationId();
+  const organizationId = await resolveTenantOrganizationId();
   const employee = await dbOne(
     db
       .select({ assignedVehicleId: employees.assignedVehicleId })
@@ -2561,7 +2561,7 @@ export async function getReportData(filters: {
 
 export async function getDashboardStats() {
   const db = await getDb();
-  const organizationId = getTenantOrganizationId();
+  const organizationId = await resolveTenantOrganizationId();
   const asOf = todayDateString();
   const workDateSql = sql`coalesce(nullif(trim(${orders.requestedDeliveryDate}), ''), ${orders.orderDate})`;
   const openStatuses = sql`${orders.status} NOT IN ('delivered', 'cancelled')`;
