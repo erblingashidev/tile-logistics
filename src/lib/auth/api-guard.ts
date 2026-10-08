@@ -7,6 +7,8 @@ import {
   resolveSessionOrganizationId,
   runWithTenantOrganizationAsync,
 } from "@/lib/organizations/tenant-context";
+import { assertSessionCanAccessOrganization } from "@/lib/organizations/tenant-access";
+import { TenantAccessError } from "@/lib/organizations/tenant-access-error";
 
 function bindSessionTenant(session: SessionUser): void {
   const organizationId = resolveSessionOrganizationId(session);
@@ -43,6 +45,17 @@ export async function requireApiTenantSession(): Promise<
         { status: 403 }
       ),
     };
+  }
+  try {
+    assertSessionCanAccessOrganization(auth.session, organizationId);
+  } catch (err) {
+    if (err instanceof TenantAccessError) {
+      return {
+        ok: false,
+        response: NextResponse.json({ error: err.message }, { status: 403 }),
+      };
+    }
+    throw err;
   }
   return { ok: true, session: auth.session, organizationId };
 }

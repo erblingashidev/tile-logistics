@@ -1,5 +1,5 @@
 import { and, desc, eq, isNull, ne } from "drizzle-orm";
-import { getDb } from "@/lib/db";
+import { getControlPlaneDb } from "@/lib/db";
 import { dbAll, dbOne } from "@/lib/db/query";
 import { admins, employees } from "@/lib/db/schema";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
@@ -86,7 +86,7 @@ function mapAdminRow(
 
 async function employeeRoleForAdmin(adminId: number, employeeId: number | null) {
   if (!employeeId) return null;
-  const db = await getDb();
+  const db = await getControlPlaneDb();
   const row = await dbOne(
     db.select({ roles: employees.roles }).from(employees).where(eq(employees.id, employeeId))
   );
@@ -102,7 +102,7 @@ async function employeeRoleForAdmin(adminId: number, employeeId: number | null) 
 }
 
 async function loadAdminProfile(id: number): Promise<AdminProfile | null> {
-  const db = await getDb();
+  const db = await getControlPlaneDb();
   const row = await dbOne(db.select().from(admins).where(eq(admins.id, id)));
   if (!row) return null;
   const employeeRole = await employeeRoleForAdmin(id, row.employeeId ?? null);
@@ -116,7 +116,7 @@ async function assertUsernameAvailable(username: string, excludeAdminId?: number
     adminConditions.push(ne(admins.id, excludeAdminId));
   }
 
-  const db = await getDb();
+  const db = await getControlPlaneDb();
   const existingAdmin = await dbOne(
     db
       .select({ id: admins.id })
@@ -174,7 +174,7 @@ async function createLinkedEmployee(input: {
   employeeRole: EmployeeRole;
   organizationId?: number;
 }) {
-  const db = await getDb();
+  const db = await getControlPlaneDb();
   const now = new Date().toISOString();
   const organizationId =
     input.organizationId ??
@@ -212,7 +212,7 @@ async function syncLinkedEmployee(
     isActive?: boolean;
   }
 ) {
-  const db = await getDb();
+  const db = await getControlPlaneDb();
   const now = new Date().toISOString();
   const employeeRole =
     updates.employeeRole ??
@@ -266,7 +266,7 @@ async function syncLinkedEmployee(
 }
 
 export async function backfillAdminEmployeeLinks() {
-  const db = await getDb();
+  const db = await getControlPlaneDb();
   const rows = await dbAll(
     db.select().from(admins).where(isNull(admins.employeeId))
   );
@@ -295,7 +295,7 @@ export async function getAdminByUsername(
 ): Promise<AdminProfile | null> {
   const normalized = normalizeUsername(username);
   if (!normalized) return null;
-  const db = await getDb();
+  const db = await getControlPlaneDb();
   const row = await dbOne(
     db.select().from(admins).where(eq(admins.username, normalized))
   );
@@ -313,7 +313,7 @@ export async function resolveAdminIdForSession(input: {
 }
 
 export async function listAdmins(): Promise<AdminProfile[]> {
-  const db = await getDb();
+  const db = await getControlPlaneDb();
   const organizationId = await resolveTenantOrganizationId();
   const rows = await dbAll(
     db
@@ -341,7 +341,7 @@ export async function loginAdminFromDb(
   password: string
 ): Promise<Extract<SessionUser, { role: "admin" }> | null> {
   const normalized = normalizeUsername(username);
-  const db = await getDb();
+  const db = await getControlPlaneDb();
   const row = await dbOne(
     db
       .select()
@@ -411,7 +411,7 @@ export async function createAdmin(payload: AdminPayload): Promise<AdminProfile> 
   const title = payload.title?.trim() || defaultTitleForAdminRole(employeeRole);
   const passwordHash = hashPassword(password);
 
-  const db = await getDb();
+  const db = await getControlPlaneDb();
   const now = new Date().toISOString();
   const organizationId = await resolveTenantOrganizationId();
   const inserted = await dbOne(
@@ -471,7 +471,7 @@ export async function updateAdmin(
   payload: Partial<AdminPayload>,
   options?: { actorAdminId?: number }
 ): Promise<AdminProfile | null> {
-  const db = await getDb();
+  const db = await getControlPlaneDb();
   const existingRow = await dbOne(db.select().from(admins).where(eq(admins.id, id)));
   if (!existingRow) return null;
 
@@ -567,7 +567,7 @@ export async function changeAdminPassword(
     };
   }
 
-  const db = await getDb();
+  const db = await getControlPlaneDb();
   const row = await dbOne(db.select().from(admins).where(eq(admins.id, adminId)));
   if (!row || row.isActive !== 1) {
     return { ok: false, error: "Admin account not found" };
@@ -607,7 +607,7 @@ export async function verifyAnyAdminPassword(pin: string): Promise<boolean> {
 
   if (trimmed === getAdminCredentials().password) return true;
 
-  const db = await getDb();
+  const db = await getControlPlaneDb();
   const rows = await dbAll(
     db
       .select({ passwordHash: admins.passwordHash })

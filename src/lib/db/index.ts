@@ -390,6 +390,20 @@ async function ensureWarehouseSchemaPatches(client: Client) {
   );
 }
 
+async function ensureEmployeeDirectoryTable(client: Client) {
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS employee_directory (
+      username TEXT PRIMARY KEY,
+      organization_id INTEGER NOT NULL,
+      employee_id INTEGER NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_employee_directory_org ON employee_directory(organization_id)"
+  );
+}
+
 async function ensureOrganizationsSchema(client: Client) {
   await client.execute(`
     CREATE TABLE IF NOT EXISTS organizations (
@@ -1264,7 +1278,23 @@ function createDbClient(): Client {
   return createClient({ url: `file:${dbPath}` });
 }
 
-export async function getDb() {
+/** Operational tables only — for per-company database files. */
+export async function bootstrapOperationalDatabase(client: Client) {
+  if (shouldRunRuntimeMigrations()) {
+    await runMigrations(client);
+  }
+  await ensureDeliveryProofPhotoColumns(client);
+  await ensureEmployeeNotificationsTable(client);
+  await ensureTenantDataIsolation(client);
+  await ensureOrderDeliveryLinksTable(client);
+  await ensureOrderSchemaPatches(client);
+  await ensureNullableAssignmentTimestamps(client);
+  await ensureVehicleSchemaPatches(client);
+  await ensureWarehouseSchemaPatches(client);
+  await ensureInvoiceImportTables(client);
+}
+
+export async function getControlPlaneDb() {
   if (dbInstance) return dbInstance;
 
   if (!initPromise) {
@@ -1279,6 +1309,7 @@ export async function getDb() {
         await ensureDeliveryProofPhotoColumns(clientInstance);
         await ensureEmployeeNotificationsTable(clientInstance);
         await ensureOrganizationsSchema(clientInstance);
+        await ensureEmployeeDirectoryTable(clientInstance);
         await ensureAdminsTable(clientInstance);
         await ensureOrganizationAdminColumns(clientInstance);
         await ensureTenantDataIsolation(clientInstance);
@@ -1317,9 +1348,38 @@ export async function getDb() {
   return initPromise;
 }
 
+/** Company operational data — dedicated DB when provisioned, else shared control-plane DB. */
+export async function getTenantDataDb() {
+  const {
+    tryGetTenantOrganizationId,
+    resolveTenantOrganizationId,
+  } = await import("@/lib/organizations/tenant-context");
+  let orgId = tryGetTenantOrganizationId();
+  if (!orgId) {
+    try {
+      orgId = await resolveTenantOrganizationId();
+    } catch {
+      orgId = null;
+    }
+  }
+  if (orgId && orgId > 0) {
+    const { getDedicatedTenantDbIfConfigured } = await import(
+      "@/lib/db/tenant-database"
+    );
+    const dedicated = await getDedicatedTenantDbIfConfigured(orgId);
+    if (dedicated) return dedicated;
+  }
+  return getControlPlaneDb();
+}
+
+/** @deprecated Use getTenantDataDb for company data or getControlPlaneDb for registry/auth. */
+export async function getDb() {
+  return getTenantDataDb();
+}
+
 /** Raw libsql client for bulk batch writes (Pro-Data stock import). */
 export async function getLibsqlClient(): Promise<Client> {
-  await getDb();
+  await getControlPlaneDb();
   if (!clientInstance) {
     throw new Error("Database client not initialized");
   }

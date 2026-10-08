@@ -1,6 +1,5 @@
 import { cookies } from "next/headers";
 import { eq } from "drizzle-orm";
-import { getDb } from "@/lib/db";
 import { dbOne } from "@/lib/db/query";
 import { employees } from "@/lib/db/schema";
 import { parseEmployeeRoles } from "@/lib/services/employees";
@@ -47,25 +46,62 @@ export async function loginEmployee(
   username: string,
   password: string
 ): Promise<SessionUser | null> {
-  const db = await getDb();
+  const normalized = username.trim().toLowerCase();
+  const { lookupEmployeeDirectory } = await import(
+    "@/lib/services/employee-directory"
+  );
+  const { getControlPlaneDb, getTenantDataDb } = await import("@/lib/db");
+  const { runWithTenantOrganizationAsync } = await import(
+    "@/lib/organizations/tenant-context"
+  );
+  const { enrichSessionWithOrganizationSlug } = await import(
+    "@/lib/services/organizations"
+  );
+
+  const directory = await lookupEmployeeDirectory(normalized);
+
+  async function employeeFromRow(
+    row: typeof employees.$inferSelect,
+    organizationId: number
+  ): Promise<SessionUser | null> {
+    if (!row?.passwordHash) return null;
+    if (!verifyPassword(password, row.passwordHash)) return null;
+    return enrichSessionWithOrganizationSlug({
+      role: "employee",
+      employeeId: row.id,
+      name: row.name,
+      roles: parseEmployeeRoles(row.roles),
+      organizationId,
+    });
+  }
+
+  if (directory) {
+    return runWithTenantOrganizationAsync(directory.organizationId, async () => {
+      const db = await getTenantDataDb();
+      const row = await dbOne(
+        db
+          .select()
+          .from(employees)
+          .where(eq(employees.id, directory.employeeId))
+      );
+      if (!row) return null;
+      return employeeFromRow(row, directory.organizationId);
+    });
+  }
+
+  const db = await getControlPlaneDb();
   const row = await dbOne(
     db
       .select()
       .from(employees)
-      .where(eq(employees.username, username.trim().toLowerCase()))
+      .where(eq(employees.username, normalized))
   );
-  if (!row?.passwordHash) return null;
-  if (!verifyPassword(password, row.passwordHash)) return null;
+  if (!row) return null;
   const { DEFAULT_ORGANIZATION_ID } = await import(
     "@/lib/organizations/constants"
   );
-  return {
-    role: "employee",
-    employeeId: row.id,
-    name: row.name,
-    roles: parseEmployeeRoles(row.roles),
-    organizationId: row.organizationId ?? DEFAULT_ORGANIZATION_ID,
-  };
+  const organizationId = row.organizationId ?? DEFAULT_ORGANIZATION_ID;
+  return employeeFromRow(row, organizationId);
 }
 
 export async function setSessionCookie(user: SessionUser) {

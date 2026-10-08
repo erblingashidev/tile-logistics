@@ -407,6 +407,16 @@ export async function createEmployee(payload: EmployeePayload) {
   if (!inserted) throw new Error("Failed to create employee");
 
   const id = inserted.id;
+  if (username) {
+    const { upsertEmployeeDirectory } = await import(
+      "@/lib/services/employee-directory"
+    );
+    await upsertEmployeeDirectory({
+      username,
+      organizationId,
+      employeeId: id,
+    });
+  }
   if (payload.assignedVehicleId && employeeCanHaveVehicle(payload.roles)) {
     await assertEmployeeVehicleCategory(payload.roles, payload.assignedVehicleId);
     await setDriverVehicle(id, payload.assignedVehicleId);

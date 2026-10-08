@@ -25,7 +25,7 @@ import {
   type FeatureFlagId,
 } from "@/lib/features/catalog";
 import { getAppSetting } from "@/lib/services/app-settings";
-import { getDb } from "@/lib/db";
+import { getControlPlaneDb } from "@/lib/db";
 import { dbAll, dbOne } from "@/lib/db/query";
 import {
   admins,
@@ -77,7 +77,7 @@ function nowIso() {
 }
 
 async function getOrgSetting(orgId: number, key: string) {
-  const db = await getDb();
+  const db = await getControlPlaneDb();
   const row = await dbOne(
     db
       .select({ value: organizationSettings.value })
@@ -100,8 +100,12 @@ export async function setOrganizationSetting(
   await setOrgSetting(orgId, key, value);
 }
 
+export async function getOrgSettingValue(orgId: number, key: string) {
+  return getOrgSetting(orgId, key);
+}
+
 async function setOrgSetting(orgId: number, key: string, value: string) {
-  const db = await getDb();
+  const db = await getControlPlaneDb();
   const updatedAt = nowIso();
   const existing = await dbOne(
     db
@@ -181,7 +185,7 @@ export async function saveOrganizationProfile(
 export async function listOrganizationUnits(
   organizationId: number
 ): Promise<OrganizationUnit[]> {
-  const db = await getDb();
+  const db = await getControlPlaneDb();
   const rows = await dbAll(
     db
       .select()
@@ -201,7 +205,7 @@ export async function replaceOrganizationUnits(
   organizationId: number,
   units: OrganizationUnit[]
 ) {
-  const db = await getDb();
+  const db = await getControlPlaneDb();
   await db
     .delete(organizationUnits)
     .where(eq(organizationUnits.organizationId, organizationId));
@@ -250,7 +254,7 @@ export async function ensureLegacyAgimiOrganizationReady() {
 /** Pin an admin to AGIMI org #1 and ensure legacy settings exist. */
 export async function repairAgimiAdminLogin(adminId: number) {
   await ensureLegacyAgimiOrganizationReady();
-  const db = await getDb();
+  const db = await getControlPlaneDb();
   const now = nowIso();
   await db
     .update(admins)
@@ -259,14 +263,14 @@ export async function repairAgimiAdminLogin(adminId: number) {
 }
 
 export async function getOrganizationById(id: number) {
-  const db = await getDb();
+  const db = await getControlPlaneDb();
   return dbOne(db.select().from(organizations).where(eq(organizations.id, id)));
 }
 
 export async function getOrganizationBySlug(slug: string) {
   const normalized = slug.trim().toLowerCase();
   if (!normalized) return null;
-  const db = await getDb();
+  const db = await getControlPlaneDb();
   return dbOne(
     db.select().from(organizations).where(eq(organizations.slug, normalized))
   );
@@ -312,7 +316,7 @@ export type OrganizationSummary = {
 };
 
 export async function listOrganizations(): Promise<OrganizationSummary[]> {
-  const db = await getDb();
+  const db = await getControlPlaneDb();
   const rows = await dbAll(db.select().from(organizations));
   rows.sort((a, b) => a.name.localeCompare(b.name));
   const summaries: OrganizationSummary[] = [];
@@ -382,7 +386,7 @@ export async function submitOrganizationApplication(input: {
     throw new OrganizationError("Company URL slug is too short.");
   }
 
-  const db = await getDb();
+  const db = await getControlPlaneDb();
   const existingOrg = await dbOne(
     db.select({ id: organizations.id }).from(organizations).where(eq(organizations.slug, slug))
   );
@@ -443,7 +447,7 @@ export async function submitOrganizationApplication(input: {
 }
 
 export async function listPendingApplications() {
-  const db = await getDb();
+  const db = await getControlPlaneDb();
   return dbAll(
     db
       .select()
@@ -457,7 +461,7 @@ export async function approveOrganizationApplication(
   applicationId: number,
   reviewerAdminId: number
 ) {
-  const db = await getDb();
+  const db = await getControlPlaneDb();
   const app = await dbOne(
     db
       .select()
@@ -501,6 +505,11 @@ export async function approveOrganizationApplication(
     currentStep: "company",
     updatedAt: now,
   });
+
+  const { provisionOrganizationDatabase } = await import(
+    "@/lib/db/tenant-database"
+  );
+  await provisionOrganizationDatabase(org.id, org.slug);
 
   const admin = await dbOne(
     db
@@ -549,7 +558,7 @@ export async function rejectOrganizationApplication(
   reviewerAdminId: number,
   reason?: string
 ) {
-  const db = await getDb();
+  const db = await getControlPlaneDb();
   const app = await dbOne(
     db
       .select()
@@ -601,7 +610,7 @@ export async function updateOrganizationCompanySettings(input: {
   }
   const companyName = input.companyName?.trim();
   if (companyName) {
-    const db = await getDb();
+    const db = await getControlPlaneDb();
     await db
       .update(organizations)
       .set({ name: companyName })
@@ -629,7 +638,7 @@ export async function completeOnboarding(input: {
   await saveOrganizationProfile(input.organizationId, profile);
   await replaceOrganizationUnits(input.organizationId, input.units);
 
-  const db = await getDb();
+  const db = await getControlPlaneDb();
   const now = nowIso();
   const companyName = input.companyName?.trim();
   if (companyName) {
@@ -649,7 +658,7 @@ export async function completeOnboarding(input: {
 export async function getFeatureFlagsForOrganization(
   organizationId: number
 ): Promise<import("@/lib/features/catalog").FeatureFlags> {
-  const db = await getDb();
+  const db = await getControlPlaneDb();
   const flags = { ...profileToFeatureFlags(await getOrganizationProfile(organizationId)) };
   for (const [id, key] of Object.entries(FEATURE_FLAG_SETTING_KEYS)) {
     const flagId = id as FeatureFlagId;
