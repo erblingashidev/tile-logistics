@@ -16,6 +16,11 @@ import {
 import { logActivity } from "@/lib/logger";
 import { quantityM2FromPackCounts } from "@/lib/product-pallet-spec";
 import { getProduct, getProductByEan, upsertProduct } from "@/lib/services/products";
+import { resolveTenantOrganizationId } from "@/lib/organizations/tenant-context";
+
+async function tenantOrgId() {
+  return resolveTenantOrganizationId();
+}
 
 /** System bin for truck unload before physical putaway. */
 export const STAGING_LOCATION_CODE = "STAGING";
@@ -92,8 +97,13 @@ export function computePickBreakdown(
 
 export async function listWarehouseLocations() {
   const db = await getDb();
+  const organizationId = await tenantOrgId();
   return dbAll(
-    db.select().from(warehouseLocations).orderBy(warehouseLocations.code)
+    db
+      .select()
+      .from(warehouseLocations)
+      .where(eq(warehouseLocations.organizationId, organizationId))
+      .orderBy(warehouseLocations.code)
   );
 }
 
@@ -109,10 +119,12 @@ export async function createWarehouseLocation(input: {
   if (!code) {
     throw new Error("Location code required");
   }
+  const organizationId = await tenantOrgId();
   const inserted = await dbOne(
     db
       .insert(warehouseLocations)
       .values({
+        organizationId,
         code,
         zone: input.zone?.trim() || null,
         label: input.label?.trim() || null,
@@ -138,11 +150,17 @@ export async function getOrCreateWarehouseLocation(input: {
 }) {
   const code = input.code.trim().toUpperCase();
   const db = await getDb();
+  const organizationId = await tenantOrgId();
   const existing = await dbOne(
     db
       .select()
       .from(warehouseLocations)
-      .where(eq(warehouseLocations.code, code))
+      .where(
+        and(
+          eq(warehouseLocations.code, code),
+          eq(warehouseLocations.organizationId, organizationId)
+        )
+      )
   );
   if (existing) return existing;
   return createWarehouseLocation({
@@ -198,12 +216,17 @@ export async function updateWarehouseLocation(
 
   if (nextCode && nextCode !== existing.code) {
     const db = await getDb();
+    const organizationId = await tenantOrgId();
     const duplicate = await dbOne(
       db
         .select({ id: warehouseLocations.id })
         .from(warehouseLocations)
         .where(
-          and(eq(warehouseLocations.code, nextCode), ne(warehouseLocations.id, id))
+          and(
+            eq(warehouseLocations.organizationId, organizationId),
+            eq(warehouseLocations.code, nextCode),
+            ne(warehouseLocations.id, id)
+          )
         )
     );
     if (duplicate) {
@@ -273,12 +296,14 @@ export async function deleteWarehouseLocation(id: number) {
 
 export async function getOrCreateBalance(productId: number, locationId: number) {
   const db = await getDb();
+  const organizationId = await tenantOrgId();
   const existing = await dbOne(
     db
       .select()
       .from(stockBalances)
       .where(
         and(
+          eq(stockBalances.organizationId, organizationId),
           eq(stockBalances.productId, productId),
           eq(stockBalances.locationId, locationId)
         )
@@ -291,6 +316,7 @@ export async function getOrCreateBalance(productId: number, locationId: number) 
     db
       .insert(stockBalances)
       .values({
+        organizationId,
         productId,
         locationId,
         quantityM2: 0,
@@ -422,6 +448,7 @@ export async function receiveStock(input: ReceiveStockInput) {
         ? "return"
         : "receive";
   const db = await getDb();
+  const organizationId = await tenantOrgId();
   const now = new Date().toISOString();
   const balance = await getOrCreateBalance(product.id, locationId);
 
@@ -436,6 +463,7 @@ export async function receiveStock(input: ReceiveStockInput) {
     .where(eq(stockBalances.id, balance!.id));
 
   await db.insert(stockMovements).values({
+    organizationId,
     productId: product.id,
     locationId,
     movementType,
@@ -564,7 +592,9 @@ export async function moveStock(input: {
     })
     .where(eq(stockBalances.id, to!.id));
 
+  const organizationId = await tenantOrgId();
   await db.insert(stockMovements).values({
+    organizationId,
     productId: input.productId,
     locationId: input.toLocationId,
     movementType: "transfer",
@@ -631,7 +661,9 @@ export async function adjustStockToCount(input: {
     })
     .where(eq(stockBalances.id, balance!.id));
 
+  const organizationId = await tenantOrgId();
   await db.insert(stockMovements).values({
+    organizationId,
     productId: input.productId,
     locationId: input.locationId,
     movementType: "inventory_adjust",
@@ -650,6 +682,7 @@ export async function adjustStockToCount(input: {
 
 export async function listStockSummary() {
   const db = await getDb();
+  const organizationId = await tenantOrgId();
   const rows = await dbAll(
     db
       .select({
@@ -678,6 +711,13 @@ export async function listStockSummary() {
         warehouseLocations,
         eq(stockBalances.locationId, warehouseLocations.id)
       )
+      .where(
+        and(
+          eq(stockBalances.organizationId, organizationId),
+          eq(products.organizationId, organizationId),
+          eq(warehouseLocations.organizationId, organizationId)
+        )
+      )
       .orderBy(desc(stockBalances.updatedAt))
   );
   return rows;
@@ -688,9 +728,17 @@ export async function clearAllStockBalances(options?: {
   notes?: string;
 }) {
   const db = await getDb();
-  const before = await dbAll(db.select({ id: stockBalances.id }).from(stockBalances));
+  const organizationId = await tenantOrgId();
+  const before = await dbAll(
+    db
+      .select({ id: stockBalances.id })
+      .from(stockBalances)
+      .where(eq(stockBalances.organizationId, organizationId))
+  );
   const count = before.length;
-  await db.delete(stockBalances);
+  await db
+    .delete(stockBalances)
+    .where(eq(stockBalances.organizationId, organizationId));
 
   const now = new Date().toISOString();
   if (count > 0) {
@@ -718,11 +766,17 @@ export async function listStockAtLocation(locationId: number) {
 
 export async function getWarehouseLocation(locationId: number) {
   const db = await getDb();
+  const organizationId = await tenantOrgId();
   return dbOne(
     db
       .select()
       .from(warehouseLocations)
-      .where(eq(warehouseLocations.id, locationId))
+      .where(
+        and(
+          eq(warehouseLocations.id, locationId),
+          eq(warehouseLocations.organizationId, organizationId)
+        )
+      )
   );
 }
 
@@ -886,6 +940,7 @@ export async function pickStockFromLocation(input: {
   }
 
   const db = await getDb();
+  const organizationId = await tenantOrgId();
   const now = new Date().toISOString();
 
   await db
@@ -897,6 +952,7 @@ export async function pickStockFromLocation(input: {
     .where(eq(stockBalances.id, balance!.id));
 
   await db.insert(stockMovements).values({
+    organizationId,
     productId: input.productId,
     locationId: input.locationId,
     movementType: "pick",

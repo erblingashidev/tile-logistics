@@ -385,14 +385,27 @@ export const productAliases = sqliteTable("product_aliases", {
   updatedAt: text("updated_at").notNull(),
 });
 
-export const warehouseLocations = sqliteTable("warehouse_locations", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  code: text("code").notNull().unique(),
-  zone: text("zone"),
-  label: text("label"),
-  notes: text("notes"),
-  createdAt: text("created_at").notNull(),
-});
+export const warehouseLocations = sqliteTable(
+  "warehouse_locations",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    organizationId: integer("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" })
+      .default(1),
+    code: text("code").notNull(),
+    zone: text("zone"),
+    label: text("label"),
+    notes: text("notes"),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => ({
+    orgCodeIdx: uniqueIndex("idx_warehouse_locations_org_code").on(
+      table.organizationId,
+      table.code
+    ),
+  })
+);
 
 /** Group leader ↔ warehouse zone (one zone → one leader; leader may have many zones). */
 export const employeeWarehouseZones = sqliteTable(
@@ -410,6 +423,10 @@ export const employeeWarehouseZones = sqliteTable(
 /** Current stock per product + bin location. */
 export const stockBalances = sqliteTable("stock_balances", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .default(1),
   productId: integer("product_id")
     .notNull()
     .references(() => products.id, { onDelete: "cascade" }),
@@ -424,6 +441,10 @@ export const stockBalances = sqliteTable("stock_balances", {
 
 export const stockMovements = sqliteTable("stock_movements", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .default(1),
   productId: integer("product_id")
     .notNull()
     .references(() => products.id, { onDelete: "cascade" }),
@@ -446,6 +467,10 @@ export const stockMovements = sqliteTable("stock_movements", {
 /** Customer return header — linked to original invoice/order. */
 export const customerReturns = sqliteTable("customer_returns", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .default(1),
   orderId: integer("order_id")
     .notNull()
     .references(() => orders.id, { onDelete: "cascade" }),
@@ -501,6 +526,10 @@ export const orderPickLines = sqliteTable("order_pick_lines", {
 
 export const inventorySessions = sqliteTable("inventory_sessions", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .default(1),
   name: text("name").notNull(),
   status: text("status").notNull().default("open"),
   startedAt: text("started_at").notNull(),
@@ -606,6 +635,10 @@ export const inventoryVarianceLines = sqliteTable("inventory_variance_lines", {
 
 export const warehouseReports = sqliteTable("warehouse_reports", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .default(1),
   employeeId: integer("employee_id")
     .notNull()
     .references(() => employees.id, { onDelete: "cascade" }),
@@ -706,6 +739,10 @@ export const appSettings = sqliteTable("app_settings", {
 
 export const employeeNotifications = sqliteTable("employee_notifications", {
   id: integer("id").primaryKey({ autoIncrement: true }),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" })
+    .default(1),
   employeeId: integer("employee_id")
     .notNull()
     .references(() => employees.id, { onDelete: "cascade" }),

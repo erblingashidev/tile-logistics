@@ -200,7 +200,7 @@ LOGIN → session(role, organizationId?, organizationSlug?)
 | Phase | Spec sections | Work |
 |-------|---------------|------|
 | **1 — Document** | §36 Step 2 | This file; keep TENANT-DATABASES.md / HOSTING-SELF.md in sync |
-| **2 — Tenant schema** | §9, §10, §25 | Add `organization_id` to WMS/warehouse/stock tables; backfill to org #1; composite FKs/uniques |
+| **2 — Tenant schema** | §9, §10, §25 | **In progress:** `tenant-org-columns.ts` + Drizzle columns for WMS; stock service scoped; warehouse locations API uses `runApiCompanyAdmin` |
 | **3 — Company entity** | §3, §16, §31 | Extend org fields/status; settings UI; subscription placeholder columns |
 | **4 — Auth context** | §6, §7 | Ensure every server path binds tenant; fix API tenant resolution for platform admin + slug header |
 | **5 — Authorization** | §12–§14 | Permission catalog + map from existing `EmployeeRole`; enforce on API |

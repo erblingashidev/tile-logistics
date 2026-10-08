@@ -5,12 +5,20 @@ import { isSalesStaff } from "@/lib/employee-categories";
 import {
   bindTenantOrganization,
   resolveSessionOrganizationId,
+  resolveTenantOrganizationId,
   runWithTenantOrganizationAsync,
 } from "@/lib/organizations/tenant-context";
 import { assertSessionCanAccessOrganization } from "@/lib/organizations/tenant-access";
 import { TenantAccessError } from "@/lib/organizations/tenant-access-error";
 
-function bindSessionTenant(session: SessionUser): void {
+async function bindRequestTenant(session: SessionUser): Promise<void> {
+  try {
+    const organizationId = await resolveTenantOrganizationId();
+    bindTenantOrganization(organizationId);
+    return;
+  } catch {
+    /* fall back to session-only tenant */
+  }
   const organizationId = resolveSessionOrganizationId(session);
   if (organizationId) bindTenantOrganization(organizationId);
 }
@@ -26,7 +34,7 @@ export async function requireApiSession(): Promise<
       response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
     };
   }
-  bindSessionTenant(session);
+  await bindRequestTenant(session);
   return { ok: true, session };
 }
 
@@ -36,8 +44,10 @@ export async function requireApiTenantSession(): Promise<
 > {
   const auth = await requireApiSession();
   if (!auth.ok) return auth;
-  const organizationId = resolveSessionOrganizationId(auth.session);
-  if (!organizationId) {
+  let organizationId: number;
+  try {
+    organizationId = await resolveTenantOrganizationId();
+  } catch {
     return {
       ok: false,
       response: NextResponse.json(
@@ -124,6 +134,20 @@ export async function runApiCompanyAdmin<T>(
   }) => Promise<T>
 ): Promise<T | NextResponse> {
   const auth = await requireApiCompanyAdmin();
+  if (!auth.ok) return auth.response;
+  return runWithTenantOrganizationAsync(auth.organizationId, () =>
+    fn({ session: auth.session, organizationId: auth.organizationId })
+  );
+}
+
+/** Any authenticated user with a resolved tenant (admin or employee). */
+export async function runApiWithTenant<T>(
+  fn: (ctx: {
+    session: SessionUser;
+    organizationId: number;
+  }) => Promise<T>
+): Promise<T | NextResponse> {
+  const auth = await requireApiTenantSession();
   if (!auth.ok) return auth.response;
   return runWithTenantOrganizationAsync(auth.organizationId, () =>
     fn({ session: auth.session, organizationId: auth.organizationId })

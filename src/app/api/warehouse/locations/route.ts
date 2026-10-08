@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth";
+import { runApiCompanyAdmin } from "@/lib/auth/api-guard";
 import {
   createWarehouseLocation,
   listLocationsWithStockSummary,
@@ -8,17 +8,13 @@ import {
 export const runtime = "nodejs";
 
 export async function GET() {
-  try {
-    await requireAdmin();
-    return NextResponse.json(await listLocationsWithStockSummary());
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  return runApiCompanyAdmin(async () =>
+    NextResponse.json(await listLocationsWithStockSummary())
+  );
 }
 
 export async function POST(request: Request) {
-  try {
-    await requireAdmin();
+  return runApiCompanyAdmin(async () => {
     const body = await request.json();
     if (!body.code?.trim()) {
       return NextResponse.json({ error: "Code required" }, { status: 400 });
@@ -30,7 +26,5 @@ export async function POST(request: Request) {
       notes: body.notes,
     });
     return NextResponse.json(loc);
-  } catch {
-    return NextResponse.json({ error: "Bad request" }, { status: 400 });
-  }
+  });
 }

@@ -510,6 +510,11 @@ async function ensureTenantDataIsolation(client: Client) {
   await client.execute(
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_vehicles_org_plate ON vehicles(organization_id, plate_number)"
   );
+
+  const { ensureTenantOrganizationColumns } = await import(
+    "@/lib/db/tenant-org-columns"
+  );
+  await ensureTenantOrganizationColumns(client);
 }
 
 async function ensureOrganizationAdminColumns(client: Client) {
