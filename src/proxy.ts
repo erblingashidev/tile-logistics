@@ -32,8 +32,9 @@ import {
 } from "@/lib/organizations/paths";
 import {
   ORGANIZATION_ID_HEADER,
+  ORGANIZATION_SLUG_HEADER,
   resolveSessionOrganizationId,
-} from "@/lib/organizations/tenant-context";
+} from "@/lib/organizations/tenant-session";
 import type { SessionUser } from "@/lib/auth/session";
 
 const PUBLIC_PREFIXES = [
@@ -114,25 +115,6 @@ function appUrl(request: NextRequest, session: SessionUser, internalPath: string
   return new URL(tenantPathForSession(session, internalPath), request.url);
 }
 
-async function resolveProxyOrganizationId(
-  session: SessionUser,
-  urlSlug: string | null
-): Promise<number | null> {
-  const fromSession = resolveSessionOrganizationId(session);
-  if (fromSession) return fromSession;
-
-  if (!urlSlug || session.role !== "admin") return null;
-  const platformAdmin =
-    session.adminId === 0 || session.isPlatformAdmin === true;
-  if (!platformAdmin) return null;
-
-  const { getOrganizationBySlug } = await import(
-    "@/lib/services/organizations"
-  );
-  const org = await getOrganizationBySlug(urlSlug);
-  return org?.status === "active" ? org.id : null;
-}
-
 async function forwardWithTenantHeaders(
   request: NextRequest,
   session: SessionUser,
@@ -140,9 +122,11 @@ async function forwardWithTenantHeaders(
   init: { rewrite?: URL } = {}
 ): Promise<NextResponse> {
   const requestHeaders = new Headers(request.headers);
-  const orgId = await resolveProxyOrganizationId(session, urlSlug);
+  const orgId = resolveSessionOrganizationId(session);
   if (orgId) {
     requestHeaders.set(ORGANIZATION_ID_HEADER, String(orgId));
+  } else if (urlSlug) {
+    requestHeaders.set(ORGANIZATION_SLUG_HEADER, urlSlug);
   }
   if (init.rewrite) {
     return NextResponse.rewrite(init.rewrite, {

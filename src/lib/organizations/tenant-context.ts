@@ -1,10 +1,15 @@
 import { AsyncLocalStorage } from "async_hooks";
 import { headers } from "next/headers";
-import type { SessionUser } from "@/lib/auth/session";
-import { DEFAULT_ORGANIZATION_ID } from "@/lib/organizations/constants";
+import {
+  ORGANIZATION_ID_HEADER,
+  ORGANIZATION_SLUG_HEADER,
+} from "@/lib/organizations/tenant-session";
 
-/** Set on every authenticated request by proxy from the session tenant. */
-export const ORGANIZATION_ID_HEADER = "x-organization-id";
+export {
+  ORGANIZATION_ID_HEADER,
+  ORGANIZATION_SLUG_HEADER,
+  resolveSessionOrganizationId,
+} from "@/lib/organizations/tenant-session";
 
 const tenantStorage = new AsyncLocalStorage<number>();
 
@@ -13,28 +18,6 @@ export class TenantRequiredError extends Error {
     super(message);
     this.name = "TenantRequiredError";
   }
-}
-
-/** Resolve org id from an authenticated session (no AsyncLocalStorage). */
-export function resolveSessionOrganizationId(
-  session: SessionUser
-): number | null {
-  if (session.role === "admin") {
-    const platformAdmin =
-      session.adminId === 0 || session.isPlatformAdmin === true;
-    if (platformAdmin) {
-      return session.organizationId != null && session.organizationId > 0
-        ? session.organizationId
-        : null;
-    }
-    return session.organizationId ?? DEFAULT_ORGANIZATION_ID;
-  }
-  if (session.role === "employee") {
-    return session.organizationId != null && session.organizationId > 0
-      ? session.organizationId
-      : null;
-  }
-  return null;
 }
 
 /** Bind tenant for the remainder of the current async request. */
@@ -69,6 +52,14 @@ export async function resolveTenantOrganizationId(): Promise<number> {
     if (raw) {
       const parsed = Number(raw);
       if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    }
+    const slug = h.get(ORGANIZATION_SLUG_HEADER)?.trim();
+    if (slug) {
+      const { getOrganizationBySlug } = await import(
+        "@/lib/services/organizations"
+      );
+      const org = await getOrganizationBySlug(slug);
+      if (org?.status === "active") return org.id;
     }
   } catch {
     /* outside request scope */

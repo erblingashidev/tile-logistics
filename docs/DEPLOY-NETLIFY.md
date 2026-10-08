@@ -5,6 +5,8 @@ This app is a **Next.js 16** full-stack project (admin dashboard + employee port
 > **Prefer no Turso / automatic SQLite per company?** Use **[HOSTING-SELF.md](./HOSTING-SELF.md)** (Docker on your VPS + real domain). Netlify is serverless and **cannot** keep SQLite files on disk.
 
 > **Publish directory error:** Set **Publish directory** to `.next` (same as `netlify.toml`). Do not leave it empty or `/` — that equals the repo root and breaks the Next adapter. Do not pin `@netlify/plugin-nextjs` in `package.json`; Netlify installs OpenNext automatically.
+>
+> **`@libsql` / C++ addon in middleware:** The edge proxy must not import the database. If this error returns, ensure `src/proxy.ts` only imports `@/lib/organizations/tenant-session` (not `organizations` or `@/lib/db`).
 
 ## Production database — choose one
 
