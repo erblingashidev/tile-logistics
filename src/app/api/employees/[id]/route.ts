@@ -7,7 +7,8 @@ import {
   updateEmployee,
   type EmployeePayload,
 } from "@/lib/services/employees";
-import { requireApiAdmin } from "@/lib/auth/api-guard";
+import { requireApiCompanyAdmin } from "@/lib/auth/api-guard";
+import { TenantRequiredError } from "@/lib/organizations/tenant-context";
 
 export const runtime = "nodejs";
 
@@ -15,11 +16,19 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireApiAdmin();
+  const auth = await requireApiCompanyAdmin();
   if (!auth.ok) return auth.response;
 
   const { id } = await params;
-  const employee = await getEmployee(Number(id));
+  let employee;
+  try {
+    employee = await getEmployee(Number(id));
+  } catch (err) {
+    if (err instanceof TenantRequiredError) {
+      return NextResponse.json({ error: err.message }, { status: 403 });
+    }
+    throw err;
+  }
   if (!employee) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
@@ -30,7 +39,7 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireApiAdmin();
+  const auth = await requireApiCompanyAdmin();
   if (!auth.ok) return auth.response;
 
   const { id } = await params;
@@ -57,7 +66,7 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireApiAdmin();
+  const auth = await requireApiCompanyAdmin();
   if (!auth.ok) return auth.response;
 
   const { id } = await params;

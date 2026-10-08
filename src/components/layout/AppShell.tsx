@@ -224,20 +224,30 @@ export function AppShell({
       });
   }, [pathname, router]);
 
-  const showCompanyNav = authLoaded
-    ? !platformAdminNeedsOrgPicker(
-        isPlatformAdmin
-          ? {
-              role: "admin",
-              adminId: 0,
-              name: "",
-              username: "",
-              organizationId,
-              isPlatformAdmin: true,
-            }
-          : null
-      )
-    : !isPlatformPickerPage;
+  const showCompanyNav =
+    !isPlatformPickerPage &&
+    (authLoaded
+      ? !platformAdminNeedsOrgPicker(
+          isPlatformAdmin
+            ? {
+                role: "admin",
+                adminId: 0,
+                name: "",
+                username: "",
+                organizationId,
+                isPlatformAdmin: true,
+              }
+            : null
+        )
+      : true);
+
+  async function openCompanyPicker() {
+    if (isPlatformAdmin) {
+      await fetch("/api/platform/leave-organization", { method: "POST" });
+    }
+    router.push("/platform/companies");
+    router.refresh();
+  }
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -319,13 +329,14 @@ export function AppShell({
                 </div>
               )}
               <div className="flex shrink-0 items-center gap-2">
-                {isPlatformAdmin && (
-                  <Link
-                    href="/platform/companies"
+                {isPlatformAdmin && !isPlatformPickerPage && (
+                  <button
+                    type="button"
+                    onClick={() => void openCompanyPicker()}
                     className="hidden text-xs text-zinc-500 hover:text-zinc-800 sm:inline"
                   >
                     Switch company
-                  </Link>
+                  </button>
                 )}
                 {userName && (
                   <Link

@@ -7,18 +7,22 @@ import {
   type EmployeePayload,
 } from "@/lib/services/employees";
 import type { EmployeeRole } from "@/lib/constants";
-import { requireApiAdmin } from "@/lib/auth/api-guard";
+import { requireApiCompanyAdmin } from "@/lib/auth/api-guard";
+import { TenantRequiredError } from "@/lib/organizations/tenant-context";
 
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
-  const auth = await requireApiAdmin();
+  const auth = await requireApiCompanyAdmin();
   if (!auth.ok) return auth.response;
 
   try {
     const role = request.nextUrl.searchParams.get("role") as EmployeeRole | null;
     return NextResponse.json(await listEmployees(role ?? undefined));
   } catch (err) {
+    if (err instanceof TenantRequiredError) {
+      return NextResponse.json({ error: err.message }, { status: 403 });
+    }
     const message =
       err instanceof Error ? err.message : "Failed to load employees";
     return NextResponse.json({ error: message }, { status: 500 });
@@ -26,7 +30,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireApiAdmin();
+  const auth = await requireApiCompanyAdmin();
   if (!auth.ok) return auth.response;
 
   const body = (await request.json()) as EmployeePayload;

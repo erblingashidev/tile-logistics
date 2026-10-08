@@ -76,6 +76,32 @@ export async function requireApiAdmin(): Promise<
   return { ok: true, session: auth.session };
 }
 
+/** Admin with an active company selected (company admin or platform admin in a tenant). */
+export async function requireApiCompanyAdmin(): Promise<
+  | {
+      ok: true;
+      session: Extract<SessionUser, { role: "admin" }>;
+      organizationId: number;
+    }
+  | { ok: false; response: NextResponse }
+> {
+  const auth = await requireApiAdmin();
+  if (!auth.ok) return auth;
+  const tenant = await requireApiTenantSession();
+  if (!tenant.ok) return tenant;
+  if (tenant.session.role !== "admin") {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+    };
+  }
+  return {
+    ok: true,
+    session: tenant.session as Extract<SessionUser, { role: "admin" }>,
+    organizationId: tenant.organizationId,
+  };
+}
+
 /** Sales staff may only read orders — block POST/PUT/PATCH/DELETE. */
 export function salesWriteForbidden(
   session: SessionUser,

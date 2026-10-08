@@ -92,30 +92,53 @@ export async function POST(request: Request) {
       );
     }
 
+    const category = body.companyCategory ?? "general";
+    const preset = CATEGORY_PRESETS[category] ?? CATEGORY_PRESETS.general;
+    const modulesInput = {
+      vehicles: body.modules?.vehicles === true,
+      dispatch: body.modules?.dispatch === true,
+      warehouse: body.modules?.warehouse === true,
+      returns: body.modules?.returns !== false,
+      employeePortal: body.modules?.employeePortal === true,
+      useInvoices: body.modules?.useInvoices !== false,
+    };
+    const needsDepot = modulesInput.dispatch || modulesInput.warehouse;
+
     const warehouseName = body.warehouse?.name?.trim();
     const warehouseAddress = body.warehouse?.address?.trim();
     const warehouseCity = body.warehouse?.city?.trim();
-    if (!warehouseName || !warehouseAddress) {
+    if (needsDepot && (!warehouseName || !warehouseAddress)) {
       return NextResponse.json(
-        { error: "Warehouse name and address are required." },
+        {
+          error:
+            "Warehouse name and address are required when dispatch or warehouse is enabled.",
+        },
         { status: 400 }
       );
     }
 
-    const coords =
-      Number.isFinite(body.warehouse?.lat) && Number.isFinite(body.warehouse?.lng)
-        ? {
-            lat: Number(body.warehouse!.lat),
-            lng: Number(body.warehouse!.lng),
-            city: warehouseCity,
-          }
-        : inferWarehouseCoordinates({
-            city: warehouseCity,
-            address: warehouseAddress,
-          });
-
-    const category = body.companyCategory ?? "general";
-    const preset = CATEGORY_PRESETS[category] ?? CATEGORY_PRESETS.general;
+    let warehouse: import("@/lib/company-profile").CompanyWarehouse | undefined;
+    if (warehouseName && warehouseAddress) {
+      const coords =
+        Number.isFinite(body.warehouse?.lat) &&
+        Number.isFinite(body.warehouse?.lng)
+          ? {
+              lat: Number(body.warehouse!.lat),
+              lng: Number(body.warehouse!.lng),
+              city: warehouseCity,
+            }
+          : inferWarehouseCoordinates({
+              city: warehouseCity,
+              address: warehouseAddress,
+            });
+      warehouse = {
+        name: warehouseName,
+        address: warehouseAddress,
+        city: coords.city ?? warehouseCity,
+        lat: coords.lat,
+        lng: coords.lng,
+      };
+    }
     const units =
       body.units?.filter((u) => u.code?.trim() && u.label?.trim()) ??
       preset.suggestedUnits ??
@@ -133,22 +156,9 @@ export async function POST(request: Request) {
       companyName,
       companyCategory: category,
       productFocus: body.productFocus ?? preset.productFocus ?? "general",
-      modules: {
-        vehicles: body.modules?.vehicles === true,
-        dispatch: body.modules?.dispatch === true,
-        warehouse: body.modules?.warehouse === true,
-        returns: body.modules?.returns !== false,
-        employeePortal: body.modules?.employeePortal === true,
-        useInvoices: body.modules?.useInvoices !== false,
-      },
+      modules: modulesInput,
       units,
-      warehouse: {
-        name: warehouseName,
-        address: warehouseAddress,
-        city: coords.city ?? warehouseCity,
-        lat: coords.lat,
-        lng: coords.lng,
-      },
+      warehouse,
     });
 
     return NextResponse.json({ ok: true, profile, units });

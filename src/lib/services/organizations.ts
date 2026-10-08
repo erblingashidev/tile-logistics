@@ -575,6 +575,41 @@ export async function rejectOrganizationApplication(
   return { ok: true as const };
 }
 
+export async function updateOrganizationCompanySettings(input: {
+  organizationId: number;
+  companyName?: string;
+  companyCategory?: CompanyCategory;
+  productFocus?: ProductFocus;
+  modules?: Partial<CompanyProfile["modules"]>;
+  warehouse?: CompanyWarehouse;
+  units?: OrganizationUnit[];
+}) {
+  const existing = await getOrganizationProfile(input.organizationId);
+  const profile: CompanyProfile = {
+    ...existing,
+    companyCategory: input.companyCategory ?? existing.companyCategory,
+    productFocus: input.productFocus ?? existing.productFocus,
+    modules: input.modules
+      ? { ...existing.modules, ...input.modules }
+      : existing.modules,
+    warehouse: input.warehouse ?? existing.warehouse,
+    onboardingComplete: existing.onboardingComplete,
+  };
+  await saveOrganizationProfile(input.organizationId, profile);
+  if (input.units?.length) {
+    await replaceOrganizationUnits(input.organizationId, input.units);
+  }
+  const companyName = input.companyName?.trim();
+  if (companyName) {
+    const db = await getDb();
+    await db
+      .update(organizations)
+      .set({ name: companyName })
+      .where(eq(organizations.id, input.organizationId));
+  }
+  return profile;
+}
+
 export async function completeOnboarding(input: {
   organizationId: number;
   companyName?: string;

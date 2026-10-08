@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { BRAND } from "@/lib/brand";
 import { ChangePasswordCard } from "@/components/portal/ChangePasswordCard";
+import { CompanySettingsCard } from "@/components/company/CompanySettingsCard";
 import { broadcastFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 import {
   FEATURE_FLAG_META,
@@ -421,6 +422,8 @@ export default function SettingsPage() {
               </div>
             )}
           </Card>
+
+          <CompanySettingsCard />
 
           <Card className="p-5">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">

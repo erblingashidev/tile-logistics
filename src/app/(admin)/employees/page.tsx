@@ -2,7 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
-import { Badge, Button, Card, EmptyState, Input, LoadingState, Select } from "@/components/ui";
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  Input,
+  LoadingState,
+  Select,
+} from "@/components/ui";
 import {
   EMPLOYEE_CATEGORIES,
   EMPLOYEE_ROLES,
@@ -109,15 +118,50 @@ export default function EmployeesPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setFormError("");
     try {
+      const featuresRes = await fetch("/api/settings/features", {
+        cache: "no-store",
+      });
+      const features = featuresRes.ok
+        ? await featuresRes.json().catch(() => ({}))
+        : {};
+      const wmsEnabled = features?.warehouseWms === true;
+
       const [employeesRes, vehiclesRes, zonesRes] = await Promise.all([
-        fetch("/api/employees"),
-        fetch("/api/vehicles"),
-        fetch("/api/warehouse/zones"),
+        fetch("/api/employees", { cache: "no-store" }),
+        fetch("/api/vehicles", { cache: "no-store" }),
+        wmsEnabled
+          ? fetch("/api/warehouse/zones", { cache: "no-store" })
+          : Promise.resolve(null),
       ]);
-      setEmployees(await employeesRes.json());
-      setVehicles(await vehiclesRes.json());
-      setWarehouseZones(await zonesRes.json());
+
+      const employeesData = await employeesRes.json().catch(() => null);
+      if (!employeesRes.ok) {
+        setEmployees([]);
+        setFormError(
+          (employeesData && employeesData.error) ||
+            "Could not load employees for this company."
+        );
+      } else if (Array.isArray(employeesData)) {
+        setEmployees(employeesData);
+      } else {
+        setEmployees([]);
+        setFormError("Could not load employees for this company.");
+      }
+
+      const vehiclesData = await vehiclesRes.json().catch(() => []);
+      setVehicles(Array.isArray(vehiclesData) ? vehiclesData : []);
+
+      if (zonesRes) {
+        const zonesData = await zonesRes.json().catch(() => []);
+        setWarehouseZones(Array.isArray(zonesData) ? zonesData : []);
+      } else {
+        setWarehouseZones([]);
+      }
+    } catch {
+      setEmployees([]);
+      setFormError("Could not load employees for this company.");
     } finally {
       setLoading(false);
     }
@@ -262,6 +306,11 @@ export default function EmployeesPage() {
 
   return (
     <AppShell title="Employees">
+      {!loading && formError && !showForm && (
+        <div className="mb-4">
+          <Alert tone="error">{formError}</Alert>
+        </div>
+      )}
       <div className="mb-4">
         <Button onClick={() => setShowForm(true)}>Add employee</Button>
       </div>
