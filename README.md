@@ -2,14 +2,18 @@
 
 Multi-company warehouse and delivery operations for tile and building materials.
 
-## Two databases (local vs live)
+## Production (your domain, no Turso)
 
-| | Local Mac | Netlify (live) |
-|---|-----------|----------------|
-| Storage | `data/tile-logistics.db` | Turso |
-| Run app | `npm run dev` | deploy |
-| Demo data | `npm run seed:local` | `npm run seed` |
-| Wipe | `npm run reset:local` | `npm run reset:turso` |
+**Recommended:** Docker on your VPS / hosting company — automatic SQLite per company, no third-party DB.
+
+→ **[docs/HOSTING-SELF.md](docs/HOSTING-SELF.md)** (`docker compose up -d --build`)
+
+## Local vs cloud database
+
+| | Local Mac | Self-hosted / Railway | Netlify only |
+|---|-----------|------------------------|--------------|
+| Storage | `data/*.db` | `/data` volume | Turso (required) |
+| Run | `npm run dev` | Docker / `npm start` | deploy |
 
 Full guide: **[docs/DATABASE.md](docs/DATABASE.md)**
 

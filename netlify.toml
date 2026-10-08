@@ -1,18 +1,14 @@
-# Next.js 16 on Netlify (OpenNext adapter — auto-detected)
+# Next.js 16 on Netlify — use the built-in OpenNext adapter (do not pin @netlify/plugin-nextjs).
 # Docs: https://docs.netlify.com/build/frameworks/framework-setup-guides/nextjs/overview/
+#
+# For your own domain + built-in databases (no Turso), use Docker instead — see docs/HOSTING-SELF.md
 
 [build]
   command = "npm run build"
-  publish = ".next"
-
-[[plugins]]
-  package = "@netlify/plugin-nextjs"
 
 [build.environment]
   NODE_VERSION = "20"
 
-# Work proxies often cache the prerendered login HTML after a deploy, then
-# the page loads JS chunks that no longer exist. Never store these documents.
 [[headers]]
   for = "/login"
   [headers.values]
@@ -26,10 +22,3 @@
     Cache-Control = "private, no-store, no-cache, must-revalidate"
     CDN-Cache-Control = "no-store"
     Netlify-CDN-Cache-Control = "no-store"
-
-# Optional: redirect www → apex (uncomment and set your domain)
-# [[redirects]]
-#   from = "https://www.example.com/*"
-#   to = "https://example.com/:splat"
-#   status = 301
-#   force = true

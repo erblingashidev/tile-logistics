@@ -1,10 +1,18 @@
 # Deploy Tile Logistics to Netlify
 
-This app is a **Next.js 16** full-stack project (admin dashboard + employee portal + API routes). Netlify supports it with zero extra plugins.
+This app is a **Next.js 16** full-stack project (admin dashboard + employee portal + API routes).
+
+> **Prefer no Turso / automatic SQLite per company?** Use **[HOSTING-SELF.md](./HOSTING-SELF.md)** (Docker on your VPS + real domain). Netlify is serverless and **cannot** keep SQLite files on disk.
+
+> **Plugin / deploy errors on Netlify:** `netlify.toml` no longer pins `@netlify/plugin-nextjs` (Netlify installs the OpenNext adapter automatically). Clear the site’s **Publish directory** override in the Netlify UI if it still points at a custom folder.
 
 ## Production database — choose one
 
-### Option A — Railway (easiest, works today)
+### Option A — Self-hosted Docker (recommended — no third-party DB)
+
+See **[HOSTING-SELF.md](./HOSTING-SELF.md)** — one command deploy, persistent `/data`, auto `tenants/*.db` per company.
+
+### Option B — Railway (persistent disk, no Turso)
 
 No code changes. Persistent disk for SQLite + uploads.
 
@@ -15,7 +23,7 @@ No code changes. Persistent disk for SQLite + uploads.
 5. Add a **Volume** mounted at `/app/data` (Railway dashboard → service → Volumes)
 6. Set `DATABASE_PATH=/app/data/tile-logistics.db` and `UPLOAD_ROOT=/app/data/uploads`
 
-### Option B — Netlify + Turso (serverless)
+### Option C — Netlify + Turso (serverless)
 
 Netlify does not keep local files between deploys. Use **Turso** for the database (schema in `scripts/turso-schema.sql`).
 

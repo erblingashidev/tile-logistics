@@ -1,0 +1,19 @@
+services:
+  logistics-core:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      AUTH_SECRET: ${AUTH_SECRET:-change-me-use-openssl-rand-base64-32}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me}
+      PLATFORM_OWNER_USERNAME: ${PLATFORM_OWNER_USERNAME:-erblingashi}
+      # No TURSO_* — SQLite on the volume below; one file per company under /data/tenants/
+      DATABASE_PATH: /data/tile-logistics.db
+      UPLOAD_ROOT: /data/uploads
+    volumes:
+      - logistics_data:/data
+
+volumes:
+  logistics_data:

@@ -53,9 +53,16 @@ export function assertProductionSecrets(): void {
 
   if (isNetlify() && !process.env.TURSO_DATABASE_URL) {
     console.warn(
-      "[config] Netlify detected without TURSO_DATABASE_URL — SQLite file data will NOT persist between deploys. See docs/DEPLOY-NETLIFY.md."
+      "[config] Netlify detected without TURSO_DATABASE_URL — data will not persist. Use Turso on Netlify or self-host with docs/HOSTING-SELF.md."
     );
   }
+}
+
+/** Persistent SQLite on disk (VPS/Docker). False on Netlify unless only using Turso. */
+export function usesOnDiskDatabase(): boolean {
+  if (process.env.USE_LOCAL_DATABASE === "true") return true;
+  if (isNetlify()) return false;
+  return !process.env.TURSO_DATABASE_URL?.trim();
 }
 
 export function getTursoConfig(): { url: string; authToken: string } | null {
