@@ -18,14 +18,20 @@ import { useOrgPath } from "@/components/organization/OrgPathProvider";
 import { GLOBAL_PATH_SEGMENTS } from "@/lib/organizations/paths";
 import type { EmployeeRole } from "@/lib/constants";
 import { isCashierOnly } from "@/lib/employee-categories";
+import { useAdminSession } from "@/components/layout/AdminSessionProvider";
 
 function buildNavGroups(
   flags: FeatureFlags,
   modules: CompanyModuleFlags,
   isPlatformAdmin: boolean,
-  employeeRoles: EmployeeRole[] | null
+  employeeRoles: EmployeeRole[] | null,
+  sessionRole: "admin" | "employee" | null
 ) {
-  if (employeeRoles && isCashierOnly(employeeRoles)) {
+  if (
+    sessionRole === "employee" &&
+    employeeRoles &&
+    isCashierOnly(employeeRoles)
+  ) {
     return [
       {
         label: "Invoicing office",
@@ -128,30 +134,18 @@ function NavLinks({
   const flags = useFeatureFlags();
   const modules = useCompanyModules();
   const { orgPath } = useOrgPath();
-  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
-  const [employeeRoles, setEmployeeRoles] = useState<EmployeeRole[] | null>(
-    null
-  );
-
-  useEffect(() => {
-    fetch("/api/auth/me", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        setIsPlatformAdmin(data?.user?.isPlatformAdmin === true);
-        if (data?.user?.role === "employee" && Array.isArray(data.user.roles)) {
-          setEmployeeRoles(data.user.roles as EmployeeRole[]);
-        } else {
-          setEmployeeRoles(null);
-        }
-      })
-      .catch(() => {});
-  }, []);
+  const adminSession = useAdminSession();
+  const isPlatformAdmin = adminSession?.isPlatformAdmin ?? false;
+  const employeeRoles: EmployeeRole[] | null =
+    adminSession?.role === "employee" ? adminSession.roles : null;
+  const sessionRole = adminSession?.role ?? null;
 
   const navGroups = buildNavGroups(
     flags,
     modules,
     isPlatformAdmin,
-    employeeRoles
+    employeeRoles,
+    sessionRole
   );
   return (
     <>
@@ -230,17 +224,31 @@ export function AppShell({
   const router = useRouter();
   const { orgPath } = useOrgPath();
   const { organizationName } = useCompanyProfile();
-  const [userName, setUserName] = useState<string | null>(null);
-  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
-  const [organizationId, setOrganizationId] = useState<number | null>(null);
-  const [authLoaded, setAuthLoaded] = useState(false);
+  const adminSession = useAdminSession();
+  const [userName, setUserName] = useState<string | null>(
+    adminSession?.name ?? null
+  );
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(
+    adminSession?.isPlatformAdmin ?? false
+  );
+  const [organizationId, setOrganizationId] = useState<number | null>(
+    adminSession?.organizationId ?? null
+  );
+  const [authLoaded, setAuthLoaded] = useState(adminSession != null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const isPlatformPickerPage =
     pathname.startsWith("/platform/companies") ||
     pathname.startsWith("/platform/applications");
 
   useEffect(() => {
-    setAuthLoaded(false);
+    if (adminSession) {
+      setUserName(adminSession.name);
+      setIsPlatformAdmin(adminSession.isPlatformAdmin);
+      setOrganizationId(adminSession.organizationId);
+      setAuthLoaded(true);
+      return;
+    }
+    let cancelled = false;
     fetch("/api/auth/me", { cache: "no-store" })
       .then((r) => {
         if (!r.ok) {
@@ -251,6 +259,7 @@ export function AppShell({
         return r.json();
       })
       .then((data) => {
+        if (cancelled) return;
         setUserName(data?.user?.name ?? null);
         setIsPlatformAdmin(data?.user?.isPlatformAdmin === true);
         setOrganizationId(
@@ -260,12 +269,15 @@ export function AppShell({
         );
       })
       .catch(() => {
-        router.replace("/login");
+        if (!cancelled) router.replace("/login");
       })
       .finally(() => {
-        setAuthLoaded(true);
+        if (!cancelled) setAuthLoaded(true);
       });
-  }, [pathname, router]);
+    return () => {
+      cancelled = true;
+    };
+  }, [adminSession, pathname, router]);
 
   const showCompanyNav =
     !isPlatformPickerPage &&
@@ -355,12 +367,9 @@ export function AppShell({
           </nav>
           <div className="border-t border-white/10 p-3">
             {userName && (
-              <Link
-                href={orgPath("/settings")}
-                className="mb-2 block truncate rounded px-3 py-2 text-xs text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
-              >
+              <p className="mb-2 truncate rounded px-3 py-2 text-xs text-zinc-400">
                 {userName}
-              </Link>
+              </p>
             )}
             <button
               type="button"
@@ -426,12 +435,9 @@ export function AppShell({
                   </button>
                 )}
                 {userName && (
-                  <Link
-                    href={orgPath("/settings")}
-                    className="hidden max-w-[12rem] truncate text-xs text-zinc-500 hover:text-zinc-800 sm:inline"
-                  >
+                  <span className="hidden max-w-[12rem] truncate text-xs text-zinc-500 sm:inline">
                     {userName}
-                  </Link>
+                  </span>
                 )}
                 <Button
                   variant="ghost"

@@ -8,7 +8,9 @@ import {
 import { FeatureFlagsProvider } from "@/components/features/FeatureFlagsProvider";
 import { CompanyProfileProvider } from "@/components/company/CompanyProfileProvider";
 import { OrgPathProvider } from "@/components/organization/OrgPathProvider";
+import { AdminSessionProvider } from "@/components/layout/AdminSessionProvider";
 import { resolveSessionTenantSlug } from "@/lib/organizations/paths";
+import type { EmployeeRole } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -40,12 +42,26 @@ export default async function AdminLayout({
   }
 
   const organizationSlug = resolveSessionTenantSlug(session);
+  const platformAdmin =
+    session.role === "admin" &&
+    (session.adminId === 0 || session.isPlatformAdmin === true);
+
+  const shellSession = {
+    role: session.role,
+    roles:
+      session.role === "employee" ? session.roles : ([] as EmployeeRole[]),
+    name: session.name,
+    isPlatformAdmin: platformAdmin,
+    organizationId: session.organizationId ?? null,
+  };
 
   return (
-    <OrgPathProvider organizationSlug={organizationSlug}>
-      <FeatureFlagsProvider>
-        <CompanyProfileProvider>{children}</CompanyProfileProvider>
-      </FeatureFlagsProvider>
-    </OrgPathProvider>
+    <AdminSessionProvider session={shellSession}>
+      <OrgPathProvider organizationSlug={organizationSlug}>
+        <FeatureFlagsProvider>
+          <CompanyProfileProvider>{children}</CompanyProfileProvider>
+        </FeatureFlagsProvider>
+      </OrgPathProvider>
+    </AdminSessionProvider>
   );
 }
