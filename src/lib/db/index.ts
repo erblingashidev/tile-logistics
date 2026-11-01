@@ -402,10 +402,12 @@ async function ensureEmployeeDirectoryTable(client: Client) {
   await client.execute(
     "CREATE INDEX IF NOT EXISTS idx_employee_directory_org ON employee_directory(organization_id)"
   );
-  const { repairEmployeeOrganizationsFromDirectory } = await import(
-    "@/lib/services/employee-directory"
-  );
-  await repairEmployeeOrganizationsFromDirectory();
+  if (shouldRunStartupBackfill()) {
+    const { repairEmployeeOrganizationsFromDirectory } = await import(
+      "@/lib/services/employee-directory"
+    );
+    await repairEmployeeOrganizationsFromDirectory();
+  }
 }
 
 async function ensureOrganizationsSchema(client: Client) {
@@ -497,12 +499,14 @@ async function ensureTenantDataIsolation(client: Client) {
       "organization_id INTEGER DEFAULT 1",
       cols
     );
-    await client.execute({
-      sql: `UPDATE ${table}
-            SET organization_id = ?
-            WHERE organization_id IS NULL OR organization_id <= 0`,
-      args: [LEGACY_TENANT_ORGANIZATION_ID],
-    });
+    if (shouldRunStartupBackfill()) {
+      await client.execute({
+        sql: `UPDATE ${table}
+              SET organization_id = ?
+              WHERE organization_id IS NULL OR organization_id <= 0`,
+        args: [LEGACY_TENANT_ORGANIZATION_ID],
+      });
+    }
     await client.execute(
       `CREATE INDEX IF NOT EXISTS idx_${table}_organization_id ON ${table}(organization_id)`
     );
@@ -518,7 +522,9 @@ async function ensureTenantDataIsolation(client: Client) {
   const { ensureTenantOrganizationColumns } = await import(
     "@/lib/db/tenant-org-columns"
   );
-  await ensureTenantOrganizationColumns(client);
+  await ensureTenantOrganizationColumns(client, {
+    backfillLegacyRows: shouldRunStartupBackfill(),
+  });
 }
 
 async function ensureOrganizationAdminColumns(client: Client) {
@@ -1267,6 +1273,7 @@ function shouldRunRuntimeMigrations(): boolean {
   return true;
 }
 
+/** Heavy table scans / backfills — skip on Netlify+Turso (run via CLI scripts instead). */
 function shouldRunStartupBackfill(): boolean {
   if (process.env.SKIP_DB_BACKFILL === "true") return false;
   if (isNetlify() && getTursoConfig()) return false;
@@ -1329,15 +1336,15 @@ export async function getControlPlaneDb() {
         await ensureWarehouseSchemaPatches(clientInstance);
         await ensureInvoiceImportTables(clientInstance);
         dbInstance = drizzle(clientInstance, { schema });
-        const { backfillAdminEmployeeLinks } = await import(
-          "@/lib/services/admins"
-        );
-        await backfillAdminEmployeeLinks();
-        const { backfillUniqueInvoiceNumbers } = await import(
-          "@/lib/services/orders"
-        );
-        await backfillUniqueInvoiceNumbers(clientInstance);
         if (shouldRunStartupBackfill()) {
+          const { backfillAdminEmployeeLinks } = await import(
+            "@/lib/services/admins"
+          );
+          await backfillAdminEmployeeLinks();
+          const { backfillUniqueInvoiceNumbers } = await import(
+            "@/lib/services/orders"
+          );
+          await backfillUniqueInvoiceNumbers(clientInstance);
           const { backfillOrderSalesOwnership } = await import(
             "@/lib/services/sales-portal"
           );

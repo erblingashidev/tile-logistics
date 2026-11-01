@@ -38,8 +38,12 @@ async function addColumnIfMissing(
  * Add organization_id to WMS / warehouse tables and backfill legacy rows to org #1.
  * Safe to run on every bootstrap (idempotent).
  */
-export async function ensureTenantOrganizationColumns(client: Client) {
+export async function ensureTenantOrganizationColumns(
+  client: Client,
+  options?: { backfillLegacyRows?: boolean }
+) {
   const orgId = LEGACY_AGIMI_ORGANIZATION_ID;
+  const backfillLegacyRows = options?.backfillLegacyRows !== false;
 
   for (const table of TENANT_ORG_COLUMN_TABLES) {
     const cols = await tableColumns(client, table);
@@ -53,12 +57,14 @@ export async function ensureTenantOrganizationColumns(client: Client) {
       cols
     );
 
-    await client.execute({
-      sql: `UPDATE ${table}
-            SET organization_id = ?
-            WHERE organization_id IS NULL OR organization_id <= 0`,
-      args: [orgId],
-    });
+    if (backfillLegacyRows) {
+      await client.execute({
+        sql: `UPDATE ${table}
+              SET organization_id = ?
+              WHERE organization_id IS NULL OR organization_id <= 0`,
+        args: [orgId],
+      });
+    }
 
     await client.execute(
       `CREATE INDEX IF NOT EXISTS idx_${table}_organization_id ON ${table}(organization_id)`
