@@ -61,12 +61,21 @@ export async function getFeatureFlags(
   return effectiveFeatureFlags(await getStoredFeatureFlags());
 }
 
+function organizationIdForSession(session: SessionUser | null): number | null {
+  if (!session) return null;
+  if (session.organizationId != null && session.organizationId > 0) {
+    return session.organizationId;
+  }
+  if (session.role === "admin") return DEFAULT_ORGANIZATION_ID;
+  return null;
+}
+
 export async function getFeatureFlagsForSession(
   session: SessionUser | null
 ): Promise<FeatureFlags> {
-  if (session?.role === "admin") {
-    const orgId = session.organizationId ?? DEFAULT_ORGANIZATION_ID;
-    if (orgId > 0) return getFeatureFlags(orgId);
+  const orgId = organizationIdForSession(session);
+  if (orgId != null && orgId > 0) {
+    return getFeatureFlags(orgId);
   }
   return getFeatureFlags();
 }
@@ -127,11 +136,7 @@ export async function updateFeatureFlagsForSession(
   session: SessionUser | null,
   body: unknown
 ): Promise<FeatureFlags> {
-  const orgId =
-    session?.role === "admin"
-      ? session.organizationId ?? DEFAULT_ORGANIZATION_ID
-      : null;
-  return updateFeatureFlagsFromBody(body, orgId);
+  return updateFeatureFlagsFromBody(body, organizationIdForSession(session));
 }
 
 export async function isManualDispatchMode(): Promise<boolean> {

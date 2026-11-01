@@ -85,6 +85,16 @@ export async function loginEmployee(
           .where(eq(employees.id, directory.employeeId))
       );
       if (!row) return null;
+      if (
+        row.organizationId != null &&
+        row.organizationId > 0 &&
+        row.organizationId !== directory.organizationId
+      ) {
+        await db
+          .update(employees)
+          .set({ organizationId: directory.organizationId })
+          .where(eq(employees.id, row.id));
+      }
       return employeeFromRow(row, directory.organizationId);
     });
   }

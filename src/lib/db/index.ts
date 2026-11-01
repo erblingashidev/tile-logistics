@@ -402,6 +402,10 @@ async function ensureEmployeeDirectoryTable(client: Client) {
   await client.execute(
     "CREATE INDEX IF NOT EXISTS idx_employee_directory_org ON employee_directory(organization_id)"
   );
+  const { repairEmployeeOrganizationsFromDirectory } = await import(
+    "@/lib/services/employee-directory"
+  );
+  await repairEmployeeOrganizationsFromDirectory();
 }
 
 async function ensureOrganizationsSchema(client: Client) {

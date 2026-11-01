@@ -59,3 +59,42 @@ export async function removeEmployeeDirectory(username: string) {
     args: [username.trim().toLowerCase()],
   });
 }
+
+/** Align employees.organization_id with login directory (fixes cross-company leaks on shared DB). */
+export async function repairEmployeeOrganizationsFromDirectory() {
+  await getControlPlaneDb();
+  const client = await getLibsqlClient();
+  await client.execute(`
+    UPDATE employees
+    SET organization_id = (
+      SELECT d.organization_id
+      FROM employee_directory d
+      WHERE d.username = employees.username
+    )
+    WHERE employees.username IS NOT NULL
+      AND EXISTS (
+        SELECT 1 FROM employee_directory d
+        WHERE d.username = employees.username
+          AND d.organization_id != employees.organization_id
+      )
+  `);
+}
+
+export async function usernamesRegisteredToOtherOrganizations(
+  organizationId: number
+): Promise<Set<string>> {
+  await getControlPlaneDb();
+  const client = await getLibsqlClient();
+  const result = await client.execute({
+    sql: `SELECT username FROM employee_directory WHERE organization_id != ?`,
+    args: [organizationId],
+  });
+  const out = new Set<string>();
+  for (const row of result.rows) {
+    const name = row.username ?? row[0];
+    if (typeof name === "string" && name.trim()) {
+      out.add(name.trim().toLowerCase());
+    }
+  }
+  return out;
+}

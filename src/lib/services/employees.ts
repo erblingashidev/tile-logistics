@@ -112,13 +112,26 @@ async function assertUsernameAvailable(username: string, excludeId?: number) {
     throw new EmployeeCredentialError("Username is required for portal login");
   }
   const db = await getDb();
+  const organizationId = await resolveTenantOrganizationId();
   const existing = await dbOne(
     db
-      .select({ id: employees.id })
+      .select({ id: employees.id, organizationId: employees.organizationId })
       .from(employees)
       .where(eq(employees.username, normalized))
   );
-  if (existing && existing.id !== excludeId) {
+  if (
+    existing &&
+    existing.id !== excludeId &&
+    existing.organizationId === organizationId
+  ) {
+    throw new EmployeeCredentialError("That username is already in use");
+  }
+
+  const { lookupEmployeeDirectory } = await import(
+    "@/lib/services/employee-directory"
+  );
+  const directory = await lookupEmployeeDirectory(normalized);
+  if (directory && directory.organizationId !== organizationId) {
     throw new EmployeeCredentialError("That username is already in use");
   }
 
@@ -336,16 +349,28 @@ async function getEmployeeActiveAssignments(employeeId: number) {
 }
 
 export async function listEmployees(roleFilter?: EmployeeRole) {
+  const organizationId = await resolveTenantOrganizationId();
+  const { usernamesRegisteredToOtherOrganizations } = await import(
+    "@/lib/services/employee-directory"
+  );
+  const foreignUsernames =
+    await usernamesRegisteredToOtherOrganizations(organizationId);
+
   const db = await getDb();
   const rows = await dbAll(
     db
       .select()
       .from(employees)
-      .where(eq(employees.organizationId, await resolveTenantOrganizationId()))
+      .where(eq(employees.organizationId, organizationId))
       .orderBy(desc(employees.updatedAt))
   );
+  const scoped = rows.filter((row) => {
+    const username = row.username?.trim().toLowerCase();
+    if (username && foreignUsernames.has(username)) return false;
+    return true;
+  });
   const enriched = await Promise.all(
-    rows.map(async (e) =>
+    scoped.map(async (e) =>
       enrichEmployeeRow(e, await getEmployeeActiveAssignments(e.id))
     )
   );

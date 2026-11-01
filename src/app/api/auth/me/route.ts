@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 import { getAdmin } from "@/lib/services/admins";
 import { getEmployee } from "@/lib/services/employees";
 import { getFeatureFlagsForSession } from "@/lib/services/feature-flags";
+import { runWithTenantOrganizationAsync } from "@/lib/organizations/tenant-context";
 
 export const runtime = "nodejs";
 
@@ -60,16 +61,26 @@ export async function GET() {
     );
   }
 
-  const profile = await getEmployee(session.employeeId);
-  return applyFeatureFlagsCookie(
-    NextResponse.json({
-      user: {
-        ...session,
-        status: profile?.status ?? "available",
-        username: profile?.username ?? null,
-      },
-      features,
-    }),
-    features
-  );
+  const orgId = session.organizationId;
+  if (orgId == null || orgId <= 0) {
+    return NextResponse.json(
+      { error: "Employee session is missing company context." },
+      { status: 403 }
+    );
+  }
+
+  return runWithTenantOrganizationAsync(orgId, async () => {
+    const profile = await getEmployee(session.employeeId);
+    return applyFeatureFlagsCookie(
+      NextResponse.json({
+        user: {
+          ...session,
+          status: profile?.status ?? "available",
+          username: profile?.username ?? null,
+        },
+        features,
+      }),
+      features
+    );
+  });
 }
