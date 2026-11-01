@@ -15,6 +15,7 @@ import {
 } from "@/lib/administration/constants";
 import { sessionHasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { isCashierStaff } from "@/lib/employee-categories";
+import { transactionAffectsCashDrawer } from "@/lib/administration/register-cash";
 
 export type RegisterSessionRow = typeof adminRegisterSessions.$inferSelect;
 export type RegisterTransactionRow = typeof adminRegisterTransactions.$inferSelect;
@@ -103,6 +104,54 @@ export async function openRegisterSession(
   return inserted[0]!;
 }
 
+export async function computeExpectedCashCents(
+  registerSessionId: number,
+  openingFloatCents: number
+) {
+  const db = await getControlPlaneDb();
+  const txs = await db
+    .select()
+    .from(adminRegisterTransactions)
+    .where(eq(adminRegisterTransactions.registerSessionId, registerSessionId));
+  let delta = 0;
+  for (const tx of txs) {
+    if (transactionAffectsCashDrawer(tx)) delta += tx.amountCents;
+  }
+  return openingFloatCents + delta;
+}
+
+export async function getOpenRegisterWithReconciliation(organizationId: number) {
+  const session = await getOpenRegisterSession(organizationId);
+  if (!session) {
+    return { session: null, expectedCashCents: null as number | null };
+  }
+  const expectedCashCents = await computeExpectedCashCents(
+    session.id,
+    session.openingFloatCents
+  );
+  return { session, expectedCashCents };
+}
+
+export async function listClosedRegisterSessions(
+  organizationId: number,
+  from: string,
+  to: string
+) {
+  const db = await getControlPlaneDb();
+  return db
+    .select()
+    .from(adminRegisterSessions)
+    .where(
+      and(
+        eq(adminRegisterSessions.organizationId, organizationId),
+        eq(adminRegisterSessions.status, "closed"),
+        gte(adminRegisterSessions.closedAt, from),
+        lte(adminRegisterSessions.closedAt, to)
+      )
+    )
+    .orderBy(desc(adminRegisterSessions.closedAt));
+}
+
 export async function closeRegisterSession(
   organizationId: number,
   session: SessionUser,
@@ -111,6 +160,12 @@ export async function closeRegisterSession(
 ) {
   const open = await getOpenRegisterSession(organizationId);
   if (!open) throw new Error("No open register session.");
+  const counted = Math.round(closingCashCountedCents);
+  const expectedCashCents = await computeExpectedCashCents(
+    open.id,
+    open.openingFloatCents
+  );
+  const cashVarianceCents = counted - expectedCashCents;
   const db = await getControlPlaneDb();
   const ts = nowIso();
   await db
@@ -121,7 +176,9 @@ export async function closeRegisterSession(
       closedByEmployeeId:
         session.role === "employee" ? session.employeeId : undefined,
       closedByAdminId: session.role === "admin" ? session.adminId : undefined,
-      closingCashCountedCents: Math.round(closingCashCountedCents),
+      closingCashCountedCents: counted,
+      expectedCashCents,
+      cashVarianceCents,
       closingNotes: closingNotes?.trim() || null,
     })
     .where(eq(adminRegisterSessions.id, open.id));
@@ -136,7 +193,12 @@ export async function closeRegisterSession(
     "register.close",
     "register_session",
     open.id,
-    { closingCashCountedCents, closingNotes },
+    {
+      closingCashCountedCents: counted,
+      expectedCashCents,
+      cashVarianceCents,
+      closingNotes,
+    },
     session
   );
   const updated = await db

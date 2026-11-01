@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { AdministrationFinanceReport } from "@/components/administration/AdministrationFinanceReport";
 import { AppShell } from "@/components/layout/AppShell";
+import { useCompanyModules } from "@/components/company/CompanyProfileProvider";
 import { Badge, Button, Card, Input, PageSection, Select, StatCard, tableClass } from "@/components/ui";
 import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 
@@ -34,6 +36,7 @@ interface ReportData {
 
 export default function ReportsPage() {
   const { deliveryRounds } = useFeatureFlags();
+  const modules = useCompanyModules();
   const [report, setReport] = useState<ReportData | null>(null);
   const [filters, setFilters] = useState({
     dateFrom: new Date().toISOString().slice(0, 10),
@@ -92,12 +95,24 @@ export default function ReportsPage() {
             </p>
           </Card>
         </Link>
-        <Card className="h-full p-5 border-dashed">
-          <p className="font-semibold text-zinc-900">Order analytics</p>
-          <p className="mt-1 text-sm text-zinc-600">
-            Filter by date, employee, and hour — table and Excel below.
-          </p>
-        </Card>
+        {modules.administration !== false ? (
+          <a href="#administration-register">
+            <Card className="h-full border-emerald-200 bg-emerald-50/40 p-5 transition hover:border-emerald-300">
+              <p className="font-semibold text-zinc-900">Administration & register</p>
+              <p className="mt-1 text-sm text-zinc-600">
+                Cash register ledger, payment types, edit entries, and management
+                approval requests.
+              </p>
+            </Card>
+          </a>
+        ) : (
+          <Card className="h-full p-5 border-dashed">
+            <p className="font-semibold text-zinc-900">Order analytics</p>
+            <p className="mt-1 text-sm text-zinc-600">
+              Filter by date, employee, and hour — table and Excel below.
+            </p>
+          </Card>
+        )}
       </div>
 
       <PageSection title="Filters">
@@ -267,6 +282,15 @@ export default function ReportsPage() {
           </Card>
         </>
       )}
+
+      {modules.administration !== false ? (
+        <div id="administration-register" className="scroll-mt-6">
+          <AdministrationFinanceReport
+            defaultDateFrom={filters.dateFrom}
+            defaultDateTo={filters.dateTo || filters.dateFrom}
+          />
+        </div>
+      ) : null}
     </AppShell>
   );
 }

@@ -7,10 +7,21 @@ import {
   ADMIN_TRANSACTION_KINDS,
 } from "@/lib/administration/constants";
 import {
+  AdministrationLedgerTable,
+  formatAdminMoney,
+  type AdministrationTransaction,
+} from "@/components/administration/AdministrationLedgerTable";
+import {
+  ClosedRegisterSessionsTable,
+  RegisterClosePreview,
+  RegisterOpenExpectedBanner,
+  type ClosedRegisterSession,
+} from "@/components/administration/RegisterShiftReconciliation";
+import { formatCashVarianceLabel } from "@/lib/administration/register-cash";
+import {
   Alert,
   Button,
   Card,
-  EmptyState,
   Input,
   PageSection,
   Select,
@@ -25,19 +36,6 @@ type RegisterSession = {
   closingCashCountedCents?: number | null;
 };
 
-type Transaction = {
-  id: number;
-  kind: string;
-  paymentMethod: string | null;
-  amountCents: number;
-  counterpartyName: string | null;
-  purpose: string | null;
-  expenseCategory: string | null;
-  invoiceReference: string | null;
-  recordedAt: string;
-  locked: boolean;
-};
-
 type EditRequest = {
   id: number;
   transactionId: number;
@@ -45,13 +43,6 @@ type EditRequest = {
   proposedChangesJson: string;
   createdAt: string;
 };
-
-function formatMoney(cents: number) {
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: "EUR",
-  }).format(cents / 100);
-}
 
 function todayRange() {
   const d = format(new Date(), "yyyy-MM-dd");
@@ -61,7 +52,18 @@ function todayRange() {
 export default function AdministrationPage() {
   const [registerSession, setRegisterSession] =
     useState<RegisterSession | null>(null);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [expectedCashCents, setExpectedCashCents] = useState<number | null>(
+    null
+  );
+  const [lastCloseVariance, setLastCloseVariance] = useState<number | null>(
+    null
+  );
+  const [closedSessions, setClosedSessions] = useState<ClosedRegisterSession[]>(
+    []
+  );
+  const [transactions, setTransactions] = useState<AdministrationTransaction[]>(
+    []
+  );
   const [pendingRequests, setPendingRequests] = useState<EditRequest[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -89,10 +91,6 @@ export default function AdministrationPage() {
   const [formExpenseCategory, setFormExpenseCategory] = useState("");
   const [formInvoiceRef, setFormInvoiceRef] = useState("");
 
-  const [editTxId, setEditTxId] = useState<number | null>(null);
-  const [editReason, setEditReason] = useState("");
-  const [editAmount, setEditAmount] = useState("");
-
   const [reportSummary, setReportSummary] = useState<{
     grandTotalCents: number;
     rows: Array<{
@@ -110,7 +108,23 @@ export default function AdministrationPage() {
     if (!res.ok) throw new Error("Could not load register");
     const data = await res.json();
     setRegisterSession(data.session ?? null);
+    setExpectedCashCents(
+      typeof data.expectedCashCents === "number" ? data.expectedCashCents : null
+    );
   }, []);
+
+  const loadClosedSessions = useCallback(async () => {
+    const params = new URLSearchParams({
+      from: `${filterFrom}T00:00:00.000Z`,
+      to: `${filterTo}T23:59:59.999Z`,
+    });
+    const res = await fetch(`/api/administration/register?${params}`, {
+      cache: "no-store",
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    setClosedSessions(data.sessions ?? []);
+  }, [filterFrom, filterTo]);
 
   const loadTransactions = useCallback(async () => {
     const params = new URLSearchParams({
@@ -139,11 +153,16 @@ export default function AdministrationPage() {
   const refresh = useCallback(async () => {
     setError("");
     try {
-      await Promise.all([loadRegister(), loadTransactions(), loadPending()]);
+      await Promise.all([
+        loadRegister(),
+        loadTransactions(),
+        loadPending(),
+        loadClosedSessions(),
+      ]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Load failed");
     }
-  }, [loadRegister, loadTransactions, loadPending]);
+  }, [loadRegister, loadTransactions, loadPending, loadClosedSessions]);
 
   useEffect(() => {
     void refresh();
@@ -217,6 +236,10 @@ export default function AdministrationPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed");
       setRegisterSession(null);
+      setExpectedCashCents(null);
+      if (typeof data.cashVarianceCents === "number") {
+        setLastCloseVariance(data.cashVarianceCents);
+      }
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
@@ -250,36 +273,6 @@ export default function AdministrationPage() {
       setFormAmount("");
       setFormPurpose("");
       setFormCounterparty("");
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function submitEditRequest(e: React.FormEvent) {
-    e.preventDefault();
-    if (!editTxId) return;
-    setBusy(true);
-    setError("");
-    try {
-      const res = await fetch("/api/administration/edit-requests", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transactionId: editTxId,
-          reason: editReason,
-          proposedChanges: {
-            amountCents: Math.round(parseFloat(editAmount || "0") * 100),
-          },
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed");
-      setEditTxId(null);
-      setEditReason("");
-      setEditAmount("");
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed");
@@ -345,17 +338,24 @@ export default function AdministrationPage() {
                 <p className="text-sm text-zinc-600">
                   Open since{" "}
                   {format(new Date(registerSession.openedAt), "PPp")}. Opening
-                  float: {formatMoney(registerSession.openingFloatCents)}.
+                  float: {formatAdminMoney(registerSession.openingFloatCents)}.
                 </p>
                 <p className="text-sm font-medium text-emerald-700">
                   Register is open — record all payments and expenses before
                   closing.
                 </p>
+                <RegisterOpenExpectedBanner
+                  expectedCashCents={expectedCashCents}
+                />
                 <Input
                   label="Counted cash in drawer (€)"
                   value={closingCounted}
                   onChange={(e) => setClosingCounted(e.target.value)}
                   inputMode="decimal"
+                />
+                <RegisterClosePreview
+                  expectedCashCents={expectedCashCents}
+                  countedEuros={closingCounted}
                 />
                 <Input
                   label="Closing notes"
@@ -383,9 +383,15 @@ export default function AdministrationPage() {
                 </Button>
               </>
             )}
+            {lastCloseVariance != null ? (
+              <p className="text-sm font-medium text-zinc-800">
+                Last shift close:{" "}
+                {formatCashVarianceLabel(lastCloseVariance, formatAdminMoney)}
+              </p>
+            ) : null}
             <p className="text-xs text-zinc-500">
               Today&apos;s recorded payments (filter list):{" "}
-              {formatMoney(dayTotals)}
+              {formatAdminMoney(dayTotals)}
             </p>
           </Card>
         </PageSection>
@@ -462,6 +468,16 @@ export default function AdministrationPage() {
         </PageSection>
       </div>
 
+      <PageSection title="Shift close results" className="mt-8">
+        <Card className="p-4">
+          <p className="mb-3 text-sm text-zinc-600">
+            Compare counted cash to expected (opening float + cash in − cash out)
+            for each closed shift in the filter range.
+          </p>
+          <ClosedRegisterSessionsTable sessions={closedSessions} />
+        </Card>
+      </PageSection>
+
       <PageSection title="Ledger & filters" className="mt-8">
         <Card className="mb-4 grid gap-3 p-4 sm:grid-cols-4">
           <Input
@@ -516,12 +532,13 @@ export default function AdministrationPage() {
           <Card className="mb-4 p-4">
             <p className="mb-2 font-medium">Report summary</p>
             <p className="text-sm text-zinc-600">
-              Net total: {formatMoney(reportSummary.grandTotalCents)}
+              Net total: {formatAdminMoney(reportSummary.grandTotalCents)}
             </p>
             <ul className="mt-2 space-y-1 text-sm">
               {reportSummary.rows.map((r, i) => (
                 <li key={i}>
-                  {r.kind} / {r.paymentMethod ?? "—"}: {formatMoney(Number(r.totalCents))}{" "}
+                  {r.kind} / {r.paymentMethod ?? "—"}:{" "}
+                  {formatAdminMoney(Number(r.totalCents))}{" "}
                   ({r.count} lines)
                 </li>
               ))}
@@ -529,89 +546,15 @@ export default function AdministrationPage() {
           </Card>
         ) : null}
 
-        {transactions.length === 0 ? (
-          <EmptyState title="No transactions in this range" />
-        ) : (
-          <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white">
-            <table className="min-w-full text-left text-sm">
-              <thead className="border-b bg-zinc-50 text-xs uppercase text-zinc-500">
-                <tr>
-                  <th className="px-3 py-2">When</th>
-                  <th className="px-3 py-2">Kind</th>
-                  <th className="px-3 py-2">Method</th>
-                  <th className="px-3 py-2">Amount</th>
-                  <th className="px-3 py-2">Party</th>
-                  <th className="px-3 py-2">Purpose</th>
-                  <th className="px-3 py-2">Locked</th>
-                  <th className="px-3 py-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {transactions.map((t) => (
-                  <tr key={t.id} className="border-b last:border-0">
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      {format(new Date(t.recordedAt), "PPp")}
-                    </td>
-                    <td className="px-3 py-2">{t.kind}</td>
-                    <td className="px-3 py-2">{t.paymentMethod ?? "—"}</td>
-                    <td className="px-3 py-2 font-medium">{formatMoney(t.amountCents)}</td>
-                    <td className="px-3 py-2">{t.counterpartyName ?? "—"}</td>
-                    <td className="px-3 py-2 max-w-xs truncate">{t.purpose ?? "—"}</td>
-                    <td className="px-3 py-2">{t.locked ? "Yes" : "No"}</td>
-                    <td className="px-3 py-2">
-                      {t.locked ? (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setEditTxId(t.id);
-                            setEditAmount(String(Math.abs(t.amountCents) / 100));
-                          }}
-                        >
-                          Request fix
-                        </Button>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <AdministrationLedgerTable
+          transactions={transactions}
+          canApprove={canApprove}
+          busy={busy}
+          onBusyChange={setBusy}
+          onError={setError}
+          onUpdated={refresh}
+        />
       </PageSection>
-
-      {editTxId ? (
-        <PageSection title="Request correction (management approval)" className="mt-8">
-          <Card className="max-w-lg space-y-3 p-4">
-            <form onSubmit={submitEditRequest}>
-              <Input
-                label="Correct amount (€)"
-                value={editAmount}
-                onChange={(e) => setEditAmount(e.target.value)}
-                inputMode="decimal"
-              />
-              <Input
-                label="Why is this change needed?"
-                value={editReason}
-                onChange={(e) => setEditReason(e.target.value)}
-                required
-              />
-              <div className="mt-3 flex gap-2">
-                <Button type="submit" disabled={busy}>
-                  Submit request
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => setEditTxId(null)}
-                >
-                  Cancel
-                </Button>
-              </div>
-            </form>
-          </Card>
-        </PageSection>
-      ) : null}
 
       {canApprove && pendingRequests.length > 0 ? (
         <PageSection title="Pending correction requests" className="mt-8">

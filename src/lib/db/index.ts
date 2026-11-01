@@ -187,10 +187,27 @@ async function ensureAdministrationRegisterTables(client: Client) {
       closed_by_employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
       closed_by_admin_id INTEGER REFERENCES admins(id) ON DELETE SET NULL,
       closing_cash_counted_cents INTEGER,
+      expected_cash_cents INTEGER,
+      cash_variance_cents INTEGER,
       closing_notes TEXT,
       created_at TEXT NOT NULL
     )
   `);
+  const sessionCols = await tableColumns(client, "admin_register_sessions");
+  await addColumnIfMissing(
+    client,
+    "admin_register_sessions",
+    "expected_cash_cents",
+    "expected_cash_cents INTEGER",
+    sessionCols
+  );
+  await addColumnIfMissing(
+    client,
+    "admin_register_sessions",
+    "cash_variance_cents",
+    "cash_variance_cents INTEGER",
+    sessionCols
+  );
   await client.execute(`
     CREATE TABLE IF NOT EXISTS admin_register_transactions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -781,6 +781,8 @@ export const adminRegisterSessions = sqliteTable("admin_register_sessions", {
     onDelete: "set null",
   }),
   closingCashCountedCents: integer("closing_cash_counted_cents"),
+  expectedCashCents: integer("expected_cash_cents"),
+  cashVarianceCents: integer("cash_variance_cents"),
   closingNotes: text("closing_notes"),
   createdAt: text("created_at").notNull(),
 });
