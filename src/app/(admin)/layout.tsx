@@ -67,13 +67,13 @@ export default async function AdminLayout({
 
   return (
     <AdminSessionProvider session={shellSession}>
-      <CashierLayoutGate>
-        <OrgPathProvider organizationSlug={organizationSlug}>
+      <OrgPathProvider organizationSlug={organizationSlug}>
+        <CashierLayoutGate>
           <FeatureFlagsProvider>
             <CompanyProfileProvider>{children}</CompanyProfileProvider>
           </FeatureFlagsProvider>
-        </OrgPathProvider>
-      </CashierLayoutGate>
+        </CashierLayoutGate>
+      </OrgPathProvider>
     </AdminSessionProvider>
   );
 }

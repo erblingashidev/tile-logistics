@@ -4,8 +4,13 @@ import Link from "next/link";
 import { useCompanyModules } from "@/components/company/CompanyProfileProvider";
 import { useOrgPath } from "@/components/organization/OrgPathProvider";
 
-function isActive(pathname: string, href: string) {
-  return pathname === href || pathname.startsWith(`${href}/`);
+function isActive(
+  pathname: string,
+  href: string,
+  orgPath: (internal: string) => string
+) {
+  const target = orgPath(href);
+  return pathname === target || pathname.startsWith(`${target}/`);
 }
 
 /** Fixed nav for invoicing office — never includes admin-only routes. */
@@ -36,7 +41,7 @@ export function CashierNavLinks({
         Invoicing office
       </p>
       {items.map((item) => {
-        const active = isActive(pathname, item.href);
+        const active = isActive(pathname, item.href, orgPath);
         return (
           <Link
             key={item.href}
