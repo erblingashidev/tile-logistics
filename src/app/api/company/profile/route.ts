@@ -58,6 +58,7 @@ export async function PATCH(request: Request) {
         returns?: boolean;
         employeePortal?: boolean;
         useInvoices?: boolean;
+        administration?: boolean;
       };
       warehouse?: unknown;
       units?: Array<{ code: string; label: string; sortOrder?: number }>;
@@ -86,6 +87,7 @@ export async function PATCH(request: Request) {
             returns: modules.returns !== false,
             employeePortal: modules.employeePortal === true,
             useInvoices: modules.useInvoices !== false,
+            administration: modules.administration !== false,
           }
         : undefined,
       warehouse: parsedWarehouse ?? undefined,

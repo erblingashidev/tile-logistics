@@ -50,6 +50,7 @@ export type CompanyModuleFlags = {
   returns: boolean;
   employeePortal: boolean;
   useInvoices: boolean;
+  administration: boolean;
 };
 
 export type OrganizationUnit = {
@@ -92,6 +93,7 @@ export const DEFAULT_COMPANY_MODULES: CompanyModuleFlags = {
   returns: true,
   employeePortal: false,
   useInvoices: true,
+  administration: true,
 };
 
 export const DEFAULT_COMPANY_PROFILE: CompanyProfile = {
@@ -115,6 +117,7 @@ export const CATEGORY_PRESETS: Record<
       returns: true,
       employeePortal: true,
       useInvoices: true,
+      administration: true,
     },
     suggestedUnits: [
       { code: "m2", label: "m²", sortOrder: 0 },
@@ -131,6 +134,7 @@ export const CATEGORY_PRESETS: Record<
       returns: true,
       employeePortal: false,
       useInvoices: true,
+      administration: true,
     },
     suggestedUnits: [
       { code: "piece", label: "bags", sortOrder: 0 },
@@ -148,6 +152,7 @@ export const CATEGORY_PRESETS: Record<
       returns: true,
       employeePortal: false,
       useInvoices: true,
+      administration: true,
     },
     suggestedUnits: [{ code: "piece", label: "pieces", sortOrder: 0 }],
   },
@@ -167,6 +172,7 @@ export const CATEGORY_PRESETS: Record<
       returns: true,
       employeePortal: true,
       useInvoices: false,
+      administration: true,
     },
     suggestedUnits: [
       { code: "piece", label: "units", sortOrder: 0 },
@@ -183,6 +189,7 @@ export const CATEGORY_PRESETS: Record<
       returns: true,
       employeePortal: true,
       useInvoices: false,
+      administration: true,
     },
     suggestedUnits: [{ code: "piece", label: "units", sortOrder: 0 }],
   },
@@ -196,6 +203,7 @@ export const CATEGORY_PRESETS: Record<
       returns: false,
       employeePortal: true,
       useInvoices: false,
+      administration: true,
     },
     suggestedUnits: [{ code: "piece", label: "pieces", sortOrder: 0 }],
   },
@@ -209,6 +217,7 @@ export const CATEGORY_PRESETS: Record<
       returns: true,
       employeePortal: true,
       useInvoices: true,
+      administration: true,
     },
     suggestedUnits: [
       { code: "piece", label: "cases", sortOrder: 0 },
@@ -225,6 +234,7 @@ export const CATEGORY_PRESETS: Record<
       returns: true,
       employeePortal: false,
       useInvoices: true,
+      administration: true,
     },
     suggestedUnits: [
       { code: "piece", label: "units", sortOrder: 0 },
@@ -246,6 +256,7 @@ export function legacyAgimiCompanyProfile(): CompanyProfile {
       returns: true,
       employeePortal: true,
       useInvoices: true,
+      administration: true,
       ...preset.modules,
     },
     warehouse: { ...LEGACY_AGIMI_WAREHOUSE },
@@ -303,6 +314,7 @@ export function parseCompanyProfile(raw: unknown): CompanyProfile {
       returns: modulesRaw.returns !== false,
       employeePortal: modulesRaw.employeePortal === true,
       useInvoices: modulesRaw.useInvoices !== false,
+      administration: modulesRaw.administration !== false,
     },
     warehouse: parseWarehouse(o.warehouse),
     onboardingComplete: o.onboardingComplete === true,

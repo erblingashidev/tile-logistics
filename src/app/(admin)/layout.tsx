@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { isLegacyAgimiOrganization } from "@/lib/organizations/constants";
 import {
   employeeLoginRedirect,
+  isCashierOnly,
 } from "@/lib/employee-categories";
 import { FeatureFlagsProvider } from "@/components/features/FeatureFlagsProvider";
 import { CompanyProfileProvider } from "@/components/company/CompanyProfileProvider";
@@ -22,7 +23,7 @@ export default async function AdminLayout({
     redirect("/login");
   }
 
-  if (session.role === "employee") {
+  if (session.role === "employee" && !isCashierOnly(session.roles)) {
     redirect(employeeLoginRedirect(session.roles));
   }
 

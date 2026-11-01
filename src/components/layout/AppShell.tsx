@@ -16,12 +16,31 @@ import type { CompanyModuleFlags } from "@/lib/company-profile";
 import type { FeatureFlags } from "@/lib/features/catalog";
 import { useOrgPath } from "@/components/organization/OrgPathProvider";
 import { GLOBAL_PATH_SEGMENTS } from "@/lib/organizations/paths";
+import type { EmployeeRole } from "@/lib/constants";
+import { isCashierOnly } from "@/lib/employee-categories";
 
 function buildNavGroups(
   flags: FeatureFlags,
   modules: CompanyModuleFlags,
-  isPlatformAdmin: boolean
+  isPlatformAdmin: boolean,
+  employeeRoles: EmployeeRole[] | null
 ) {
+  if (employeeRoles && isCashierOnly(employeeRoles)) {
+    return [
+      {
+        label: "Invoicing office",
+        items: [
+          { href: "/orders", label: "Orders & invoices" },
+          ...(modules.returns ? [{ href: "/returns", label: "Returns" }] : []),
+          ...(modules.administration !== false
+            ? [{ href: "/administration", label: "Administration" }]
+            : []),
+          { href: "/logs", label: "Logs" },
+        ],
+      },
+    ];
+  }
+
   return [
     {
       label: "Operations",
@@ -63,6 +82,16 @@ function buildNavGroups(
           },
         ]
       : []),
+    ...(modules.administration !== false
+      ? [
+          {
+            label: "Administration",
+            items: [
+              { href: "/administration", label: "Cash register & finance" },
+            ],
+          },
+        ]
+      : []),
     {
       label: "System",
       items: [
@@ -100,17 +129,30 @@ function NavLinks({
   const modules = useCompanyModules();
   const { orgPath } = useOrgPath();
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
+  const [employeeRoles, setEmployeeRoles] = useState<EmployeeRole[] | null>(
+    null
+  );
 
   useEffect(() => {
     fetch("/api/auth/me", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         setIsPlatformAdmin(data?.user?.isPlatformAdmin === true);
+        if (data?.user?.role === "employee" && Array.isArray(data.user.roles)) {
+          setEmployeeRoles(data.user.roles as EmployeeRole[]);
+        } else {
+          setEmployeeRoles(null);
+        }
       })
       .catch(() => {});
   }, []);
 
-  const navGroups = buildNavGroups(flags, modules, isPlatformAdmin);
+  const navGroups = buildNavGroups(
+    flags,
+    modules,
+    isPlatformAdmin,
+    employeeRoles
+  );
   return (
     <>
       {navGroups.map((group) => (

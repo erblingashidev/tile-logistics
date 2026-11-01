@@ -10,6 +10,7 @@ export const GLOBAL_PATH_SEGMENTS = new Set([
   "signup",
   "api",
   "platform",
+  "administration",
   "_next",
   "favicon.ico",
 ]);

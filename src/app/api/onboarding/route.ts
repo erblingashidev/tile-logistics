@@ -80,6 +80,7 @@ export async function POST(request: Request) {
         returns?: boolean;
         employeePortal?: boolean;
         useInvoices?: boolean;
+        administration?: boolean;
       };
       units?: Array<{ code: string; label: string; sortOrder?: number }>;
     };
@@ -101,6 +102,7 @@ export async function POST(request: Request) {
       returns: body.modules?.returns !== false,
       employeePortal: body.modules?.employeePortal === true,
       useInvoices: body.modules?.useInvoices !== false,
+      administration: body.modules?.administration !== false,
     };
     const needsDepot = modulesInput.dispatch || modulesInput.warehouse;
 

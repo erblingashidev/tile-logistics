@@ -4,6 +4,7 @@ import { verifySessionToken, SESSION_COOKIE } from "@/lib/auth/session";
 import type { EmployeeRole } from "@/lib/constants";
 import {
   employeeLoginRedirect,
+  isCashierOnly,
   isSalesStaff,
   isWarehouseStaff,
   WMS_STAFF_ROLES,
@@ -56,12 +57,34 @@ const ONBOARDING_ALLOWED_PREFIXES = [
 
 const SALES_PREFIXES = ["/sales", "/api/sales"];
 
+const CASHIER_ADMIN_PREFIXES = [
+  "/orders",
+  "/returns",
+  "/logs",
+  "/administration",
+  "/api/orders",
+  "/api/returns",
+  "/api/logs",
+  "/api/administration",
+];
+
+function cashierAdminPathAllowed(pathname: string) {
+  if (pathname === "/") return true;
+  return CASHIER_ADMIN_PREFIXES.some(
+    (p) => pathname === p || pathname.startsWith(`${p}/`)
+  );
+}
+
 function employeePathAllowed(
   pathname: string,
   roles: EmployeeRole[],
   wmsEnabled: boolean
 ) {
   if (pathname.startsWith("/api/auth")) return true;
+
+  if (isCashierOnly(roles) && cashierAdminPathAllowed(pathname)) {
+    return true;
+  }
 
   if (pathname.startsWith("/portal/no-access")) {
     return !isWarehouseStaff(roles) && !isSalesStaff(roles);

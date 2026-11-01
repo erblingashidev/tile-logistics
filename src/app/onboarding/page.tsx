@@ -62,6 +62,7 @@ export default function OnboardingPage() {
     returns: true,
     employeePortal: false,
     useInvoices: true,
+    administration: true,
   });
 
   useEffect(() => {

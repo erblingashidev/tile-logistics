@@ -16,6 +16,13 @@ export const PERMISSIONS = {
   reportsRead: "reports:read",
   settingsWrite: "settings:write",
   adminsWrite: "admins:write",
+  returnsRead: "returns:read",
+  returnsWrite: "returns:write",
+  logsRead: "logs:read",
+  administrationRead: "administration:read",
+  administrationWrite: "administration:write",
+  administrationApprove: "administration:approve",
+  administrationReports: "administration:reports",
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -51,6 +58,23 @@ const MANAGEMENT: Permission[] = [
   PERMISSIONS.reportsRead,
   PERMISSIONS.settingsWrite,
   PERMISSIONS.adminsWrite,
+  PERMISSIONS.returnsRead,
+  PERMISSIONS.returnsWrite,
+  PERMISSIONS.logsRead,
+  PERMISSIONS.administrationRead,
+  PERMISSIONS.administrationWrite,
+  PERMISSIONS.administrationApprove,
+  PERMISSIONS.administrationReports,
+];
+
+const CASHIER: Permission[] = [
+  PERMISSIONS.ordersRead,
+  PERMISSIONS.ordersWrite,
+  PERMISSIONS.returnsRead,
+  PERMISSIONS.returnsWrite,
+  PERMISSIONS.logsRead,
+  PERMISSIONS.administrationRead,
+  PERMISSIONS.administrationWrite,
 ];
 
 function permissionsForRole(role: EmployeeRole): Permission[] {
@@ -74,6 +98,13 @@ function permissionsForRole(role: EmployeeRole): Permission[] {
       return [PERMISSIONS.ordersRead, PERMISSIONS.warehouseRead];
     case "cleaner":
       return [];
+    case "cashier":
+      return CASHIER;
+    case "invoicing_clerk":
+      return [
+        ...CASHIER,
+        PERMISSIONS.administrationReports,
+      ];
     default:
       return [];
   }

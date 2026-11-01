@@ -84,6 +84,12 @@ export const EMPLOYEE_CATEGORIES = [
     roles: ["sales_admin", "sales_agent"] as const,
   },
   {
+    id: "administration",
+    label: "Administration",
+    description: "Invoicing office — cash register, payments, expenses",
+    roles: ["cashier", "invoicing_clerk"] as const,
+  },
+  {
     id: "warehouse",
     label: "Warehouse",
     description: "Depot — loading, trucks, stock (Albanian mobile app)",
@@ -116,6 +122,16 @@ export const EMPLOYEE_ROLES = [
   { id: "showroom_picker", label: "Showroom picker", category: "showroom" as const },
   { id: "sales_admin", label: "Sales admin (office)", category: "sales" as const },
   { id: "sales_agent", label: "Sales agent (field)", category: "sales" as const },
+  {
+    id: "cashier",
+    label: "Cashier (register & invoices)",
+    category: "administration" as const,
+  },
+  {
+    id: "invoicing_clerk",
+    label: "Invoicing office clerk",
+    category: "administration" as const,
+  },
   {
     id: "warehouse_admin",
     label: "Warehouse lead / admin",

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth";
+import { runApiWithTenant } from "@/lib/auth/api-guard";
+import type { SessionUser } from "@/lib/auth/session";
+import { sessionHasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import {
   createCustomerReturn,
   listCustomerReturns,
@@ -9,9 +11,21 @@ import { isReturnCondition } from "@/lib/customer-return-conditions";
 
 export const runtime = "nodejs";
 
+function canAccessReturns(session: SessionUser) {
+  if (session.role === "admin") return true;
+  return sessionHasPermission(session, PERMISSIONS.returnsRead);
+}
+
+function canWriteReturns(session: SessionUser) {
+  if (session.role === "admin") return true;
+  return sessionHasPermission(session, PERMISSIONS.returnsWrite);
+}
+
 export async function GET(request: Request) {
-  try {
-    await requireAdmin();
+  return runApiWithTenant(async ({ session }) => {
+    if (!canAccessReturns(session)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
     const url = new URL(request.url);
     const invoice = url.searchParams.get("invoice")?.trim();
     if (invoice) {
@@ -22,14 +36,14 @@ export async function GET(request: Request) {
       return NextResponse.json(order);
     }
     return NextResponse.json({ returns: await listCustomerReturns() });
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  });
 }
 
 export async function POST(request: Request) {
-  try {
-    await requireAdmin();
+  return runApiWithTenant(async ({ session }) => {
+    if (!canWriteReturns(session)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
     const body = (await request.json()) as {
       invoiceNumber?: string;
       notes?: string;
@@ -72,8 +86,5 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json(result);
-  } catch (err) {
-    console.error("[returns POST]", err);
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  });
 }

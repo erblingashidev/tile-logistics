@@ -173,6 +173,90 @@ async function ensureInvoiceImportTables(client: Client) {
   `);
 }
 
+async function ensureAdministrationRegisterTables(client: Client) {
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS admin_register_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'open',
+      opened_at TEXT NOT NULL,
+      opened_by_employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+      opened_by_admin_id INTEGER REFERENCES admins(id) ON DELETE SET NULL,
+      opening_float_cents INTEGER NOT NULL DEFAULT 0,
+      closed_at TEXT,
+      closed_by_employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+      closed_by_admin_id INTEGER REFERENCES admins(id) ON DELETE SET NULL,
+      closing_cash_counted_cents INTEGER,
+      closing_notes TEXT,
+      created_at TEXT NOT NULL
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS admin_register_transactions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      register_session_id INTEGER REFERENCES admin_register_sessions(id) ON DELETE SET NULL,
+      kind TEXT NOT NULL,
+      payment_method TEXT,
+      amount_cents INTEGER NOT NULL,
+      currency TEXT NOT NULL DEFAULT 'EUR',
+      counterparty_name TEXT,
+      purpose TEXT,
+      expense_category TEXT,
+      order_id INTEGER REFERENCES orders(id) ON DELETE SET NULL,
+      invoice_reference TEXT,
+      receipt_reference TEXT,
+      recorded_by_employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+      recorded_by_admin_id INTEGER REFERENCES admins(id) ON DELETE SET NULL,
+      recorded_at TEXT NOT NULL,
+      locked INTEGER NOT NULL DEFAULT 0,
+      notes TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS admin_register_edit_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      transaction_id INTEGER NOT NULL REFERENCES admin_register_transactions(id) ON DELETE CASCADE,
+      requested_by_employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+      requested_by_admin_id INTEGER REFERENCES admins(id) ON DELETE SET NULL,
+      reason TEXT NOT NULL,
+      proposed_changes_json TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      reviewed_by_admin_id INTEGER REFERENCES admins(id) ON DELETE SET NULL,
+      reviewed_by_employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+      review_notes TEXT,
+      reviewed_at TEXT,
+      created_at TEXT NOT NULL
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS admin_register_audit_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      action TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      entity_id INTEGER,
+      payload_json TEXT,
+      actor_employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+      actor_admin_id INTEGER REFERENCES admins(id) ON DELETE SET NULL,
+      ip_address TEXT,
+      created_at TEXT NOT NULL
+    )
+  `);
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_admin_register_sessions_org_status ON admin_register_sessions(organization_id, status)"
+  );
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_admin_register_tx_org_recorded ON admin_register_transactions(organization_id, recorded_at)"
+  );
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_admin_register_audit_org ON admin_register_audit_log(organization_id, created_at)"
+  );
+}
+
 async function ensureEmployeeNotificationsTable(client: Client) {
   await client.execute(`
     CREATE TABLE IF NOT EXISTS employee_notifications (
@@ -1308,6 +1392,7 @@ export async function bootstrapOperationalDatabase(client: Client) {
   await ensureVehicleSchemaPatches(client);
   await ensureWarehouseSchemaPatches(client);
   await ensureInvoiceImportTables(client);
+  await ensureAdministrationRegisterTables(client);
 }
 
 export async function getControlPlaneDb() {
@@ -1335,6 +1420,7 @@ export async function getControlPlaneDb() {
         await ensureVehicleSchemaPatches(clientInstance);
         await ensureWarehouseSchemaPatches(clientInstance);
         await ensureInvoiceImportTables(clientInstance);
+        await ensureAdministrationRegisterTables(clientInstance);
         dbInstance = drizzle(clientInstance, { schema });
         if (shouldRunStartupBackfill()) {
           const { backfillAdminEmployeeLinks } = await import(

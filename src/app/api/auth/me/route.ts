@@ -5,6 +5,7 @@ import { getAdmin } from "@/lib/services/admins";
 import { getEmployee } from "@/lib/services/employees";
 import { getFeatureFlagsForSession } from "@/lib/services/feature-flags";
 import { runWithTenantOrganizationAsync } from "@/lib/organizations/tenant-context";
+import { resolvePermissionsForSession } from "@/lib/auth/permissions";
 
 export const runtime = "nodejs";
 
@@ -15,6 +16,7 @@ export async function GET() {
   }
 
   const features = await getFeatureFlagsForSession(session);
+  const permissions = [...resolvePermissionsForSession(session)];
 
   if (session.role === "admin") {
     if (session.adminId > 0) {
@@ -38,6 +40,7 @@ export async function GET() {
               onboardingComplete: session.onboardingComplete !== false,
             },
             features,
+            permissions,
           }),
           features
         );
@@ -56,6 +59,7 @@ export async function GET() {
           onboardingComplete: session.onboardingComplete !== false,
         },
         features,
+        permissions,
       }),
       features
     );
@@ -79,6 +83,7 @@ export async function GET() {
           username: profile?.username ?? null,
         },
         features,
+        permissions,
       }),
       features
     );

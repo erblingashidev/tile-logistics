@@ -26,6 +26,8 @@ export const SALES_ROLES: EmployeeRole[] = [
   "showroom_picker",
 ];
 
+export const CASHIER_ROLES: EmployeeRole[] = ["cashier", "invoicing_clerk"];
+
 export const FACILITY_ROLES: EmployeeRole[] = ["cleaner"];
 
 export const WMS_STAFF_ROLES: EmployeeRole[] = [
@@ -53,6 +55,7 @@ export const WAREHOUSE_WEEKLY_REPORT_ROLES: EmployeeRole[] = [
 
 const CATEGORY_ORDER: EmployeeCategoryId[] = [
   "management",
+  "administration",
   "warehouse",
   "sales",
   "showroom",
@@ -98,6 +101,15 @@ export function isShowroomStaff(roles: EmployeeRole[]): boolean {
   return roles.includes("showroom_picker");
 }
 
+export function isCashierStaff(roles: EmployeeRole[]): boolean {
+  return roles.some((r) => CASHIER_ROLES.includes(r));
+}
+
+/** Cashiers use the admin app (orders, register) — not sales portal or warehouse. */
+export function isCashierOnly(roles: EmployeeRole[]): boolean {
+  return isCashierStaff(roles) && !isWarehouseStaff(roles) && !isSalesStaff(roles);
+}
+
 export function usesAlbanianPortal(roles: EmployeeRole[]): boolean {
   return isWarehouseStaff(roles);
 }
@@ -105,6 +117,7 @@ export function usesAlbanianPortal(roles: EmployeeRole[]): boolean {
 export const SALES_HOME = "/sales";
 
 export function employeeLoginRedirect(roles: EmployeeRole[]): string {
+  if (isCashierOnly(roles)) return "/administration";
   if (isSalesStaff(roles)) return SALES_HOME;
   if (isWarehouseStaff(roles)) return "/portal";
   return "/portal/no-access";

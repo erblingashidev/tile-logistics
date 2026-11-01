@@ -24,6 +24,11 @@ const MODULE_LABELS: { key: keyof CompanyModuleFlags; label: string; hint: strin
       label: "Employee portal",
       hint: "Drivers and warehouse staff use phones in the field",
     },
+    {
+      key: "administration",
+      label: "Administration",
+      hint: "Cash register, payments, expenses, and office reports",
+    },
   ];
 
 export function CompanySettingsCard() {
@@ -41,6 +46,7 @@ export function CompanySettingsCard() {
     returns: true,
     employeePortal: false,
     useInvoices: true,
+    administration: true,
   });
   const [warehouse, setWarehouse] = useState({
     name: "",

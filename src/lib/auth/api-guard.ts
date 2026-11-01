@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import type { SessionUser } from "@/lib/auth/session";
-import { isSalesStaff } from "@/lib/employee-categories";
+import { isCashierStaff, isSalesStaff } from "@/lib/employee-categories";
 import {
   bindTenantOrganization,
   resolveSessionOrganizationId,
@@ -160,7 +160,11 @@ export function salesWriteForbidden(
   method: string
 ): NextResponse | null {
   if (method === "GET" || method === "HEAD") return null;
-  if (session.role === "employee" && isSalesStaff(session.roles)) {
+  if (
+    session.role === "employee" &&
+    isSalesStaff(session.roles) &&
+    !isCashierStaff(session.roles)
+  ) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   return null;

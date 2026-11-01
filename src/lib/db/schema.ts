@@ -755,3 +755,128 @@ export const employeeNotifications = sqliteTable("employee_notifications", {
   readAt: text("read_at"),
   createdAt: text("created_at").notNull(),
 });
+
+/** Cash register shift — one open session per org at a time. */
+export const adminRegisterSessions = sqliteTable("admin_register_sessions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  status: text("status").notNull().default("open"),
+  openedAt: text("opened_at").notNull(),
+  openedByEmployeeId: integer("opened_by_employee_id").references(
+    () => employees.id,
+    { onDelete: "set null" }
+  ),
+  openedByAdminId: integer("opened_by_admin_id").references(() => admins.id, {
+    onDelete: "set null",
+  }),
+  openingFloatCents: integer("opening_float_cents").notNull().default(0),
+  closedAt: text("closed_at"),
+  closedByEmployeeId: integer("closed_by_employee_id").references(
+    () => employees.id,
+    { onDelete: "set null" }
+  ),
+  closedByAdminId: integer("closed_by_admin_id").references(() => admins.id, {
+    onDelete: "set null",
+  }),
+  closingCashCountedCents: integer("closing_cash_counted_cents"),
+  closingNotes: text("closing_notes"),
+  createdAt: text("created_at").notNull(),
+});
+
+/** Ledger line: payments, expenses, refunds — tied to register session when recorded. */
+export const adminRegisterTransactions = sqliteTable(
+  "admin_register_transactions",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    organizationId: integer("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    registerSessionId: integer("register_session_id").references(
+      () => adminRegisterSessions.id,
+      { onDelete: "set null" }
+    ),
+    kind: text("kind").notNull(),
+    paymentMethod: text("payment_method"),
+    amountCents: integer("amount_cents").notNull(),
+    currency: text("currency").notNull().default("EUR"),
+    counterpartyName: text("counterparty_name"),
+    purpose: text("purpose"),
+    expenseCategory: text("expense_category"),
+    orderId: integer("order_id").references(() => orders.id, {
+      onDelete: "set null",
+    }),
+    invoiceReference: text("invoice_reference"),
+    receiptReference: text("receipt_reference"),
+    recordedByEmployeeId: integer("recorded_by_employee_id").references(
+      () => employees.id,
+      { onDelete: "set null" }
+    ),
+    recordedByAdminId: integer("recorded_by_admin_id").references(
+      () => admins.id,
+      { onDelete: "set null" }
+    ),
+    recordedAt: text("recorded_at").notNull(),
+    locked: integer("locked", { mode: "boolean" }).notNull().default(false),
+    notes: text("notes"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  }
+);
+
+/** Staff request to change a locked / submitted ledger line — management approves. */
+export const adminRegisterEditRequests = sqliteTable(
+  "admin_register_edit_requests",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    organizationId: integer("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    transactionId: integer("transaction_id")
+      .notNull()
+      .references(() => adminRegisterTransactions.id, { onDelete: "cascade" }),
+    requestedByEmployeeId: integer("requested_by_employee_id").references(
+      () => employees.id,
+      { onDelete: "set null" }
+    ),
+    requestedByAdminId: integer("requested_by_admin_id").references(
+      () => admins.id,
+      { onDelete: "set null" }
+    ),
+    reason: text("reason").notNull(),
+    proposedChangesJson: text("proposed_changes_json").notNull(),
+    status: text("status").notNull().default("pending"),
+    reviewedByAdminId: integer("reviewed_by_admin_id").references(
+      () => admins.id,
+      { onDelete: "set null" }
+    ),
+    reviewedByEmployeeId: integer("reviewed_by_employee_id").references(
+      () => employees.id,
+      { onDelete: "set null" }
+    ),
+    reviewNotes: text("review_notes"),
+    reviewedAt: text("reviewed_at"),
+    createdAt: text("created_at").notNull(),
+  }
+);
+
+/** Append-only audit trail for register actions (anti-theft). */
+export const adminRegisterAuditLog = sqliteTable("admin_register_audit_log", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  organizationId: integer("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  action: text("action").notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: integer("entity_id"),
+  payloadJson: text("payload_json"),
+  actorEmployeeId: integer("actor_employee_id").references(() => employees.id, {
+    onDelete: "set null",
+  }),
+  actorAdminId: integer("actor_admin_id").references(() => admins.id, {
+    onDelete: "set null",
+  }),
+  ipAddress: text("ip_address"),
+  createdAt: text("created_at").notNull(),
+});
