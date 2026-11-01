@@ -9,8 +9,10 @@ import { FeatureFlagsProvider } from "@/components/features/FeatureFlagsProvider
 import { CompanyProfileProvider } from "@/components/company/CompanyProfileProvider";
 import { OrgPathProvider } from "@/components/organization/OrgPathProvider";
 import { AdminSessionProvider } from "@/components/layout/AdminSessionProvider";
+import { CashierLayoutGate } from "@/components/layout/CashierLayoutGate";
 import { resolveSessionTenantSlug } from "@/lib/organizations/paths";
 import type { EmployeeRole } from "@/lib/constants";
+import { getOrganizationDisplayName } from "@/lib/services/organizations";
 
 export const dynamic = "force-dynamic";
 
@@ -45,23 +47,33 @@ export default async function AdminLayout({
   const platformAdmin =
     session.role === "admin" &&
     (session.adminId === 0 || session.isPlatformAdmin === true);
+  const organizationId = session.organizationId ?? null;
+  const organizationName =
+    organizationId != null && organizationId > 0
+      ? await getOrganizationDisplayName(organizationId)
+      : null;
 
   const shellSession = {
     role: session.role,
+    shellMode:
+      session.role === "employee" ? ("cashier" as const) : ("admin" as const),
     roles:
       session.role === "employee" ? session.roles : ([] as EmployeeRole[]),
     name: session.name,
     isPlatformAdmin: platformAdmin,
-    organizationId: session.organizationId ?? null,
+    organizationId,
+    organizationName,
   };
 
   return (
     <AdminSessionProvider session={shellSession}>
-      <OrgPathProvider organizationSlug={organizationSlug}>
-        <FeatureFlagsProvider>
-          <CompanyProfileProvider>{children}</CompanyProfileProvider>
-        </FeatureFlagsProvider>
-      </OrgPathProvider>
+      <CashierLayoutGate>
+        <OrgPathProvider organizationSlug={organizationSlug}>
+          <FeatureFlagsProvider>
+            <CompanyProfileProvider>{children}</CompanyProfileProvider>
+          </FeatureFlagsProvider>
+        </OrgPathProvider>
+      </CashierLayoutGate>
     </AdminSessionProvider>
   );
 }

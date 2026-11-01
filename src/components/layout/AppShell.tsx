@@ -16,37 +16,14 @@ import type { CompanyModuleFlags } from "@/lib/company-profile";
 import type { FeatureFlags } from "@/lib/features/catalog";
 import { useOrgPath } from "@/components/organization/OrgPathProvider";
 import { GLOBAL_PATH_SEGMENTS } from "@/lib/organizations/paths";
-import type { EmployeeRole } from "@/lib/constants";
-import { isCashierOnly } from "@/lib/employee-categories";
 import { useAdminSession } from "@/components/layout/AdminSessionProvider";
+import { CashierPageFrame } from "@/components/layout/CashierPageFrame";
 
 function buildNavGroups(
   flags: FeatureFlags,
   modules: CompanyModuleFlags,
-  isPlatformAdmin: boolean,
-  employeeRoles: EmployeeRole[] | null,
-  sessionRole: "admin" | "employee" | null
+  isPlatformAdmin: boolean
 ) {
-  if (
-    sessionRole === "employee" &&
-    employeeRoles &&
-    isCashierOnly(employeeRoles)
-  ) {
-    return [
-      {
-        label: "Invoicing office",
-        items: [
-          { href: "/orders", label: "Orders & invoices" },
-          ...(modules.returns ? [{ href: "/returns", label: "Returns" }] : []),
-          ...(modules.administration !== false
-            ? [{ href: "/administration", label: "Administration" }]
-            : []),
-          { href: "/logs", label: "Logs" },
-        ],
-      },
-    ];
-  }
-
   return [
     {
       label: "Operations",
@@ -136,17 +113,20 @@ function NavLinks({
   const { orgPath } = useOrgPath();
   const adminSession = useAdminSession();
   const isPlatformAdmin = adminSession?.isPlatformAdmin ?? false;
-  const employeeRoles: EmployeeRole[] | null =
-    adminSession?.role === "employee" ? adminSession.roles : null;
-  const sessionRole = adminSession?.role ?? null;
 
-  const navGroups = buildNavGroups(
-    flags,
-    modules,
-    isPlatformAdmin,
-    employeeRoles,
-    sessionRole
-  );
+  if (!adminSession) {
+    return (
+      <div className={mobile ? "mb-4 px-3" : "mb-3 px-3"} aria-hidden>
+        <div className="h-4 w-24 animate-pulse rounded bg-white/10" />
+        <div className="mt-3 space-y-2">
+          <div className="h-8 animate-pulse rounded bg-white/5" />
+          <div className="h-8 animate-pulse rounded bg-white/5" />
+        </div>
+      </div>
+    );
+  }
+
+  const navGroups = buildNavGroups(flags, modules, isPlatformAdmin);
   return (
     <>
       {navGroups.map((group) => (
@@ -202,7 +182,7 @@ function MenuIcon({ open }: { open: boolean }) {
   );
 }
 
-export function AppShell({
+function AdminAppShell({
   children,
   title,
   description,
@@ -211,7 +191,6 @@ export function AppShell({
   children: React.ReactNode;
   title?: string;
   description?: string;
-  /** default = 1280px; wide = 1680px; full = use full viewport width */
   contentMaxWidth?: "default" | "wide" | "full";
 }) {
   const mainMaxWidthClass =
@@ -500,6 +479,30 @@ export function AppShell({
           </main>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Routes cashiers to a dedicated shell so admin nav never mounts. */
+export function AppShell(
+  props: {
+    children: React.ReactNode;
+    title?: string;
+    description?: string;
+    contentMaxWidth?: "default" | "wide" | "full";
+  }
+) {
+  const session = useAdminSession();
+  if (session?.shellMode === "cashier") {
+    return <CashierPageFrame {...props} />;
+  }
+  if (session?.shellMode === "admin") {
+    return <AdminAppShell {...props} />;
+  }
+  return (
+    <div className="flex min-h-screen bg-[var(--background)]">
+      <aside className="hidden w-56 shrink-0 bg-[var(--sidebar)] lg:block" />
+      <main className="min-w-0 flex-1 px-4 py-6">{props.children}</main>
     </div>
   );
 }

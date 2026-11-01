@@ -3,12 +3,16 @@
 import { createContext, useContext } from "react";
 import type { EmployeeRole } from "@/lib/constants";
 
+export type AdminShellMode = "admin" | "cashier";
+
 export type AdminShellSession = {
   role: "admin" | "employee";
+  shellMode: AdminShellMode;
   roles: EmployeeRole[];
   name: string;
   isPlatformAdmin: boolean;
   organizationId: number | null;
+  organizationName: string | null;
 };
 
 const AdminSessionContext = createContext<AdminShellSession | null>(null);
