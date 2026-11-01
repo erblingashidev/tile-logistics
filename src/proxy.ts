@@ -69,7 +69,6 @@ const CASHIER_ADMIN_PREFIXES = [
 ];
 
 function cashierAdminPathAllowed(pathname: string) {
-  if (pathname === "/") return true;
   return CASHIER_ADMIN_PREFIXES.some(
     (p) => pathname === p || pathname.startsWith(`${p}/`)
   );
@@ -234,6 +233,14 @@ export async function proxy(request: NextRequest) {
   }
 
   if (session.role === "employee") {
+    if (
+      isCashierOnly(session.roles) &&
+      (pathname === "/" || pathname === "")
+    ) {
+      return NextResponse.redirect(
+        appUrl(request, session, "/administration")
+      );
+    }
     if (!employeePathAllowed(pathname, session.roles, wmsEnabled)) {
       if (pathname.startsWith("/api/")) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });

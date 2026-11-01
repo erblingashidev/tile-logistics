@@ -3,8 +3,8 @@
 import { useAdminSession } from "@/components/layout/AdminSessionProvider";
 import { CashierAppShell } from "@/components/layout/CashierAppShell";
 
-/** Keeps invoicing-office chrome mounted across client navigations. */
-export function CashierLayoutGate({ children }: { children: React.ReactNode }) {
+/** Persistent invoicing-office chrome (must sit inside OrgPath + CompanyProfile providers). */
+export function CashierChrome({ children }: { children: React.ReactNode }) {
   const session = useAdminSession();
   if (session?.shellMode !== "cashier") {
     return children;

@@ -9,10 +9,9 @@ import { FeatureFlagsProvider } from "@/components/features/FeatureFlagsProvider
 import { CompanyProfileProvider } from "@/components/company/CompanyProfileProvider";
 import { OrgPathProvider } from "@/components/organization/OrgPathProvider";
 import { AdminSessionProvider } from "@/components/layout/AdminSessionProvider";
-import { CashierLayoutGate } from "@/components/layout/CashierLayoutGate";
+import { CashierChrome } from "@/components/layout/CashierChrome";
 import { resolveSessionTenantSlug } from "@/lib/organizations/paths";
 import type { EmployeeRole } from "@/lib/constants";
-import { getOrganizationDisplayName } from "@/lib/services/organizations";
 
 export const dynamic = "force-dynamic";
 
@@ -48,10 +47,6 @@ export default async function AdminLayout({
     session.role === "admin" &&
     (session.adminId === 0 || session.isPlatformAdmin === true);
   const organizationId = session.organizationId ?? null;
-  const organizationName =
-    organizationId != null && organizationId > 0
-      ? await getOrganizationDisplayName(organizationId)
-      : null;
 
   const shellSession = {
     role: session.role,
@@ -62,17 +57,17 @@ export default async function AdminLayout({
     name: session.name,
     isPlatformAdmin: platformAdmin,
     organizationId,
-    organizationName,
+    organizationName: organizationSlug,
   };
 
   return (
     <AdminSessionProvider session={shellSession}>
       <OrgPathProvider organizationSlug={organizationSlug}>
-        <CashierLayoutGate>
-          <FeatureFlagsProvider>
-            <CompanyProfileProvider>{children}</CompanyProfileProvider>
-          </FeatureFlagsProvider>
-        </CashierLayoutGate>
+        <FeatureFlagsProvider>
+          <CompanyProfileProvider>
+            <CashierChrome>{children}</CashierChrome>
+          </CompanyProfileProvider>
+        </FeatureFlagsProvider>
       </OrgPathProvider>
     </AdminSessionProvider>
   );
