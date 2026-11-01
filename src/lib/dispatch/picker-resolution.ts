@@ -7,6 +7,7 @@ import {
   orderEmployeeAssignments,
   orders,
 } from "@/lib/db/schema";
+import { resolveTenantOrganizationId } from "@/lib/organizations/tenant-context";
 
 export type PickerAssignmentContext = {
   /** `${vehicleId}:${deliveryRound}` → picker responsible for that truck load */
@@ -178,6 +179,7 @@ export async function resolvePickerForTruck(
     if (row) return row;
   }
 
+  const organizationId = await resolveTenantOrganizationId();
   const db = await getDb();
   const rows = await dbAll(
     db
@@ -188,6 +190,7 @@ export async function resolvePickerForTruck(
         roles: employees.roles,
       })
       .from(employees)
+      .where(eq(employees.organizationId, organizationId))
   );
 
   const pickers = rows.filter((e) => {

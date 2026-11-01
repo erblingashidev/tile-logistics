@@ -1,4 +1,4 @@
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { dbAll } from "@/lib/db/query";
 import {
@@ -22,6 +22,7 @@ import { listDeliveryProofsBatch } from "@/lib/services/delivery-proofs";
 import { parseEmployeeRoles } from "@/lib/services/employees";
 import { loadStatusFromProofs } from "@/lib/services/load-coordination";
 import type { LinkedOrderSummary } from "@/lib/services/order-delivery-links";
+import { resolveTenantOrganizationId } from "@/lib/organizations/tenant-context";
 
 type OrderRow = typeof orders.$inferSelect;
 
@@ -147,6 +148,7 @@ export async function enrichOrdersForList(
   if (rows.length === 0) return [];
 
   const orderIds = rows.map((row) => row.id);
+  const organizationId = await resolveTenantOrganizationId();
   const db = await getDb();
 
   const [proofsByOrder, assignmentRows, staffRows, itemRows, proofLineRows] =
@@ -184,7 +186,12 @@ export async function enrichOrdersForList(
           employees,
           eq(orderEmployeeAssignments.employeeId, employees.id)
         )
-        .where(inArray(orderEmployeeAssignments.orderId, orderIds))
+        .where(
+          and(
+            inArray(orderEmployeeAssignments.orderId, orderIds),
+            eq(employees.organizationId, organizationId)
+          )
+        )
     ) as Promise<StaffAssignmentRow[]>,
     dbAll(
       db.select().from(orderItems).where(inArray(orderItems.orderId, orderIds))
@@ -236,7 +243,12 @@ export async function enrichOrdersForList(
               assignedVehicleId: employees.assignedVehicleId,
             })
             .from(employees)
-            .where(inArray(employees.assignedVehicleId, vehicleIds))
+            .where(
+              and(
+                inArray(employees.assignedVehicleId, vehicleIds),
+                eq(employees.organizationId, organizationId)
+              )
+            )
         )
       : [];
 
@@ -265,7 +277,12 @@ export async function enrichOrdersForList(
       db
         .select({ id: employees.id, name: employees.name })
         .from(employees)
-        .where(inArray(employees.id, explicitDriverIds))
+        .where(
+          and(
+            inArray(employees.id, explicitDriverIds),
+            eq(employees.organizationId, organizationId)
+          )
+        )
     );
     for (const row of namedDrivers) {
       driverNameById.set(row.id, row.name);

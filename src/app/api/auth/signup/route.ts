@@ -8,10 +8,15 @@ import {
   checkRateLimit,
   clientIpFromRequest,
 } from "@/lib/auth/rate-limit";
+import { isPublicCompanySignupEnabled } from "@/lib/config/signup";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  if (!isPublicCompanySignupEnabled()) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const ip = clientIpFromRequest(request);
   if (!checkRateLimit(`signup:${ip}`, 5, 60_000)) {
     return NextResponse.json(

@@ -155,8 +155,8 @@ export const sq = {
   login: {
     title: "Hyr në sistem",
     subtitle: "Për llogari ekzistuese — depo, shofer, admin",
-    existingAccount:
-      "Ke llogari dhe kompaninë të gatshme? Shkruaj emrin dhe fjalëkalimin më poshtë.",
+    existingAccount: "Shkruaj emrin e përdoruesit dhe fjalëkalimin.",
+    usernameHint: "Emri i përdoruesit nuk dallon shkronja të mëdha e të vogla.",
     username: "Emri i përdoruesit",
     password: "Fjalëkalimi",
     submit: "Hyr",
@@ -165,8 +165,6 @@ export const sq = {
     required: "Shkruaj emrin dhe fjalëkalimin",
     invalid: "Emri ose fjalëkalimi janë gabim",
     connect: "Nuk u lidh. Provo përsëri.",
-    newCompany: "Kompani e re?",
-    requestAccess: "Kërko akses",
   },
 
   wmsTitle: "Depo — regjistrim",

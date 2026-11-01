@@ -16,6 +16,7 @@ import { getVehicleLoad } from "@/lib/services/orders";
 import { getTruckLoadStatus } from "@/lib/services/load-coordination";
 import { getDriverForVehicle } from "@/lib/services/employees";
 import { listTransportVehicles } from "@/lib/services/vehicles";
+import { resolveTenantOrganizationId } from "@/lib/organizations/tenant-context";
 
 export interface DispatchBoardOrder {
   id: number;
@@ -147,6 +148,7 @@ export async function getDispatchBoard(
   const db = await getDb();
   const fleet = await listTransportVehicles();
 
+  const organizationId = await resolveTenantOrganizationId();
   const pickerRows = await dbAll(
     db
       .select({
@@ -156,6 +158,7 @@ export async function getDispatchBoard(
         roles: employees.roles,
       })
       .from(employees)
+      .where(eq(employees.organizationId, organizationId))
   );
   const pickers = pickerRows.filter((e) => {
     try {

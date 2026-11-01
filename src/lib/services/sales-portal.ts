@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { dbAll } from "@/lib/db/query";
 import { employees, orders } from "@/lib/db/schema";
@@ -30,11 +30,10 @@ export async function matchSalesEmployeeByAgentName(
   const target = normalizePersonName(agentName);
   if (!target) return null;
 
-  const db = await getDb();
-  const all = await dbAll(db.select().from(employees));
+  const all = await listEmployees();
 
   for (const row of all) {
-    const roles = parseEmployeeRoles(row.roles);
+    const roles = row.roles;
     if (!roles.some((r) => r === "sales_agent" || r === "sales_admin")) {
       continue;
     }
@@ -61,12 +60,21 @@ export async function resolveSalesOwnership(input: {
 }
 
 export async function listSalesAgentsForAdmin(adminEmployeeId: number) {
+  const { resolveTenantOrganizationId } = await import(
+    "@/lib/organizations/tenant-context"
+  );
+  const organizationId = await resolveTenantOrganizationId();
   const db = await getDb();
   const directReports = await dbAll(
     db
       .select({ id: employees.id, name: employees.name, roles: employees.roles })
       .from(employees)
-      .where(eq(employees.managerEmployeeId, adminEmployeeId))
+      .where(
+        and(
+          eq(employees.managerEmployeeId, adminEmployeeId),
+          eq(employees.organizationId, organizationId)
+        )
+      )
   );
 
   const agents = directReports.filter((row) =>
@@ -135,6 +143,10 @@ async function enrichSalesOrderRows<
     notes?: string | null;
   },
 >(rows: T[]) {
+  const { resolveTenantOrganizationId } = await import(
+    "@/lib/organizations/tenant-context"
+  );
+  const organizationId = await resolveTenantOrganizationId();
   const db = await getDb();
   const ids = [
     ...new Set(
@@ -150,7 +162,12 @@ async function enrichSalesOrderRows<
       db
         .select({ id: employees.id, name: employees.name })
         .from(employees)
-        .where(inArray(employees.id, ids))
+        .where(
+          and(
+            inArray(employees.id, ids),
+            eq(employees.organizationId, organizationId)
+          )
+        )
     );
     for (const row of agentRows) {
       nameById.set(row.id, row.name);

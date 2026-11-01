@@ -1,5 +1,8 @@
 import type { Client } from "@libsql/client";
+import { createClient } from "@libsql/client";
+import fs from "fs";
 import { and, desc, eq } from "drizzle-orm";
+import { runWithTenantOrganizationAsync } from "@/lib/organizations/tenant-context";
 import { hashPassword } from "@/lib/auth/password";
 import {
   CATEGORY_PRESETS,
@@ -802,6 +805,181 @@ const PLATFORM_SETTABLE_STATUSES = new Set([
   "trial",
   "inactive",
 ]);
+
+const ISOLATED_TENANT_WIPE_SQL = [
+  "DELETE FROM inventory_lines",
+  "DELETE FROM inventory_sector_counts",
+  "DELETE FROM inventory_snapshots",
+  "DELETE FROM inventory_variance_lines",
+  "DELETE FROM inventory_variance_reports",
+  "DELETE FROM inventory_sessions",
+  "DELETE FROM stock_movements",
+  "DELETE FROM stock_balances",
+  "DELETE FROM warehouse_report_edit_requests",
+  "DELETE FROM warehouse_report_photos",
+  "DELETE FROM warehouse_report_tags",
+  "DELETE FROM warehouse_report_zones",
+  "DELETE FROM warehouse_reports",
+  "DELETE FROM customer_returns",
+  "DELETE FROM employee_notifications",
+  "DELETE FROM employee_warehouse_zones",
+  "DELETE FROM delivery_proof_lines",
+  "DELETE FROM delivery_proofs",
+  "DELETE FROM order_employee_assignments",
+  "DELETE FROM assignments",
+  "DELETE FROM vehicle_round_defaults",
+  "DELETE FROM vehicle_maintenance_records",
+  "DELETE FROM order_items",
+  "DELETE FROM orders",
+  "DELETE FROM invoice_import_queue",
+  "DELETE FROM activity_logs",
+  "DELETE FROM product_aliases",
+  "DELETE FROM products",
+  "DELETE FROM warehouse_locations",
+  "DELETE FROM employees",
+  "DELETE FROM vehicles",
+];
+
+async function sqlClientForOrganization(orgId: number): Promise<Client> {
+  const { getOrganizationDatabaseConfig, isOrganizationDatabaseIsolated } =
+    await import("@/lib/db/tenant-database");
+  if (await isOrganizationDatabaseIsolated(orgId)) {
+    const config = await getOrganizationDatabaseConfig(orgId);
+    if (!config?.url?.trim()) {
+      throw new OrganizationError("Tenant database is not configured.");
+    }
+    return createClient({
+      url: config.url,
+      authToken: config.authToken,
+    });
+  }
+  const { getLibsqlClient } = await import("@/lib/db");
+  return getLibsqlClient();
+}
+
+async function purgeOrganizationOperationalData(organizationId: number) {
+  await runWithTenantOrganizationAsync(organizationId, async () => {
+    const { isOrganizationDatabaseIsolated } = await import(
+      "@/lib/db/tenant-database"
+    );
+    const isolated = await isOrganizationDatabaseIsolated(organizationId);
+    const client = await sqlClientForOrganization(organizationId);
+    try {
+      await client.execute("PRAGMA foreign_keys = ON");
+      if (isolated) {
+        for (const statement of ISOLATED_TENANT_WIPE_SQL) {
+          await client.execute(statement);
+        }
+        return;
+      }
+
+      const orgId = organizationId;
+      await client.execute({
+        sql: `DELETE FROM delivery_proofs WHERE order_id IN (SELECT id FROM orders WHERE organization_id = ?)`,
+        args: [orgId],
+      });
+      await client.execute({
+        sql: `DELETE FROM orders WHERE organization_id = ?`,
+        args: [orgId],
+      });
+      for (const table of [
+        "employees",
+        "vehicles",
+        "products",
+        "activity_logs",
+        "stock_movements",
+        "stock_balances",
+        "warehouse_locations",
+        "inventory_sessions",
+        "warehouse_reports",
+        "customer_returns",
+        "employee_notifications",
+        "invoice_import_queue",
+      ]) {
+        await client.execute({
+          sql: `DELETE FROM ${table} WHERE organization_id = ?`,
+          args: [orgId],
+        });
+      }
+    } finally {
+      if (isolated) {
+        client.close();
+      }
+    }
+  });
+}
+
+/**
+ * Platform admin: permanently remove a company and its data.
+ * Requires typing the company slug to confirm.
+ */
+export async function deleteOrganization(
+  organizationId: number,
+  confirmSlug: string
+) {
+  if (organizationId === LEGACY_AGIMI_ORGANIZATION_ID) {
+    throw new OrganizationError("The primary organization cannot be deleted.");
+  }
+  const org = await getOrganizationById(organizationId);
+  if (!org) throw new OrganizationError("Organization not found.");
+  const slug = confirmSlug.trim().toLowerCase();
+  if (!slug || slug !== org.slug) {
+    throw new OrganizationError("Type the company URL slug exactly to confirm deletion.");
+  }
+
+  const { getOrganizationDatabaseConfig } = await import(
+    "@/lib/db/tenant-database"
+  );
+  const dbConfig = await getOrganizationDatabaseConfig(organizationId);
+
+  await purgeOrganizationOperationalData(organizationId);
+
+  const cpClient = await (await import("@/lib/db")).getLibsqlClient();
+  await cpClient.execute({
+    sql: `DELETE FROM employee_directory WHERE organization_id = ?`,
+    args: [organizationId],
+  });
+  const db = await getControlPlaneDb();
+  await db
+    .delete(admins)
+    .where(
+      and(
+        eq(admins.organizationId, organizationId),
+        eq(admins.isPlatformAdmin, 0)
+      )
+    );
+  await db
+    .delete(organizationSettings)
+    .where(eq(organizationSettings.organizationId, organizationId));
+  await db
+    .delete(organizationOnboarding)
+    .where(eq(organizationOnboarding.organizationId, organizationId));
+  await db
+    .delete(organizationUnits)
+    .where(eq(organizationUnits.organizationId, organizationId));
+  await db
+    .update(organizationApplications)
+    .set({ organizationId: null })
+    .where(eq(organizationApplications.organizationId, organizationId));
+  await db.delete(organizations).where(eq(organizations.id, organizationId));
+
+  if (dbConfig?.url?.startsWith("file:")) {
+    const filePath = dbConfig.url.replace(/^file:/, "");
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  }
+
+  await logActivity(
+    "delete",
+    "organization",
+    organizationId,
+    `Deleted organization ${org.name}`,
+    { category: "system", details: { slug: org.slug } }
+  );
+
+  return { ok: true as const, id: organizationId, slug: org.slug };
+}
 
 /** Platform admin: change tenant lifecycle (active / suspended / trial / inactive). */
 export async function setOrganizationStatus(
