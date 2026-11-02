@@ -5,7 +5,10 @@ import {
   adminRegisterEditRequests,
   adminRegisterSessions,
   adminRegisterTransactions,
+  admins,
+  employees,
 } from "@/lib/db/schema";
+import { formatRegisterAuditLogMessage } from "@/lib/log-messages";
 import type { SessionUser } from "@/lib/auth/session";
 import {
   isAdminPaymentMethod,
@@ -415,6 +418,14 @@ export async function createTransactionEditRequest(
   reason: string,
   proposedChanges: ProposedTransactionPatch
 ) {
+  if (
+    session.role !== "admin" &&
+    sessionHasPermission(session, PERMISSIONS.administrationApprove)
+  ) {
+    throw new Error(
+      "Management cannot submit correction requests — edit open entries or review pending requests."
+    );
+  }
   const db = await getControlPlaneDb();
   const [tx] = await db
     .select()
@@ -727,6 +738,110 @@ export async function getRegisterReportSummary(
 
   const grandTotal = rows.reduce((s, r) => s + Number(r.totalCents ?? 0), 0);
   return { rows, grandTotalCents: grandTotal };
+}
+
+export type RegisterAuditLogEntry = {
+  id: number;
+  category: "administration";
+  message: string;
+  createdAt: string;
+  source: "administration";
+  detailsParsed: Record<string, unknown> | null;
+};
+
+export async function listRegisterAuditLogEntries(
+  organizationId: number,
+  filters?: {
+    dateFrom?: string;
+    dateTo?: string;
+    search?: string;
+    employeeId?: number;
+  }
+): Promise<RegisterAuditLogEntry[]> {
+  const db = await getControlPlaneDb();
+  const conditions = [
+    eq(adminRegisterAuditLog.organizationId, organizationId),
+  ];
+  if (filters?.dateFrom) {
+    conditions.push(gte(adminRegisterAuditLog.createdAt, filters.dateFrom));
+  }
+  if (filters?.dateTo) {
+    const to = filters.dateTo.includes("T")
+      ? filters.dateTo
+      : `${filters.dateTo}T23:59:59.999Z`;
+    conditions.push(lte(adminRegisterAuditLog.createdAt, to));
+  }
+  if (filters?.employeeId) {
+    conditions.push(
+      eq(adminRegisterAuditLog.actorEmployeeId, filters.employeeId)
+    );
+  }
+
+  const rows = await db
+    .select({
+      id: adminRegisterAuditLog.id,
+      action: adminRegisterAuditLog.action,
+      entityType: adminRegisterAuditLog.entityType,
+      entityId: adminRegisterAuditLog.entityId,
+      payloadJson: adminRegisterAuditLog.payloadJson,
+      actorEmployeeId: adminRegisterAuditLog.actorEmployeeId,
+      actorAdminId: adminRegisterAuditLog.actorAdminId,
+      createdAt: adminRegisterAuditLog.createdAt,
+      employeeName: employees.name,
+      adminUsername: admins.username,
+    })
+    .from(adminRegisterAuditLog)
+    .leftJoin(
+      employees,
+      eq(adminRegisterAuditLog.actorEmployeeId, employees.id)
+    )
+    .leftJoin(admins, eq(adminRegisterAuditLog.actorAdminId, admins.id))
+    .where(and(...conditions))
+    .orderBy(desc(adminRegisterAuditLog.createdAt))
+    .limit(500);
+
+  let mapped: RegisterAuditLogEntry[] = rows.map((row) => {
+    const actorLabel =
+      row.employeeName?.trim() ||
+      row.adminUsername?.trim() ||
+      (row.actorEmployeeId ? `Employee #${row.actorEmployeeId}` : null) ||
+      (row.actorAdminId ? `Admin #${row.actorAdminId}` : null);
+    const message = formatRegisterAuditLogMessage({
+      action: row.action,
+      entityType: row.entityType,
+      entityId: row.entityId,
+      payloadJson: row.payloadJson,
+      actorLabel,
+    });
+    let detailsParsed: Record<string, unknown> | null = null;
+    if (row.payloadJson) {
+      try {
+        detailsParsed = JSON.parse(row.payloadJson) as Record<string, unknown>;
+      } catch {
+        detailsParsed = null;
+      }
+    }
+    return {
+      id: row.id,
+      category: "administration",
+      message,
+      createdAt: row.createdAt,
+      source: "administration",
+      detailsParsed,
+    };
+  });
+
+  if (filters?.search?.trim()) {
+    const q = filters.search.trim().toLowerCase();
+    mapped = mapped.filter(
+      (log) =>
+        log.message.toLowerCase().includes(q) ||
+        (log.detailsParsed &&
+          JSON.stringify(log.detailsParsed).toLowerCase().includes(q))
+    );
+  }
+
+  return mapped;
 }
 
 export function canAccessAdministration(session: SessionUser): boolean {

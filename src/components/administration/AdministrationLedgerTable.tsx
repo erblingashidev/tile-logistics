@@ -212,7 +212,9 @@ export function AdministrationLedgerTable({
                         disabled={busy || t.locked || !canApprove}
                         title={
                           t.locked
-                            ? "Entry is locked — request edit instead"
+                            ? canApprove
+                              ? "Shift closed — review pending correction requests below"
+                              : "Entry is locked — request edit instead"
                             : !canApprove
                               ? "Only management can edit directly"
                               : "Edit this entry"
@@ -221,19 +223,21 @@ export function AdministrationLedgerTable({
                       >
                         Edit
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={busy || !t.locked}
-                        title={
-                          t.locked
-                            ? "Send correction request to management"
-                            : "Available after the register shift is closed"
-                        }
-                        onClick={() => openEditor(t, "request")}
-                      >
-                        Request edit
-                      </Button>
+                      {!canApprove ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={busy || !t.locked}
+                          title={
+                            t.locked
+                              ? "Send correction request to management"
+                              : "Available after the register shift is closed"
+                          }
+                          onClick={() => openEditor(t, "request")}
+                        >
+                          Request edit
+                        </Button>
+                      ) : null}
                     </div>
                   </td>
                 </tr>

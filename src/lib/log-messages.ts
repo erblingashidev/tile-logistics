@@ -7,7 +7,15 @@ export type LogCategory =
   | "vehicles"
   | "employees"
   | "deliveries"
+  | "administration"
   | "system";
+
+function formatAuditMoney(cents: number) {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "EUR",
+  }).format(cents / 100);
+}
 
 export interface LogRecord {
   id: number;
@@ -128,6 +136,62 @@ export function formatLogMessage(log: LogRecord): string {
   return `${formatStatusLabel(log.action)} — ${log.entityType}${log.entityId ? ` #${log.entityId}` : ""}`;
 }
 
+export function formatRegisterAuditLogMessage(log: {
+  action: string;
+  entityType: string;
+  entityId?: number | null;
+  payloadJson?: string | null;
+  actorLabel?: string | null;
+}): string {
+  let payload: Record<string, unknown> = {};
+  if (log.payloadJson) {
+    try {
+      payload = JSON.parse(log.payloadJson) as Record<string, unknown>;
+    } catch {
+      /* ignore */
+    }
+  }
+  const actor = log.actorLabel ? `${log.actorLabel}: ` : "";
+  const entryRef =
+    log.entityType === "register_transaction" && log.entityId
+      ? ` entry #${log.entityId}`
+      : log.entityId
+        ? ` #${log.entityId}`
+        : "";
+
+  switch (log.action) {
+    case "register.open": {
+      const float = Number(payload.openingFloatCents ?? 0);
+      return `${actor}Opened cash register (float ${formatAuditMoney(float)}).`;
+    }
+    case "register.close": {
+      const counted = Number(payload.closingCashCountedCents ?? 0);
+      const expected = Number(payload.expectedCashCents ?? 0);
+      const variance = Number(payload.cashVarianceCents ?? counted - expected);
+      const sign = variance > 0 ? "+" : variance < 0 ? "−" : "";
+      return `${actor}Closed cash register — counted ${formatAuditMoney(counted)}, expected ${formatAuditMoney(expected)} (${sign}${formatAuditMoney(Math.abs(variance))} variance).`;
+    }
+    case "transaction.create": {
+      const kind = String(payload.kind ?? "transaction");
+      const amount = formatAuditMoney(Math.abs(Number(payload.amountCents ?? 0)));
+      const method = payload.paymentMethod
+        ? ` via ${String(payload.paymentMethod).replace(/_/g, " ")}`
+        : "";
+      return `${actor}Recorded ${kind} ${amount}${method}${entryRef}.`;
+    }
+    case "transaction.patch":
+      return `${actor}Corrected register${entryRef}.`;
+    case "edit_request.create":
+      return `${actor}Requested management correction for register${entryRef}.`;
+    case "edit_request.approve":
+      return `${actor}Approved correction request for register${entryRef}.`;
+    case "edit_request.reject":
+      return `${actor}Rejected correction request for register${entryRef}.`;
+    default:
+      return `${actor}${formatStatusLabel(log.action.replace(/\./g, " "))}${entryRef}.`;
+  }
+}
+
 export const LOG_CATEGORY_META: Record<
   LogCategory,
   { label: string; color: string; bg: string }
@@ -136,6 +200,11 @@ export const LOG_CATEGORY_META: Record<
   vehicles: { label: "Vehicles", color: "text-emerald-700", bg: "bg-emerald-100" },
   employees: { label: "Employees", color: "text-orange-700", bg: "bg-orange-100" },
   deliveries: { label: "Deliveries", color: "text-violet-700", bg: "bg-violet-100" },
+  administration: {
+    label: "Cash register",
+    color: "text-amber-800",
+    bg: "bg-amber-100",
+  },
   system: { label: "System", color: "text-slate-700", bg: "bg-slate-100" },
 };
 

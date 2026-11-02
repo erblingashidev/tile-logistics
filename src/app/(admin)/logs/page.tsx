@@ -17,6 +17,7 @@ interface LogEntry {
   category: LogCategory;
   message: string;
   createdAt: string;
+  source?: "activity" | "administration";
   detailsParsed?: Record<string, unknown> | null;
 }
 
@@ -26,6 +27,7 @@ const FILTERS: { id: LogCategory | "all"; label: string }[] = [
   { id: "vehicles", label: "Vehicles" },
   { id: "employees", label: "Employees" },
   { id: "deliveries", label: "Deliveries" },
+  { id: "administration", label: "Cash register" },
 ];
 
 function dayLabel(dateStr: string): string {
@@ -97,7 +99,7 @@ export default function LogsPage() {
             />
             <Input
               label="Search"
-              placeholder="Invoice, vehicle, employee…"
+              placeholder="Invoice, customer, register action…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -150,7 +152,7 @@ export default function LogsPage() {
               <ul className="divide-y divide-zinc-100">
                 {dayLogs.map((log) => (
                   <li
-                    key={log.id}
+                    key={`${log.source ?? "activity"}-${log.id}`}
                     className="flex gap-4 px-4 py-3 text-sm hover:bg-zinc-50/50"
                   >
                     <span className="w-12 shrink-0 tabular-nums text-zinc-400">
