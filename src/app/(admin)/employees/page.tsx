@@ -307,12 +307,34 @@ export default function EmployeesPage() {
   }
 
   async function quickStatus(id: number, status: string) {
-    await fetch(`/api/employees/${id}`, {
+    const previous = employees.find((e) => e.id === id);
+    if (!previous || previous.status === status) return;
+
+    setEmployees((list) =>
+      list.map((e) => (e.id === id ? { ...e, status } : e))
+    );
+
+    const res = await fetch(`/api/employees/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
     });
-    load();
+    if (!res.ok) {
+      setEmployees((list) =>
+        list.map((e) =>
+          e.id === id ? { ...e, status: previous.status } : e
+        )
+      );
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      setFormError(body.error ?? "Could not update status.");
+      return;
+    }
+    const updated = (await res.json().catch(() => null)) as Employee | null;
+    if (updated?.id === id) {
+      setEmployees((list) =>
+        list.map((e) => (e.id === id ? { ...e, ...updated } : e))
+      );
+    }
   }
 
   return (
