@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, like, lte, or, sql } from "drizzle-orm";
 import { getControlPlaneDb } from "@/lib/db";
 import {
   adminRegisterAuditLog,
@@ -28,6 +28,30 @@ function signedAmountCents(kind: AdminTransactionKind, amountCents: number) {
   const abs = Math.abs(Math.round(amountCents));
   if (kind === "expense" || kind === "return_refund") return -abs;
   return abs;
+}
+
+function likeSearchPattern(query: string) {
+  const sanitized = query.trim().replace(/[%_]/g, " ");
+  return `%${sanitized}%`;
+}
+
+/** Payment (income) must always identify who paid and which invoice was settled. */
+export function assertPaymentIncomeRequiredFields(
+  kind: string,
+  counterpartyName: string | null | undefined,
+  invoiceReference: string | null | undefined
+) {
+  if (kind !== "payment") return;
+  if (!counterpartyName?.trim()) {
+    throw new Error(
+      "Customer name is required for payment (income) entries."
+    );
+  }
+  if (!invoiceReference?.trim()) {
+    throw new Error(
+      "Invoice number is required for payment (income) entries."
+    );
+  }
 }
 
 export async function appendRegisterAudit(
@@ -215,6 +239,8 @@ export type ListTransactionsFilters = {
   paymentMethod?: AdminPaymentMethod;
   kind?: AdminTransactionKind;
   registerSessionId?: number;
+  /** Matches customer, invoice #, purpose, notes, and related text fields. */
+  search?: string;
   limit?: number;
 };
 
@@ -241,6 +267,21 @@ export async function listRegisterTransactions(
   if (filters.registerSessionId) {
     conditions.push(
       eq(adminRegisterTransactions.registerSessionId, filters.registerSessionId)
+    );
+  }
+  if (filters.search?.trim()) {
+    const pattern = likeSearchPattern(filters.search);
+    conditions.push(
+      or(
+        like(adminRegisterTransactions.counterpartyName, pattern),
+        like(adminRegisterTransactions.invoiceReference, pattern),
+        like(adminRegisterTransactions.purpose, pattern),
+        like(adminRegisterTransactions.expenseCategory, pattern),
+        like(adminRegisterTransactions.notes, pattern),
+        like(adminRegisterTransactions.receiptReference, pattern),
+        like(adminRegisterTransactions.paymentMethod, pattern),
+        like(adminRegisterTransactions.kind, pattern)
+      )!
     );
   }
   const limit = Math.min(filters.limit ?? 500, 2000);
@@ -296,6 +337,12 @@ export async function createRegisterTransaction(
   const recordedAt = input.recordedAt?.trim() || ts;
   const amountCents = signedAmountCents(kind, input.amountCents);
 
+  assertPaymentIncomeRequiredFields(
+    kind,
+    input.counterpartyName,
+    input.invoiceReference
+  );
+
   const inserted = await db
     .insert(adminRegisterTransactions)
     .values({
@@ -344,6 +391,23 @@ export type ProposedTransactionPatch = Partial<{
   notes: string | null;
 }>;
 
+function mergedPaymentFields(
+  tx: RegisterTransactionRow,
+  patch: ProposedTransactionPatch
+) {
+  return {
+    kind: patch.kind ?? tx.kind,
+    counterpartyName:
+      patch.counterpartyName !== undefined
+        ? patch.counterpartyName
+        : tx.counterpartyName,
+    invoiceReference:
+      patch.invoiceReference !== undefined
+        ? patch.invoiceReference
+        : tx.invoiceReference,
+  };
+}
+
 export async function createTransactionEditRequest(
   organizationId: number,
   session: SessionUser,
@@ -379,6 +443,13 @@ export async function createTransactionEditRequest(
     )
     .limit(1);
   if (pending[0]) throw new Error("An edit request is already pending.");
+
+  const merged = mergedPaymentFields(tx, proposedChanges);
+  assertPaymentIncomeRequiredFields(
+    merged.kind,
+    merged.counterpartyName,
+    merged.invoiceReference
+  );
 
   const ts = nowIso();
   const inserted = await db
@@ -463,6 +534,13 @@ export async function reviewTransactionEditRequest(
     .where(eq(adminRegisterTransactions.id, req.transactionId))
     .limit(1);
   if (!tx) throw new Error("Transaction missing.");
+
+  const merged = mergedPaymentFields(tx, patch);
+  assertPaymentIncomeRequiredFields(
+    merged.kind,
+    merged.counterpartyName,
+    merged.invoiceReference
+  );
 
   let amountCents = tx.amountCents;
   if (patch.amountCents != null) {
@@ -551,6 +629,13 @@ export async function patchRegisterTransaction(
   if (tx.locked) {
     throw new Error("Locked transaction — use edit request workflow.");
   }
+
+  const merged = mergedPaymentFields(tx, patch);
+  assertPaymentIncomeRequiredFields(
+    merged.kind,
+    merged.counterpartyName,
+    merged.invoiceReference
+  );
 
   let amountCents = tx.amountCents;
   if (patch.amountCents != null) {

@@ -115,6 +115,16 @@ export function AdministrationLedgerTable({
   async function submitEditor(e: React.FormEvent) {
     e.preventDefault();
     if (!editor) return;
+    if (form.kind === "payment") {
+      if (!form.counterparty.trim()) {
+        onError("Customer name is required for payment (income).");
+        return;
+      }
+      if (!form.invoiceReference.trim()) {
+        onError("Invoice number is required for payment (income).");
+        return;
+      }
+    }
     onBusyChange(true);
     onError("");
     const patch = buildPatchFromForm(form);
@@ -168,7 +178,8 @@ export function AdministrationLedgerTable({
                 <th className="px-3 py-2">Kind</th>
                 <th className="px-3 py-2">Method</th>
                 <th className="px-3 py-2">Amount</th>
-                <th className="px-3 py-2">Party</th>
+                <th className="px-3 py-2">Customer / party</th>
+                <th className="px-3 py-2">Invoice #</th>
                 <th className="px-3 py-2">Purpose</th>
                 <th className="px-3 py-2">Locked</th>
                 <th className="px-3 py-2 text-right">Actions</th>
@@ -186,6 +197,9 @@ export function AdministrationLedgerTable({
                     {formatAdminMoney(t.amountCents)}
                   </td>
                   <td className="px-3 py-2">{t.counterpartyName ?? "—"}</td>
+                  <td className="px-3 py-2 whitespace-nowrap font-mono text-xs">
+                    {t.invoiceReference ?? "—"}
+                  </td>
                   <td className="px-3 py-2 max-w-xs truncate">
                     {t.purpose ?? "—"}
                   </td>
@@ -271,11 +285,12 @@ export function AdministrationLedgerTable({
               required
             />
             <Input
-              label="Party"
+              label={form.kind === "payment" ? "Customer name" : "Party"}
               value={form.counterparty}
               onChange={(e) =>
                 setForm((f) => ({ ...f, counterparty: e.target.value }))
               }
+              required={form.kind === "payment"}
             />
             <Input
               label="Purpose"
@@ -292,11 +307,14 @@ export function AdministrationLedgerTable({
               />
             ) : null}
             <Input
-              label="Invoice / receipt ref"
+              label={
+                form.kind === "payment" ? "Invoice number" : "Invoice / receipt ref"
+              }
               value={form.invoiceReference}
               onChange={(e) =>
                 setForm((f) => ({ ...f, invoiceReference: e.target.value }))
               }
+              required={form.kind === "payment"}
             />
             {editor.mode === "request" ? (
               <Input

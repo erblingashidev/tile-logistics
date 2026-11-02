@@ -82,6 +82,7 @@ export default function AdministrationPage() {
   );
   const [filterPayment, setFilterPayment] = useState("");
   const [filterKind, setFilterKind] = useState("");
+  const [filterSearch, setFilterSearch] = useState("");
 
   const [formKind, setFormKind] = useState("payment");
   const [formPayment, setFormPayment] = useState("cash");
@@ -133,13 +134,14 @@ export default function AdministrationPage() {
     });
     if (filterPayment) params.set("paymentMethod", filterPayment);
     if (filterKind) params.set("kind", filterKind);
+    if (filterSearch.trim()) params.set("search", filterSearch.trim());
     const res = await fetch(`/api/administration/transactions?${params}`, {
       cache: "no-store",
     });
     if (!res.ok) throw new Error("Could not load transactions");
     const data = await res.json();
     setTransactions(data.transactions ?? []);
-  }, [filterFrom, filterTo, filterPayment, filterKind]);
+  }, [filterFrom, filterTo, filterPayment, filterKind, filterSearch]);
 
   const loadPending = useCallback(async () => {
     const res = await fetch("/api/administration/edit-requests", {
@@ -250,6 +252,16 @@ export default function AdministrationPage() {
 
   async function submitTransaction(e: React.FormEvent) {
     e.preventDefault();
+    if (formKind === "payment") {
+      if (!formCounterparty.trim()) {
+        setError("Customer name is required for payment (income).");
+        return;
+      }
+      if (!formInvoiceRef.trim()) {
+        setError("Invoice number is required for payment (income).");
+        return;
+      }
+    }
     setBusy(true);
     setError("");
     try {
@@ -273,6 +285,7 @@ export default function AdministrationPage() {
       setFormAmount("");
       setFormPurpose("");
       setFormCounterparty("");
+      setFormInvoiceRef("");
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed");
@@ -432,10 +445,13 @@ export default function AdministrationPage() {
               />
               <Input
                 label={
-                  formKind === "expense" ? "Paid to (person / vendor)" : "Customer / payer"
+                  formKind === "expense"
+                    ? "Paid to (person / vendor)"
+                    : "Customer name"
                 }
                 value={formCounterparty}
                 onChange={(e) => setFormCounterparty(e.target.value)}
+                required={formKind === "payment"}
               />
               <Input
                 label="Purpose / description"
@@ -450,9 +466,19 @@ export default function AdministrationPage() {
                 />
               ) : null}
               <Input
-                label="Invoice / receipt reference"
+                label={
+                  formKind === "payment"
+                    ? "Invoice number"
+                    : "Invoice / receipt reference"
+                }
                 value={formInvoiceRef}
                 onChange={(e) => setFormInvoiceRef(e.target.value)}
+                required={formKind === "payment"}
+                hint={
+                  formKind === "payment"
+                    ? "Required so every payment is tied to an invoice."
+                    : undefined
+                }
               />
               <Button type="submit" disabled={busy}>
                 Save entry
@@ -480,6 +506,14 @@ export default function AdministrationPage() {
 
       <PageSection title="Ledger & filters" className="mt-8">
         <Card className="mb-4 grid gap-3 p-4 sm:grid-cols-4">
+          <div className="sm:col-span-4">
+            <Input
+              label="Search register"
+              placeholder="Customer name, invoice #, purpose, notes…"
+              value={filterSearch}
+              onChange={(e) => setFilterSearch(e.target.value)}
+            />
+          </div>
           <Input
             label="From"
             type="date"

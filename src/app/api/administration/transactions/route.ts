@@ -31,6 +31,7 @@ export async function GET(request: NextRequest) {
       registerSessionId: sp.get("registerSessionId")
         ? Number(sp.get("registerSessionId"))
         : undefined,
+      search: sp.get("search")?.trim() || undefined,
       limit: sp.get("limit") ? Number(sp.get("limit")) : undefined,
     });
     return NextResponse.json({ transactions });

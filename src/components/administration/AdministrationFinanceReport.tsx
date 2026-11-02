@@ -39,6 +39,7 @@ export function AdministrationFinanceReport({
   );
   const [filterPayment, setFilterPayment] = useState("");
   const [filterKind, setFilterKind] = useState("");
+  const [filterSearch, setFilterSearch] = useState("");
   const [transactions, setTransactions] = useState<AdministrationTransaction[]>(
     []
   );
@@ -87,13 +88,14 @@ export function AdministrationFinanceReport({
     });
     if (filterPayment) params.set("paymentMethod", filterPayment);
     if (filterKind) params.set("kind", filterKind);
+    if (filterSearch.trim()) params.set("search", filterSearch.trim());
     const res = await fetch(`/api/administration/transactions?${params}`, {
       cache: "no-store",
     });
     if (!res.ok) throw new Error("Could not load register entries");
     const data = await res.json();
     setTransactions(data.transactions ?? []);
-  }, [filterFrom, filterTo, filterPayment, filterKind]);
+  }, [filterFrom, filterTo, filterPayment, filterKind, filterSearch]);
 
   const loadClosedSessions = useCallback(async () => {
     const params = new URLSearchParams({
@@ -186,6 +188,14 @@ export function AdministrationFinanceReport({
       {error ? <Alert tone="error">{error}</Alert> : null}
 
       <Card className="mb-4 grid gap-3 p-4 sm:grid-cols-4">
+        <div className="sm:col-span-4">
+          <Input
+            label="Search register"
+            placeholder="Customer name, invoice #, purpose, notes…"
+            value={filterSearch}
+            onChange={(e) => setFilterSearch(e.target.value)}
+          />
+        </div>
         <Input
           label="From"
           type="date"
