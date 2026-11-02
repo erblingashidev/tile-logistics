@@ -6,6 +6,33 @@ export type EmployeeDirectoryEntry = {
   employeeId: number;
 };
 
+export async function lookupDirectoryByEmployeeId(
+  employeeId: number
+): Promise<EmployeeDirectoryEntry | null> {
+  await getControlPlaneDb();
+  const client = await getLibsqlClient();
+  const result = await client.execute({
+    sql: `SELECT username, organization_id, employee_id
+          FROM employee_directory WHERE employee_id = ?`,
+    args: [employeeId],
+  });
+  const hit = result.rows[0];
+  if (!hit) return null;
+  const organizationId = Number(hit.organization_id ?? hit[1]);
+  const id = Number(hit.employee_id ?? hit[2]);
+  const username = String(hit.username ?? hit[0] ?? "")
+    .trim()
+    .toLowerCase();
+  if (
+    !username ||
+    !Number.isFinite(organizationId) ||
+    !Number.isFinite(id)
+  ) {
+    return null;
+  }
+  return { username, organizationId, employeeId: id };
+}
+
 export async function lookupEmployeeDirectory(
   username: string
 ): Promise<EmployeeDirectoryEntry | null> {
@@ -96,6 +123,31 @@ export async function employeeIdsRegisteredToOtherOrganizations(
     if (Number.isFinite(id)) out.add(id);
   }
   return out;
+}
+
+/** Drop shared-DB rows that duplicate another company's portal login. */
+export async function pruneControlPlaneEmployeeShadows(
+  organizationId: number
+): Promise<void> {
+  await getControlPlaneDb();
+  const client = await getLibsqlClient();
+  await client.execute({
+    sql: `DELETE FROM employees
+          WHERE organization_id = ?
+            AND username IS NOT NULL
+            AND username IN (
+              SELECT username FROM employee_directory WHERE organization_id != ?
+            )`,
+    args: [organizationId, organizationId],
+  });
+  await client.execute({
+    sql: `DELETE FROM employees
+          WHERE organization_id = ?
+            AND id IN (
+              SELECT employee_id FROM employee_directory WHERE organization_id != ?
+            )`,
+    args: [organizationId, organizationId],
+  });
 }
 
 export async function usernamesRegisteredToOtherOrganizations(

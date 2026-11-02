@@ -294,7 +294,12 @@ export default function EmployeesPage() {
     const res = await fetch(`/api/employees/${id}`, { method: "DELETE" });
     if (!res.ok) {
       const body = (await res.json().catch(() => ({}))) as { error?: string };
-      setFormError(body.error ?? "Could not delete this employee.");
+      setFormError(
+        body.error ??
+          (res.status === 404
+            ? "Employee not found in this company — refresh the page and try again."
+            : "Could not delete this employee.")
+      );
       return;
     }
     setFormError("");

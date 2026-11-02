@@ -1,5 +1,6 @@
 import { eq, and, desc, ne, sql } from "drizzle-orm";
-import { getDb } from "@/lib/db";
+import { getControlPlaneDb, getDb } from "@/lib/db";
+import { isOrganizationDatabaseIsolated } from "@/lib/db/tenant-database";
 import { dbAll, dbOne } from "@/lib/db/query";
 import {
   assignments,
@@ -7,6 +8,7 @@ import {
   employees,
   orderEmployeeAssignments,
   orders,
+  vehicleRoundDefaults,
   vehicles,
 } from "@/lib/db/schema";
 import {
@@ -18,6 +20,7 @@ import {
 } from "@/lib/constants";
 import { logActivity } from "@/lib/logger";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
+import { LEGACY_AGIMI_ORGANIZATION_ID } from "@/lib/organizations/constants";
 import { resolveTenantOrganizationId } from "@/lib/organizations/tenant-context";
 import {
   clearEmployeeWarehouseZones,
@@ -351,26 +354,105 @@ async function getEmployeeActiveAssignments(employeeId: number) {
   );
 }
 
+type EmployeeDb = Awaited<ReturnType<typeof getDb>>;
+
+async function employeeDataStores(organizationId: number): Promise<{
+  tenantDb: EmployeeDb;
+  controlPlaneDb: EmployeeDb | null;
+}> {
+  const tenantDb = await getDb();
+  const isolated = await isOrganizationDatabaseIsolated(organizationId);
+  if (!isolated) {
+    return { tenantDb, controlPlaneDb: null };
+  }
+  const controlPlaneDb = await getControlPlaneDb();
+  if (controlPlaneDb === tenantDb) {
+    return { tenantDb, controlPlaneDb: null };
+  }
+  return { tenantDb, controlPlaneDb };
+}
+
+async function selectEmployeeInOrganization(
+  db: EmployeeDb,
+  id: number,
+  organizationId: number
+) {
+  return dbOne(
+    db
+      .select()
+      .from(employees)
+      .where(
+        and(eq(employees.id, id), eq(employees.organizationId, organizationId))
+      )
+  );
+}
+
+async function findEmployeeRowForTenant(id: number, organizationId: number) {
+  const { tenantDb, controlPlaneDb } =
+    await employeeDataStores(organizationId);
+
+  const tryDb = async (db: EmployeeDb) => {
+    const scoped = await selectEmployeeInOrganization(db, id, organizationId);
+    if (scoped) return { row: scoped, db };
+    const { lookupDirectoryByEmployeeId } = await import(
+      "@/lib/services/employee-directory"
+    );
+    const directory = await lookupDirectoryByEmployeeId(id);
+    if (directory?.organizationId !== organizationId) return null;
+    const byId = await dbOne(
+      db.select().from(employees).where(eq(employees.id, id))
+    );
+    if (byId) return { row: byId, db };
+    return null;
+  };
+
+  const fromTenant = await tryDb(tenantDb);
+  if (fromTenant) return fromTenant;
+  if (controlPlaneDb) {
+    return tryDb(controlPlaneDb);
+  }
+  return null;
+}
+
 export async function listEmployees(roleFilter?: EmployeeRole) {
   const organizationId = await resolveTenantOrganizationId();
   const {
     employeeIdsRegisteredToOtherOrganizations,
+    pruneControlPlaneEmployeeShadows,
     repairEmployeeOrganizationsFromDirectory,
     usernamesRegisteredToOtherOrganizations,
   } = await import("@/lib/services/employee-directory");
   await repairEmployeeOrganizationsFromDirectory();
+  await pruneControlPlaneEmployeeShadows(organizationId);
   const [foreignUsernames, foreignEmployeeIds] = await Promise.all([
     usernamesRegisteredToOtherOrganizations(organizationId),
     employeeIdsRegisteredToOtherOrganizations(organizationId),
   ]);
 
-  const db = await getDb();
-  const rows = await dbAll(
-    db
+  const { tenantDb, controlPlaneDb } =
+    await employeeDataStores(organizationId);
+  const tenantRows = await dbAll(
+    tenantDb
       .select()
       .from(employees)
       .where(eq(employees.organizationId, organizationId))
       .orderBy(desc(employees.updatedAt))
+  );
+  const mergedById = new Map<number, (typeof tenantRows)[number]>();
+  for (const row of tenantRows) mergedById.set(row.id, row);
+  if (controlPlaneDb) {
+    const controlPlaneRows = await dbAll(
+      controlPlaneDb
+        .select()
+        .from(employees)
+        .where(eq(employees.organizationId, organizationId))
+    );
+    for (const row of controlPlaneRows) {
+      if (!mergedById.has(row.id)) mergedById.set(row.id, row);
+    }
+  }
+  const rows = [...mergedById.values()].sort((a, b) =>
+    (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "")
   );
   const scoped = rows.filter((row) => {
     if (foreignEmployeeIds.has(row.id)) return false;
@@ -387,20 +469,17 @@ export async function listEmployees(roleFilter?: EmployeeRole) {
 }
 
 export async function getEmployee(id: number) {
-  const db = await getDb();
-  const row = await dbOne(
-    db
-      .select()
-      .from(employees)
-      .where(
-        and(
-          eq(employees.id, id),
-          eq(employees.organizationId, await resolveTenantOrganizationId())
-        )
-      )
+  const organizationId = await resolveTenantOrganizationId();
+  const { repairEmployeeOrganizationsFromDirectory } = await import(
+    "@/lib/services/employee-directory"
   );
-  if (!row) return null;
-  return enrichEmployeeRow(row, await getEmployeeActiveAssignments(id));
+  await repairEmployeeOrganizationsFromDirectory();
+  const found = await findEmployeeRowForTenant(id, organizationId);
+  if (!found) return null;
+  return enrichEmployeeRow(
+    found.row,
+    await getEmployeeActiveAssignments(found.row.id)
+  );
 }
 
 export async function listEmployeesByRole(role: EmployeeRole) {
@@ -699,8 +778,10 @@ export async function updateEmployee(id: number, payload: Partial<EmployeePayloa
   return getEmployee(id);
 }
 
-async function clearEmployeeReferencesBeforeDelete(employeeId: number) {
-  const db = await getDb();
+async function clearEmployeeReferencesBeforeDelete(
+  employeeId: number,
+  db: EmployeeDb
+) {
   const now = new Date().toISOString();
   await db
     .update(employees)
@@ -714,36 +795,75 @@ async function clearEmployeeReferencesBeforeDelete(employeeId: number) {
     .update(assignments)
     .set({ driverEmployeeId: null })
     .where(eq(assignments.driverEmployeeId, employeeId));
+  await db
+    .update(vehicleRoundDefaults)
+    .set({ defaultPickerEmployeeId: null, updatedAt: now })
+    .where(eq(vehicleRoundDefaults.defaultPickerEmployeeId, employeeId));
+}
+
+async function unlinkAdminEmployeeRecord(employeeId: number) {
+  const db = await getControlPlaneDb();
+  const now = new Date().toISOString();
+  await db
+    .update(admins)
+    .set({ employeeId: null, updatedAt: now })
+    .where(eq(admins.employeeId, employeeId));
+}
+
+async function deleteEmployeeFromDb(
+  db: EmployeeDb,
+  id: number,
+  organizationId: number,
+  username: string | null
+) {
+  await clearEmployeeReferencesBeforeDelete(id, db);
+  await db
+    .delete(employees)
+    .where(
+      and(eq(employees.id, id), eq(employees.organizationId, organizationId))
+    );
+  if (username) {
+    await db
+      .delete(employees)
+      .where(and(eq(employees.username, username), ne(employees.id, id)));
+  }
 }
 
 export async function deleteEmployee(id: number) {
   const organizationId = await resolveTenantOrganizationId();
-  const db = await getDb();
-  const existing = await getEmployee(id);
-  if (!existing) return false;
+  const {
+    lookupEmployeeDirectory,
+    pruneControlPlaneEmployeeShadows,
+    removeEmployeeDirectory,
+    repairEmployeeOrganizationsFromDirectory,
+  } = await import("@/lib/services/employee-directory");
+  await repairEmployeeOrganizationsFromDirectory();
 
-  const username = existing.username?.trim().toLowerCase() || null;
+  const found = await findEmployeeRowForTenant(id, organizationId);
+  if (!found) return false;
+
+  const username = found.row.username?.trim().toLowerCase() || null;
+  const { tenantDb, controlPlaneDb } =
+    await employeeDataStores(organizationId);
+  const dbs = new Set<EmployeeDb>([tenantDb]);
+  if (controlPlaneDb) dbs.add(controlPlaneDb);
+  dbs.add(found.db);
 
   try {
-    await clearEmployeeReferencesBeforeDelete(id);
-    await db
-      .delete(employees)
-      .where(
-        and(eq(employees.id, id), eq(employees.organizationId, organizationId))
-      );
+    await unlinkAdminEmployeeRecord(id);
+    for (const db of dbs) {
+      await deleteEmployeeFromDb(db, id, organizationId, username);
+    }
 
     if (username) {
-      const { lookupEmployeeDirectory, removeEmployeeDirectory } =
-        await import("@/lib/services/employee-directory");
       const directory = await lookupEmployeeDirectory(username);
       if (!directory || directory.employeeId === id) {
         await removeEmployeeDirectory(username);
       }
-      await db
-        .delete(employees)
-        .where(
-          and(eq(employees.username, username), ne(employees.id, id))
-        );
+    }
+    await pruneControlPlaneEmployeeShadows(organizationId);
+    if (organizationId !== LEGACY_AGIMI_ORGANIZATION_ID) {
+      await pruneControlPlaneEmployeeShadows(LEGACY_AGIMI_ORGANIZATION_ID);
     }
   } catch (err) {
     const message =
@@ -759,8 +879,8 @@ export async function deleteEmployee(id: number) {
     "delete",
     "employee",
     id,
-    employeeDeletedMessage(existing.name),
-    { category: "employees", details: { name: existing.name } }
+    employeeDeletedMessage(found.row.name),
+    { category: "employees", details: { name: found.row.name } }
   );
   return true;
 }
