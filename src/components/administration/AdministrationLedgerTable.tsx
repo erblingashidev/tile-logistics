@@ -18,6 +18,7 @@ export type AdministrationTransaction = {
   purpose: string | null;
   expenseCategory: string | null;
   invoiceReference: string | null;
+  salesAgentName: string | null;
   recordedAt: string;
   locked: boolean;
 };
@@ -207,6 +208,7 @@ export function AdministrationLedgerTable({
                 <th className="px-3 py-2">Amount</th>
                 <th className="px-3 py-2">Customer / party</th>
                 <th className="px-3 py-2">Invoice #</th>
+                <th className="px-3 py-2">Agent</th>
                 <th className="px-3 py-2">Purpose</th>
                 <th className="px-3 py-2">Locked</th>
                 <th className="px-3 py-2 text-right">Actions</th>
@@ -227,6 +229,7 @@ export function AdministrationLedgerTable({
                   <td className="px-3 py-2 whitespace-nowrap font-mono text-xs">
                     {t.invoiceReference ?? "—"}
                   </td>
+                  <td className="px-3 py-2 text-xs">{t.salesAgentName ?? "—"}</td>
                   <td className="px-3 py-2 max-w-xs truncate">
                     {t.purpose ?? "—"}
                   </td>

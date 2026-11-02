@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
       "invoice",
       "purpose",
       "expense_category",
+      "sales_agent",
       "locked",
     ].join(",");
 
@@ -55,6 +56,7 @@ export async function GET(request: NextRequest) {
         t.invoiceReference ?? "",
         t.purpose ?? "",
         expenseCategoryLabel(t.expenseCategory),
+        t.salesAgentName ?? "",
         t.locked ? "yes" : "no",
       ]
         .map((c) => csvEscape(c))

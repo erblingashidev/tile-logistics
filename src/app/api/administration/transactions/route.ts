@@ -83,6 +83,12 @@ export async function POST(request: NextRequest) {
           idempotencyKey: body.idempotencyKey
             ? String(body.idempotencyKey)
             : null,
+          salesEmployeeId: body.salesEmployeeId
+            ? Number(body.salesEmployeeId)
+            : null,
+          salesAgentName: body.salesAgentName
+            ? String(body.salesAgentName)
+            : null,
         }
       );
       return NextResponse.json({ transaction: tx });

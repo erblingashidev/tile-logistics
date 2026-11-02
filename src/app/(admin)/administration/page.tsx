@@ -11,6 +11,7 @@ import {
   AdministrationFinanceOverview,
   type FinanceOverviewData,
 } from "@/components/administration/AdministrationFinanceOverview";
+import { AdministrationClientFinance } from "@/components/administration/AdministrationClientFinance";
 import {
   AdministrationLedgerTable,
   formatAdminMoney,
@@ -96,6 +97,11 @@ export default function AdministrationPage() {
   const [formPurpose, setFormPurpose] = useState("");
   const [formExpenseCategory, setFormExpenseCategory] = useState("");
   const [formInvoiceRef, setFormInvoiceRef] = useState("");
+  const [formSalesAgentId, setFormSalesAgentId] = useState("");
+  const [salesAgents, setSalesAgents] = useState<
+    Array<{ id: number; name: string }>
+  >([]);
+  const [invoiceLookupHint, setInvoiceLookupHint] = useState("");
 
   const [reportSummary, setReportSummary] = useState<{
     grandTotalCents: number;
@@ -191,6 +197,52 @@ export default function AdministrationPage() {
     loadClosedSessions,
     loadOverview,
   ]);
+
+  useEffect(() => {
+    fetch("/api/employees", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows: Array<{ id: number; name: string; roles?: string[] }>) => {
+        if (!Array.isArray(rows)) return;
+        setSalesAgents(
+          rows.filter((e) =>
+            (e.roles ?? []).some(
+              (r) => r === "sales_agent" || r === "sales_admin"
+            )
+          )
+        );
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (formKind !== "payment" || !formInvoiceRef.trim()) {
+      setInvoiceLookupHint("");
+      return;
+    }
+    const t = setTimeout(() => {
+      void fetch(
+        `/api/administration/invoice-lookup?invoice=${encodeURIComponent(formInvoiceRef.trim())}`,
+        { cache: "no-store" }
+      )
+        .then((r) => r.json())
+        .then((data) => {
+          if (!data.found) {
+            setInvoiceLookupHint("No order found — pick sales agent manually.");
+            return;
+          }
+          setFormCounterparty((c) => c || data.customerName || "");
+          if (data.salesEmployeeId) {
+            setFormSalesAgentId(String(data.salesEmployeeId));
+          }
+          const price = data.priceCents / 100;
+          setInvoiceLookupHint(
+            `Order found · ${data.status} · €${price.toFixed(2)}${data.salesAgentName ? ` · Agent: ${data.salesAgentName}` : ""}`
+          );
+        })
+        .catch(() => setInvoiceLookupHint(""));
+    }, 400);
+    return () => clearTimeout(t);
+  }, [formKind, formInvoiceRef]);
 
   useEffect(() => {
     void refresh();
@@ -292,6 +344,11 @@ export default function AdministrationPage() {
       setError("Choose an expense category.");
       return;
     }
+    if (formKind === "payment" && !formSalesAgentId) {
+      setError("Sales agent is required for payment (income).");
+      return;
+    }
+    const agent = salesAgents.find((a) => String(a.id) === formSalesAgentId);
     setBusy(true);
     setError("");
     try {
@@ -309,6 +366,8 @@ export default function AdministrationPage() {
             formKind === "expense" ? formExpenseCategory : undefined,
           invoiceReference: formInvoiceRef || undefined,
           idempotencyKey: crypto.randomUUID(),
+          salesEmployeeId: formKind === "payment" ? Number(formSalesAgentId) : null,
+          salesAgentName: agent?.name ?? undefined,
         }),
       });
       const data = await res.json();
@@ -317,6 +376,8 @@ export default function AdministrationPage() {
       setFormPurpose("");
       setFormCounterparty("");
       setFormInvoiceRef("");
+      setFormSalesAgentId("");
+      setInvoiceLookupHint("");
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed");
@@ -530,10 +591,26 @@ export default function AdministrationPage() {
                 required={formKind === "payment"}
                 hint={
                   formKind === "payment"
-                    ? "Required so every payment is tied to an invoice."
+                    ? invoiceLookupHint ||
+                      "Required — links payment to order, customer, and sales agent."
                     : undefined
                 }
               />
+              {formKind === "payment" ? (
+                <Select
+                  label="Sales agent"
+                  value={formSalesAgentId}
+                  onChange={(e) => setFormSalesAgentId(e.target.value)}
+                  required
+                >
+                  <option value="">Select agent…</option>
+                  {salesAgents.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </Select>
+              ) : null}
               <Button type="submit" disabled={busy}>
                 Save entry
               </Button>
@@ -547,6 +624,10 @@ export default function AdministrationPage() {
           </Card>
         </PageSection>
       </div>
+
+      <PageSection title="Debts & client follow-up" className="mt-8">
+        <AdministrationClientFinance />
+      </PageSection>
 
       <PageSection title="Shift close results" className="mt-8">
         <Card className="p-4">

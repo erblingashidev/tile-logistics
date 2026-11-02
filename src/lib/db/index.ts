@@ -280,6 +280,20 @@ async function ensureAdministrationRegisterTables(client: Client) {
     "idempotency_key TEXT",
     txCols
   );
+  await addColumnIfMissing(
+    client,
+    "admin_register_transactions",
+    "sales_employee_id",
+    "sales_employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL",
+    txCols
+  );
+  await addColumnIfMissing(
+    client,
+    "admin_register_transactions",
+    "sales_agent_name",
+    "sales_agent_name TEXT",
+    txCols
+  );
   await client.execute(
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_register_tx_org_idempotency ON admin_register_transactions(organization_id, idempotency_key) WHERE idempotency_key IS NOT NULL"
   );

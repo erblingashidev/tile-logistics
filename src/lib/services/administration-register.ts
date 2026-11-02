@@ -23,6 +23,8 @@ import {
   invoiceReferencesMatch,
   parsePositiveAmountCents,
 } from "@/lib/administration/validation";
+import { getOrderByInvoiceNumber } from "@/lib/services/orders";
+import { getEmployee } from "@/lib/services/employees";
 
 export type RegisterSessionRow = typeof adminRegisterSessions.$inferSelect;
 export type RegisterTransactionRow = typeof adminRegisterTransactions.$inferSelect;
@@ -381,7 +383,35 @@ export type CreateTransactionInput = {
   notes?: string | null;
   recordedAt?: string;
   idempotencyKey?: string | null;
+  salesEmployeeId?: number | null;
+  salesAgentName?: string | null;
 };
+
+async function resolveSalesAgentForPayment(input: CreateTransactionInput) {
+  let salesEmployeeId = input.salesEmployeeId ?? null;
+  let salesAgentName = input.salesAgentName?.trim() || null;
+  let orderId = input.orderId ?? null;
+
+  if (input.invoiceReference?.trim()) {
+    const order = await getOrderByInvoiceNumber(input.invoiceReference.trim());
+    if (order) {
+      orderId = order.id;
+      if (!salesEmployeeId && order.salesEmployeeId) {
+        salesEmployeeId = order.salesEmployeeId;
+      }
+      if (!salesAgentName && order.salesAgentName) {
+        salesAgentName = order.salesAgentName.trim();
+      }
+    }
+  }
+
+  if (salesEmployeeId && !salesAgentName) {
+    const employee = await getEmployee(salesEmployeeId);
+    if (employee?.name) salesAgentName = employee.name;
+  }
+
+  return { salesEmployeeId, salesAgentName, orderId };
+}
 
 export async function createRegisterTransaction(
   organizationId: number,
@@ -427,6 +457,21 @@ export async function createRegisterTransaction(
     input.invoiceReference
   );
 
+  let orderId = input.orderId ?? null;
+  let salesEmployeeId: number | null = null;
+  let salesAgentName: string | null = null;
+  if (kind === "payment") {
+    const resolved = await resolveSalesAgentForPayment(input);
+    orderId = resolved.orderId;
+    salesEmployeeId = resolved.salesEmployeeId;
+    salesAgentName = resolved.salesAgentName;
+    if (!salesEmployeeId) {
+      throw new Error(
+        "Sales agent is required for payment (income). Select an agent or enter an invoice linked to an order."
+      );
+    }
+  }
+
   const idempotencyKey = input.idempotencyKey?.trim() || null;
   if (idempotencyKey) {
     const existing = await db
@@ -453,7 +498,7 @@ export async function createRegisterTransaction(
       counterpartyName: input.counterpartyName?.trim() || null,
       purpose: input.purpose?.trim() || null,
       expenseCategory: input.expenseCategory?.trim() || null,
-      orderId: input.orderId ?? null,
+      orderId,
       invoiceReference: input.invoiceReference?.trim() || null,
       receiptReference: input.receiptReference?.trim() || null,
       recordedByEmployeeId:
@@ -463,6 +508,8 @@ export async function createRegisterTransaction(
       locked: false,
       notes: input.notes?.trim() || null,
       idempotencyKey: idempotencyKey ?? undefined,
+      salesEmployeeId: salesEmployeeId ?? undefined,
+      salesAgentName: salesAgentName ?? undefined,
       createdAt: ts,
       updatedAt: ts,
     })
@@ -489,6 +536,8 @@ export type ProposedTransactionPatch = Partial<{
   invoiceReference: string | null;
   receiptReference: string | null;
   notes: string | null;
+  salesEmployeeId: number | null;
+  salesAgentName: string | null;
 }>;
 
 function mergedPaymentFields(

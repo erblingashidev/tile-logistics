@@ -824,6 +824,11 @@ export const adminRegisterTransactions = sqliteTable(
     notes: text("notes"),
     /** Client-supplied key to prevent double-submit duplicates. */
     idempotencyKey: text("idempotency_key"),
+    /** Sales agent credited on this payment (usually matches order). */
+    salesEmployeeId: integer("sales_employee_id").references(() => employees.id, {
+      onDelete: "set null",
+    }),
+    salesAgentName: text("sales_agent_name"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   }
