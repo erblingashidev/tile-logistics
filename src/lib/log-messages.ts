@@ -181,6 +181,11 @@ export function formatRegisterAuditLogMessage(log: {
     }
     case "transaction.patch":
       return `${actor}Corrected register${entryRef}.`;
+    case "transaction.delete": {
+      const kind = String(payload.kind ?? "entry");
+      const amount = formatAuditMoney(Math.abs(Number(payload.amountCents ?? 0)));
+      return `${actor}Removed ${kind} ${amount}${entryRef} from the register.`;
+    }
     case "edit_request.create":
       return `${actor}Requested management correction for register${entryRef}.`;
     case "edit_request.approve":

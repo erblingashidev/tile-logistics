@@ -112,6 +112,32 @@ export function AdministrationLedgerTable({
     setRequestReason("");
   }
 
+  async function deleteEntry(transaction: AdministrationTransaction) {
+    if (
+      !window.confirm(
+        `Remove register entry #${transaction.id}? This is logged and cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    onBusyChange(true);
+    onError("");
+    try {
+      const res = await fetch(
+        `/api/administration/transactions/${transaction.id}`,
+        { method: "DELETE" }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Delete failed");
+      if (editor?.transaction.id === transaction.id) closeEditor();
+      await onUpdated();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Failed");
+    } finally {
+      onBusyChange(false);
+    }
+  }
+
   async function submitEditor(e: React.FormEvent) {
     e.preventDefault();
     if (!editor) return;
@@ -209,20 +235,29 @@ export function AdministrationLedgerTable({
                       <Button
                         variant="ghost"
                         size="sm"
-                        disabled={busy || t.locked || !canApprove}
+                        disabled={busy || !canApprove}
                         title={
-                          t.locked
-                            ? canApprove
-                              ? "Shift closed — review pending correction requests below"
-                              : "Entry is locked — request edit instead"
-                            : !canApprove
-                              ? "Only management can edit directly"
+                          !canApprove
+                            ? "Only management can edit register entries"
+                            : t.locked
+                              ? "Management edit (shift closed — change is audited)"
                               : "Edit this entry"
                         }
                         onClick={() => openEditor(t, "edit")}
                       >
                         Edit
                       </Button>
+                      {canApprove ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={busy}
+                          title="Remove entry (audited)"
+                          onClick={() => void deleteEntry(t)}
+                        >
+                          Delete
+                        </Button>
+                      ) : null}
                       {!canApprove ? (
                         <Button
                           variant="ghost"

@@ -637,9 +637,6 @@ export async function patchRegisterTransaction(
     )
     .limit(1);
   if (!tx) throw new Error("Transaction not found.");
-  if (tx.locked) {
-    throw new Error("Locked transaction — use edit request workflow.");
-  }
 
   const merged = mergedPaymentFields(tx, patch);
   assertPaymentIncomeRequiredFields(
@@ -691,7 +688,49 @@ export async function patchRegisterTransaction(
     "transaction.patch",
     "register_transaction",
     transactionId,
-    patch,
+    { ...patch, locked: tx.locked },
+    session
+  );
+}
+
+export async function deleteRegisterTransaction(
+  organizationId: number,
+  session: SessionUser,
+  transactionId: number
+) {
+  if (!sessionHasPermission(session, PERMISSIONS.administrationApprove)) {
+    throw new Error("Forbidden");
+  }
+  const db = await getControlPlaneDb();
+  const [tx] = await db
+    .select()
+    .from(adminRegisterTransactions)
+    .where(
+      and(
+        eq(adminRegisterTransactions.id, transactionId),
+        eq(adminRegisterTransactions.organizationId, organizationId)
+      )
+    )
+    .limit(1);
+  if (!tx) throw new Error("Transaction not found.");
+
+  await db
+    .delete(adminRegisterTransactions)
+    .where(eq(adminRegisterTransactions.id, transactionId));
+
+  await appendRegisterAudit(
+    organizationId,
+    "transaction.delete",
+    "register_transaction",
+    transactionId,
+    {
+      kind: tx.kind,
+      amountCents: tx.amountCents,
+      paymentMethod: tx.paymentMethod,
+      counterpartyName: tx.counterpartyName,
+      invoiceReference: tx.invoiceReference,
+      locked: tx.locked,
+    },
     session
   );
 }

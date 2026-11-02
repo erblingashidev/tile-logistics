@@ -8,6 +8,8 @@ import { listRegisterAuditLogEntries } from "@/lib/services/administration-regis
 
 export const runtime = "nodejs";
 
+export type LogScope = "all" | "logistics" | "administration";
+
 export async function GET(request: NextRequest) {
   const auth = await requireApiTenantSession();
   if (!auth.ok) return auth.response;
@@ -19,6 +21,7 @@ export async function GET(request: NextRequest) {
   }
 
   const sp = request.nextUrl.searchParams;
+  const scope = (sp.get("scope") as LogScope | null) ?? "all";
   const category = sp.get("category") as LogCategory | null;
   const filters = {
     dateFrom: sp.get("dateFrom") ?? undefined,
@@ -28,14 +31,31 @@ export async function GET(request: NextRequest) {
   };
 
   return runWithTenantOrganizationAsync(auth.organizationId, async () => {
-    const includeActivity = category !== "administration";
-    const includeRegisterAudit = !category || category === "administration";
+    let includeActivity = true;
+    let includeRegisterAudit = true;
+    let activityCategory: LogCategory | undefined = category ?? undefined;
+
+    if (scope === "administration") {
+      includeActivity = false;
+      includeRegisterAudit = true;
+    } else if (scope === "logistics") {
+      includeActivity = true;
+      includeRegisterAudit = false;
+      if (category === "administration") {
+        activityCategory = undefined;
+      }
+    } else if (category === "administration") {
+      includeActivity = false;
+      includeRegisterAudit = true;
+    } else if (category) {
+      includeRegisterAudit = false;
+    }
 
     const [activityLogs, registerLogs] = await Promise.all([
       includeActivity
         ? listLogs({
             ...filters,
-            category: category ?? undefined,
+            category: activityCategory,
           })
         : Promise.resolve([]),
       includeRegisterAudit
