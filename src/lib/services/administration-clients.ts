@@ -1,7 +1,10 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { orders } from "@/lib/db/schema";
-import { invoiceReferencesMatch } from "@/lib/administration/validation";
+import {
+  invoiceReferencesMatch,
+  invoiceRowHasSalesAgent,
+} from "@/lib/administration/validation";
 import { listRegisterTransactions } from "@/lib/services/administration-register";
 
 export function normalizeClientKey(name: string): string {
@@ -56,8 +59,6 @@ export type AgentDebtGroup = {
   clientCount: number;
   items: OverdueDebtItem[];
 };
-
-const UNASSIGNED_AGENT = "Unassigned agent";
 
 function daysSinceDate(isoDate: string): number {
   const start = new Date(isoDate.slice(0, 10) + "T12:00:00");
@@ -130,9 +131,9 @@ function touchActivity(profile: ProfileMutable, at: string) {
 }
 
 function finalizeProfile(profile: ProfileMutable): ClientFinanceProfile {
-  profile.invoices = [...profile.invoiceByNorm.values()].sort((a, b) =>
-    (b.orderDate ?? "").localeCompare(a.orderDate ?? "")
-  );
+  profile.invoices = [...profile.invoiceByNorm.values()]
+    .filter((inv) => inv.invoiceNumber.trim().length > 0)
+    .sort((a, b) => (b.orderDate ?? "").localeCompare(a.orderDate ?? ""));
   profile.invoiceCount = profile.invoices.length;
 
   let invoiced = 0;
@@ -168,7 +169,13 @@ function finalizeProfile(profile: ProfileMutable): ClientFinanceProfile {
   if (profile.balanceDueCents > 0) {
     reasons.add("Outstanding balance on invoice(s)");
   }
-  if (profile.unpaidOnAccountCents > 0) {
+  const unpaidWithInvoice = profile.registerLines.some(
+    (line) =>
+      line.kind === "payment" &&
+      line.paymentMethod === "unpaid" &&
+      Boolean(line.invoiceReference?.trim())
+  );
+  if (unpaidWithInvoice) {
     reasons.add("Unpaid / on account recorded in register");
   }
   const deliveredUnpaid = profile.invoices.some(
@@ -221,6 +228,7 @@ export async function buildClientFinanceProfiles(
   }
 
   for (const order of orderRows) {
+    if (!order.invoiceNumber?.trim()) continue;
     const profile = getProfile(order.customerName);
     const normInv = normalizeInvoiceRef(order.invoiceNumber);
     invoiceOwner.set(normInv, profile.clientKey);
@@ -243,6 +251,9 @@ export async function buildClientFinanceProfiles(
   }
 
   for (const tx of registerRows) {
+    const normInv = normalizeInvoiceRef(tx.invoiceReference);
+    if (!normInv) continue;
+
     const line: ClientRegisterLine = {
       id: tx.id,
       recordedAt: tx.recordedAt,
@@ -257,8 +268,7 @@ export async function buildClientFinanceProfiles(
     };
 
     const name = tx.counterpartyName?.trim();
-    const normInv = normalizeInvoiceRef(tx.invoiceReference);
-    let clientKey = normInv ? invoiceOwner.get(normInv) : undefined;
+    let clientKey = invoiceOwner.get(normInv);
     if (!clientKey && name) {
       clientKey = normalizeClientKey(name);
     }
@@ -325,15 +335,37 @@ export async function getClientFinanceProfile(
   return all.find((p) => p.clientKey === key) ?? null;
 }
 
+function profileHasTraceableInvoices(profile: ClientFinanceProfile): boolean {
+  return profile.invoices.some((inv) => inv.invoiceNumber.trim().length > 0);
+}
+
 export function listDebts(profiles: ClientFinanceProfile[]) {
   return profiles
-    .filter((p) => p.balanceDueCents > 0)
+    .filter(
+      (p) =>
+        p.balanceDueCents > 0 &&
+        profileHasTraceableInvoices(p) &&
+        p.invoices.some(
+          (inv) => inv.balanceDueCents > 0 && inv.invoiceNumber.trim()
+        )
+    )
     .sort((a, b) => b.balanceDueCents - a.balanceDueCents);
 }
 
 export function listCallQueue(profiles: ClientFinanceProfile[]) {
   return profiles
-    .filter((p) => p.callReasons.length > 0)
+    .filter(
+      (p) =>
+        p.callReasons.length > 0 &&
+        profileHasTraceableInvoices(p) &&
+        (p.balanceDueCents <= 0 ||
+          p.invoices.some(
+            (inv) =>
+              inv.balanceDueCents > 0 &&
+              inv.invoiceNumber.trim() &&
+              invoiceRowHasSalesAgent(inv)
+          ))
+    )
     .sort((a, b) => b.balanceDueCents - a.balanceDueCents);
 }
 
@@ -355,6 +387,8 @@ export function listOverdueDebts(
   const items: OverdueDebtItem[] = [];
   for (const profile of profiles) {
     for (const inv of profile.invoices) {
+      if (!inv.invoiceNumber.trim()) continue;
+      if (!invoiceRowHasSalesAgent(inv)) continue;
       if (inv.balanceDueCents <= 0) continue;
       if (inv.daysOutstanding < minDays) continue;
       if (!inv.orderDate) continue;
@@ -367,7 +401,11 @@ export function listOverdueDebts(
         orderDate: inv.orderDate,
         daysOutstanding: inv.daysOutstanding,
         salesEmployeeId: inv.salesEmployeeId,
-        salesAgentName: inv.salesAgentName?.trim() || UNASSIGNED_AGENT,
+        salesAgentName:
+          inv.salesAgentName?.trim() ||
+          (inv.salesEmployeeId != null
+            ? `Agent #${inv.salesEmployeeId}`
+            : ""),
         orderStatus: inv.orderStatus,
         location: inv.location,
       });

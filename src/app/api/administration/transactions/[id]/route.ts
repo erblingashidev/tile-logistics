@@ -73,6 +73,18 @@ export async function PATCH(
                 ? String(body.notes)
                 : null
               : undefined,
+          salesEmployeeId:
+            body.salesEmployeeId !== undefined
+              ? body.salesEmployeeId
+                ? Number(body.salesEmployeeId)
+                : null
+              : undefined,
+          salesAgentName:
+            body.salesAgentName !== undefined
+              ? body.salesAgentName
+                ? String(body.salesAgentName)
+                : null
+              : undefined,
         }
       );
       return NextResponse.json({ ok: true });

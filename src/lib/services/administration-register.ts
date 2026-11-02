@@ -20,7 +20,11 @@ import { sessionHasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { isCashierStaff } from "@/lib/employee-categories";
 import { transactionAffectsCashDrawer } from "@/lib/administration/register-cash";
 import {
+  assertPaymentIncomeRequiredFields,
+  assertRegisterInvoiceReference,
+  assertSalesAgentRequired,
   invoiceReferencesMatch,
+  isIncomeLikeRegisterKind,
   parsePositiveAmountCents,
 } from "@/lib/administration/validation";
 import { getOrderByInvoiceNumber } from "@/lib/services/orders";
@@ -77,25 +81,6 @@ async function assertNoDuplicatePaymentInvoice(
 function likeSearchPattern(query: string) {
   const sanitized = query.trim().replace(/[%_]/g, " ");
   return `%${sanitized}%`;
-}
-
-/** Payment (income) must always identify who paid and which invoice was settled. */
-export function assertPaymentIncomeRequiredFields(
-  kind: string,
-  counterpartyName: string | null | undefined,
-  invoiceReference: string | null | undefined
-) {
-  if (kind !== "payment") return;
-  if (!counterpartyName?.trim()) {
-    throw new Error(
-      "Customer name is required for payment (income) entries."
-    );
-  }
-  if (!invoiceReference?.trim()) {
-    throw new Error(
-      "Invoice number is required for payment (income) entries."
-    );
-  }
 }
 
 export async function appendRegisterAudit(
@@ -387,7 +372,12 @@ export type CreateTransactionInput = {
   salesAgentName?: string | null;
 };
 
-async function resolveSalesAgentForPayment(input: CreateTransactionInput) {
+async function resolveSalesAgentForPayment(
+  input: Pick<
+    CreateTransactionInput,
+    "invoiceReference" | "salesEmployeeId" | "salesAgentName" | "orderId"
+  >
+) {
   let salesEmployeeId = input.salesEmployeeId ?? null;
   let salesAgentName = input.salesAgentName?.trim() || null;
   let orderId = input.orderId ?? null;
@@ -446,30 +436,23 @@ export async function createRegisterTransaction(
   const recordedAt = input.recordedAt?.trim() || ts;
   const amountCents = signedAmountCents(kind, input.amountCents);
 
-  assertPaymentIncomeRequiredFields(
+  const mergedForCreate = {
     kind,
-    input.counterpartyName,
-    input.invoiceReference
-  );
-  await assertNoDuplicatePaymentInvoice(
+    counterpartyName: input.counterpartyName ?? null,
+    invoiceReference: input.invoiceReference ?? null,
+    salesEmployeeId: input.salesEmployeeId ?? null,
+    salesAgentName: input.salesAgentName ?? null,
+  };
+  const salesResolved = await assertRegisterMutationIntegrity(
     organizationId,
-    kind,
-    input.invoiceReference
+    mergedForCreate
   );
 
-  let orderId = input.orderId ?? null;
-  let salesEmployeeId: number | null = null;
-  let salesAgentName: string | null = null;
-  if (kind === "payment") {
-    const resolved = await resolveSalesAgentForPayment(input);
-    orderId = resolved.orderId;
-    salesEmployeeId = resolved.salesEmployeeId;
-    salesAgentName = resolved.salesAgentName;
-    if (!salesEmployeeId) {
-      throw new Error(
-        "Sales agent is required for payment (income). Select an agent or enter an invoice linked to an order."
-      );
-    }
+  let orderId = input.orderId ?? salesResolved.orderId ?? null;
+  let salesEmployeeId: number | null = salesResolved.salesEmployeeId;
+  let salesAgentName: string | null = salesResolved.salesAgentName;
+  if (isIncomeLikeRegisterKind(kind) && salesResolved.orderId) {
+    orderId = salesResolved.orderId;
   }
 
   const idempotencyKey = input.idempotencyKey?.trim() || null;
@@ -540,7 +523,7 @@ export type ProposedTransactionPatch = Partial<{
   salesAgentName: string | null;
 }>;
 
-function mergedPaymentFields(
+function mergedTraceabilityFields(
   tx: RegisterTransactionRow,
   patch: ProposedTransactionPatch
 ) {
@@ -554,7 +537,54 @@ function mergedPaymentFields(
       patch.invoiceReference !== undefined
         ? patch.invoiceReference
         : tx.invoiceReference,
+    salesEmployeeId:
+      patch.salesEmployeeId !== undefined
+        ? patch.salesEmployeeId
+        : tx.salesEmployeeId,
+    salesAgentName:
+      patch.salesAgentName !== undefined
+        ? patch.salesAgentName
+        : tx.salesAgentName,
   };
+}
+
+async function resolveSalesForIncomeKind(
+  merged: ReturnType<typeof mergedTraceabilityFields>
+) {
+  if (!isIncomeLikeRegisterKind(merged.kind)) {
+    return {
+      salesEmployeeId: null as number | null,
+      salesAgentName: null as string | null,
+      orderId: null as number | null,
+    };
+  }
+  const resolved = await resolveSalesAgentForPayment({
+    invoiceReference: merged.invoiceReference,
+    salesEmployeeId: merged.salesEmployeeId,
+    salesAgentName: merged.salesAgentName,
+  });
+  assertSalesAgentRequired(merged.kind, resolved.salesEmployeeId);
+  return resolved;
+}
+
+async function assertRegisterMutationIntegrity(
+  organizationId: number,
+  merged: ReturnType<typeof mergedTraceabilityFields>,
+  excludeTransactionId?: number
+) {
+  assertRegisterInvoiceReference(merged.invoiceReference);
+  assertPaymentIncomeRequiredFields(
+    merged.kind,
+    merged.counterpartyName,
+    merged.invoiceReference
+  );
+  await assertNoDuplicatePaymentInvoice(
+    organizationId,
+    merged.kind,
+    merged.invoiceReference,
+    excludeTransactionId
+  );
+  return resolveSalesForIncomeKind(merged);
 }
 
 export async function createTransactionEditRequest(
@@ -601,12 +631,8 @@ export async function createTransactionEditRequest(
     .limit(1);
   if (pending[0]) throw new Error("An edit request is already pending.");
 
-  const merged = mergedPaymentFields(tx, proposedChanges);
-  assertPaymentIncomeRequiredFields(
-    merged.kind,
-    merged.counterpartyName,
-    merged.invoiceReference
-  );
+  const merged = mergedTraceabilityFields(tx, proposedChanges);
+  await assertRegisterMutationIntegrity(organizationId, merged, tx.id);
 
   const ts = nowIso();
   const inserted = await db
@@ -692,11 +718,11 @@ export async function reviewTransactionEditRequest(
     .limit(1);
   if (!tx) throw new Error("Transaction missing.");
 
-  const merged = mergedPaymentFields(tx, patch);
-  assertPaymentIncomeRequiredFields(
-    merged.kind,
-    merged.counterpartyName,
-    merged.invoiceReference
+  const merged = mergedTraceabilityFields(tx, patch);
+  const salesResolved = await assertRegisterMutationIntegrity(
+    organizationId,
+    merged,
+    tx.id
   );
 
   let amountCents = tx.amountCents;
@@ -734,6 +760,12 @@ export async function reviewTransactionEditRequest(
           ? patch.receiptReference
           : tx.receiptReference,
       notes: patch.notes !== undefined ? patch.notes : tx.notes,
+      salesEmployeeId: isIncomeLikeRegisterKind(merged.kind)
+        ? (salesResolved.salesEmployeeId ?? undefined)
+        : undefined,
+      salesAgentName: isIncomeLikeRegisterKind(merged.kind)
+        ? (salesResolved.salesAgentName ?? undefined)
+        : undefined,
       updatedAt: ts,
     })
     .where(eq(adminRegisterTransactions.id, req.transactionId));
@@ -784,16 +816,10 @@ export async function patchRegisterTransaction(
     .limit(1);
   if (!tx) throw new Error("Transaction not found.");
 
-  const merged = mergedPaymentFields(tx, patch);
-  assertPaymentIncomeRequiredFields(
-    merged.kind,
-    merged.counterpartyName,
-    merged.invoiceReference
-  );
-  await assertNoDuplicatePaymentInvoice(
+  const merged = mergedTraceabilityFields(tx, patch);
+  const salesResolved = await assertRegisterMutationIntegrity(
     organizationId,
-    merged.kind,
-    merged.invoiceReference,
+    merged,
     transactionId
   );
   const mergedExpense =
@@ -838,6 +864,16 @@ export async function patchRegisterTransaction(
           ? patch.receiptReference
           : tx.receiptReference,
       notes: patch.notes !== undefined ? patch.notes : tx.notes,
+      salesEmployeeId: isIncomeLikeRegisterKind(merged.kind)
+        ? (salesResolved.salesEmployeeId ?? undefined)
+        : patch.salesEmployeeId !== undefined
+          ? (patch.salesEmployeeId ?? undefined)
+          : tx.salesEmployeeId ?? undefined,
+      salesAgentName: isIncomeLikeRegisterKind(merged.kind)
+        ? (salesResolved.salesAgentName ?? undefined)
+        : patch.salesAgentName !== undefined
+          ? (patch.salesAgentName ?? undefined)
+          : tx.salesAgentName ?? undefined,
       updatedAt: ts,
     })
     .where(eq(adminRegisterTransactions.id, transactionId));

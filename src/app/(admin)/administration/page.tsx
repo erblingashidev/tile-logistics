@@ -146,6 +146,9 @@ export default function AdministrationPage() {
     loadPending,
   ]);
 
+  const incomeLikeKind =
+    formKind === "payment" || formKind === "return_refund";
+
   useEffect(() => {
     fetch("/api/employees", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : []))
@@ -163,7 +166,7 @@ export default function AdministrationPage() {
   }, []);
 
   useEffect(() => {
-    if (formKind !== "payment" || !formInvoiceRef.trim()) {
+    if (!incomeLikeKind || !formInvoiceRef.trim()) {
       setInvoiceLookupHint("");
       return;
     }
@@ -273,22 +276,22 @@ export default function AdministrationPage() {
 
   async function submitTransaction(e: React.FormEvent) {
     e.preventDefault();
-    if (formKind === "payment") {
+    if (!formInvoiceRef.trim()) {
+      setError("Invoice or receipt number is required on every register entry.");
+      return;
+    }
+    if (incomeLikeKind) {
       if (!formCounterparty.trim()) {
-        setError("Customer name is required for payment (income).");
+        setError("Customer name is required for payment and refund entries.");
         return;
       }
-      if (!formInvoiceRef.trim()) {
-        setError("Invoice number is required for payment (income).");
+      if (!formSalesAgentId) {
+        setError("Sales agent is required for payment and refund entries.");
         return;
       }
     }
     if (formKind === "expense" && !formExpenseCategory) {
       setError("Choose an expense category.");
-      return;
-    }
-    if (formKind === "payment" && !formSalesAgentId) {
-      setError("Sales agent is required for payment (income).");
       return;
     }
     const agent = salesAgents.find((a) => String(a.id) === formSalesAgentId);
@@ -309,8 +312,8 @@ export default function AdministrationPage() {
             formKind === "expense" ? formExpenseCategory : undefined,
           invoiceReference: formInvoiceRef || undefined,
           idempotencyKey: crypto.randomUUID(),
-          salesEmployeeId: formKind === "payment" ? Number(formSalesAgentId) : null,
-          salesAgentName: agent?.name ?? undefined,
+          salesEmployeeId: incomeLikeKind ? Number(formSalesAgentId) : null,
+          salesAgentName: incomeLikeKind ? agent?.name ?? undefined : undefined,
         }),
       });
       const data = await res.json();
@@ -461,13 +464,15 @@ export default function AdministrationPage() {
               />
               <Input
                 label={
-                  formKind === "expense"
-                    ? "Paid to (person / vendor)"
-                    : "Customer name"
+                  incomeLikeKind
+                    ? "Customer name"
+                    : formKind === "expense"
+                      ? "Paid to (person / vendor)"
+                      : "Party"
                 }
                 value={formCounterparty}
                 onChange={(e) => setFormCounterparty(e.target.value)}
-                required={formKind === "payment"}
+                required={incomeLikeKind}
               />
               <Input
                 label="Purpose / description"
@@ -491,21 +496,19 @@ export default function AdministrationPage() {
               ) : null}
               <Input
                 label={
-                  formKind === "payment"
-                    ? "Invoice number"
-                    : "Invoice / receipt reference"
+                  incomeLikeKind ? "Invoice number" : "Invoice / receipt number"
                 }
                 value={formInvoiceRef}
                 onChange={(e) => setFormInvoiceRef(e.target.value)}
-                required={formKind === "payment"}
+                required
                 hint={
-                  formKind === "payment"
+                  incomeLikeKind
                     ? invoiceLookupHint ||
-                      "Required — links payment to order, customer, and sales agent."
-                    : undefined
+                      "Required — links to order, customer, and sales agent."
+                    : "Required on every register line for audit and client follow-up."
                 }
               />
-              {formKind === "payment" ? (
+              {incomeLikeKind ? (
                 <Select
                   label="Sales agent"
                   value={formSalesAgentId}

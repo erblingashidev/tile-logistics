@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import {
   ADMIN_EXPENSE_CATEGORIES,
@@ -18,6 +18,7 @@ export type AdministrationTransaction = {
   purpose: string | null;
   expenseCategory: string | null;
   invoiceReference: string | null;
+  salesEmployeeId: number | null;
   salesAgentName: string | null;
   recordedAt: string;
   locked: boolean;
@@ -45,8 +46,11 @@ function buildPatchFromForm(form: {
   purpose: string;
   expenseCategory: string;
   invoiceReference: string;
+  salesEmployeeId: string;
   notes: string;
 }) {
+  const incomeLike =
+    form.kind === "payment" || form.kind === "return_refund";
   return {
     kind: form.kind,
     paymentMethod: form.kind === "expense" ? null : form.paymentMethod || null,
@@ -56,6 +60,11 @@ function buildPatchFromForm(form: {
     expenseCategory:
       form.kind === "expense" ? form.expenseCategory.trim() || null : null,
     invoiceReference: form.invoiceReference.trim() || null,
+    salesEmployeeId: incomeLike
+      ? form.salesEmployeeId
+        ? Number(form.salesEmployeeId)
+        : null
+      : undefined,
     notes: form.notes.trim() || null,
   };
 }
@@ -69,6 +78,7 @@ function formFromTransaction(t: AdministrationTransaction) {
     purpose: t.purpose ?? "",
     expenseCategory: t.expenseCategory ?? "",
     invoiceReference: t.invoiceReference ?? "",
+    salesEmployeeId: t.salesEmployeeId ? String(t.salesEmployeeId) : "",
     notes: "",
   };
 }
@@ -99,9 +109,29 @@ export function AdministrationLedgerTable({
     purpose: "",
     expenseCategory: "",
     invoiceReference: "",
+    salesEmployeeId: "",
     notes: "",
   });
   const [requestReason, setRequestReason] = useState("");
+  const [salesAgents, setSalesAgents] = useState<
+    Array<{ id: number; name: string }>
+  >([]);
+
+  useEffect(() => {
+    fetch("/api/employees", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows: Array<{ id: number; name: string; roles?: string[] }>) => {
+        if (!Array.isArray(rows)) return;
+        setSalesAgents(
+          rows.filter((e) =>
+            (e.roles ?? []).some(
+              (r) => r === "sales_agent" || r === "sales_admin"
+            )
+          )
+        );
+      })
+      .catch(() => {});
+  }, []);
 
   function openEditor(transaction: AdministrationTransaction, mode: EditorMode) {
     setEditor({ mode, transaction });
@@ -143,13 +173,19 @@ export function AdministrationLedgerTable({
   async function submitEditor(e: React.FormEvent) {
     e.preventDefault();
     if (!editor) return;
-    if (form.kind === "payment") {
+    if (!form.invoiceReference.trim()) {
+      onError("Invoice or receipt number is required on every register entry.");
+      return;
+    }
+    const incomeLike =
+      form.kind === "payment" || form.kind === "return_refund";
+    if (incomeLike) {
       if (!form.counterparty.trim()) {
-        onError("Customer name is required for payment (income).");
+        onError("Customer name is required for payment and refund entries.");
         return;
       }
-      if (!form.invoiceReference.trim()) {
-        onError("Invoice number is required for payment (income).");
+      if (!form.salesEmployeeId) {
+        onError("Sales agent is required for payment and refund entries.");
         return;
       }
     }
@@ -328,12 +364,18 @@ export function AdministrationLedgerTable({
               required
             />
             <Input
-              label={form.kind === "payment" ? "Customer name" : "Party"}
+              label={
+                form.kind === "payment" || form.kind === "return_refund"
+                  ? "Customer name"
+                  : "Party"
+              }
               value={form.counterparty}
               onChange={(e) =>
                 setForm((f) => ({ ...f, counterparty: e.target.value }))
               }
-              required={form.kind === "payment"}
+              required={
+                form.kind === "payment" || form.kind === "return_refund"
+              }
             />
             <Input
               label="Purpose"
@@ -359,14 +401,33 @@ export function AdministrationLedgerTable({
             ) : null}
             <Input
               label={
-                form.kind === "payment" ? "Invoice number" : "Invoice / receipt ref"
+                form.kind === "payment" || form.kind === "return_refund"
+                  ? "Invoice number"
+                  : "Invoice / receipt number"
               }
               value={form.invoiceReference}
               onChange={(e) =>
                 setForm((f) => ({ ...f, invoiceReference: e.target.value }))
               }
-              required={form.kind === "payment"}
+              required
             />
+            {form.kind === "payment" || form.kind === "return_refund" ? (
+              <Select
+                label="Sales agent"
+                value={form.salesEmployeeId}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, salesEmployeeId: e.target.value }))
+                }
+                required
+              >
+                <option value="">Select agent…</option>
+                {salesAgents.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+              </Select>
+            ) : null}
             {editor.mode === "request" ? (
               <Input
                 label="Reason for management"

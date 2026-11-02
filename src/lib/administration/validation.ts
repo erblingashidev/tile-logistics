@@ -39,3 +39,65 @@ export function invoiceReferencesMatch(
 export function kindRequiresPaymentMethod(kind: AdminTransactionKind): boolean {
   return kind === "payment" || kind === "return_refund";
 }
+
+const INCOME_LIKE_KINDS = new Set<AdminTransactionKind>([
+  "payment",
+  "return_refund",
+]);
+
+export function isIncomeLikeRegisterKind(
+  kind: string
+): kind is AdminTransactionKind {
+  return INCOME_LIKE_KINDS.has(kind as AdminTransactionKind);
+}
+
+/** Every register line must cite an invoice or receipt number for audit and follow-up. */
+export function assertRegisterInvoiceReference(
+  invoiceReference: string | null | undefined
+) {
+  if (!invoiceReference?.trim()) {
+    throw new Error(
+      "Invoice or receipt number is required on every register entry."
+    );
+  }
+}
+
+/** Payment and refunds must identify the customer and invoice. */
+export function assertPaymentIncomeRequiredFields(
+  kind: string,
+  counterpartyName: string | null | undefined,
+  invoiceReference: string | null | undefined
+) {
+  if (!isIncomeLikeRegisterKind(kind)) return;
+  if (!counterpartyName?.trim()) {
+    throw new Error(
+      "Customer name is required for payment and refund entries."
+    );
+  }
+  if (!invoiceReference?.trim()) {
+    throw new Error(
+      "Invoice number is required for payment and refund entries."
+    );
+  }
+}
+
+export function assertSalesAgentRequired(
+  kind: string,
+  salesEmployeeId: number | null | undefined
+) {
+  if (!isIncomeLikeRegisterKind(kind)) return;
+  if (!salesEmployeeId) {
+    throw new Error(
+      "Sales agent is required for payment and refund entries."
+    );
+  }
+}
+
+export function invoiceRowHasSalesAgent(row: {
+  salesEmployeeId: number | null;
+  salesAgentName: string | null;
+}): boolean {
+  return (
+    row.salesEmployeeId != null || Boolean(row.salesAgentName?.trim())
+  );
+}

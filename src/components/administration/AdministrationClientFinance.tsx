@@ -421,7 +421,8 @@ export function AdministrationClientFinance() {
         <h3 className="mb-2 text-sm font-semibold text-zinc-900">Debts</h3>
         <p className="mb-3 text-sm text-zinc-600">
           Clients with invoice balance still due (order total minus register payments
-          matched by invoice).
+          matched by invoice). Lines without an invoice number or sales agent are
+          excluded from follow-up lists.
         </p>
         <Card className="overflow-x-auto">
           {debts.length === 0 ? (
