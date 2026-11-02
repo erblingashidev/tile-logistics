@@ -68,6 +68,9 @@ export default function SettingsPage() {
   );
   const [featuresError, setFeaturesError] = useState("");
   const [featuresSuccess, setFeaturesSuccess] = useState("");
+  const [logsResetting, setLogsResetting] = useState(false);
+  const [logsResetError, setLogsResetError] = useState("");
+  const [logsResetSuccess, setLogsResetSuccess] = useState("");
 
   const groupedFlags = useMemo(() => {
     return GROUPS.map((group) => ({
@@ -160,6 +163,31 @@ export default function SettingsPage() {
       { [id]: value },
       `${meta?.title ?? "Setting"} ${enabled ? "enabled" : "disabled"}`
     );
+  }
+
+  async function resetLogs() {
+    const confirmed = window.confirm(
+      "Are you sure you want to delete all logs for this company?\n\nThis removes activity logs (orders, vehicles, deliveries, staff) and cash register audit history. This cannot be undone."
+    );
+    if (!confirmed) return;
+
+    setLogsResetError("");
+    setLogsResetSuccess("");
+    setLogsResetting(true);
+    try {
+      const res = await fetch("/api/settings/reset-logs", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setLogsResetError(data.error ?? "Could not reset logs.");
+        return;
+      }
+      setLogsResetSuccess("All logs for this company have been deleted.");
+      setTimeout(() => setLogsResetSuccess(""), 5000);
+    } catch {
+      setLogsResetError("Could not reset logs.");
+    } finally {
+      setLogsResetting(false);
+    }
   }
 
   async function saveProfile(e: React.FormEvent) {
@@ -424,6 +452,39 @@ export default function SettingsPage() {
           </Card>
 
           <CompanySettingsCard />
+
+          <Card className="border-red-200 bg-red-50/40 p-5">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-red-700">
+              Danger zone
+            </p>
+            <h2 className="mt-1 text-lg font-semibold text-zinc-900">
+              Reset logs
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm text-zinc-600">
+              Permanently delete all activity and cash register audit logs for
+              this company. Orders, employees, and register entries are not
+              affected — only the log history on the Logs page.
+            </p>
+            {logsResetError ? (
+              <div className="mt-3">
+                <Alert tone="error">{logsResetError}</Alert>
+              </div>
+            ) : null}
+            {logsResetSuccess ? (
+              <div className="mt-3">
+                <Alert tone="info">{logsResetSuccess}</Alert>
+              </div>
+            ) : null}
+            <Button
+              type="button"
+              variant="danger"
+              className="mt-4"
+              disabled={logsResetting}
+              onClick={() => void resetLogs()}
+            >
+              {logsResetting ? "Deleting logs…" : "Delete all logs"}
+            </Button>
+          </Card>
 
           <Card className="p-5">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
