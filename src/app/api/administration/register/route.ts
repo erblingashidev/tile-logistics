@@ -46,6 +46,13 @@ export async function POST(request: NextRequest) {
 
   return runWithTenantOrganizationAsync(auth.organizationId, async () => {
     try {
+      if (body.action !== "open" && body.action !== "close") {
+        return NextResponse.json(
+          { error: "Invalid action. Use open or close." },
+          { status: 400 }
+        );
+      }
+
       if (body.action === "close") {
         const canClose =
           auth.session.role === "admin" ||

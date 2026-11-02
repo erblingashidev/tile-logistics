@@ -19,6 +19,10 @@ import {
 import { sessionHasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { isCashierStaff } from "@/lib/employee-categories";
 import { transactionAffectsCashDrawer } from "@/lib/administration/register-cash";
+import {
+  invoiceReferencesMatch,
+  parsePositiveAmountCents,
+} from "@/lib/administration/validation";
 
 export type RegisterSessionRow = typeof adminRegisterSessions.$inferSelect;
 export type RegisterTransactionRow = typeof adminRegisterTransactions.$inferSelect;
@@ -28,9 +32,44 @@ function nowIso() {
 }
 
 function signedAmountCents(kind: AdminTransactionKind, amountCents: number) {
-  const abs = Math.abs(Math.round(amountCents));
+  const abs = parsePositiveAmountCents(Math.abs(Math.round(amountCents)));
   if (kind === "expense" || kind === "return_refund") return -abs;
   return abs;
+}
+
+async function assertNoDuplicatePaymentInvoice(
+  organizationId: number,
+  kind: string,
+  invoiceReference: string | null | undefined,
+  excludeTransactionId?: number
+) {
+  if (kind !== "payment") return;
+  const ref = invoiceReference?.trim();
+  if (!ref) return;
+  const db = await getControlPlaneDb();
+  const candidates = await db
+    .select({
+      id: adminRegisterTransactions.id,
+      invoiceReference: adminRegisterTransactions.invoiceReference,
+    })
+    .from(adminRegisterTransactions)
+    .where(
+      and(
+        eq(adminRegisterTransactions.organizationId, organizationId),
+        eq(adminRegisterTransactions.kind, "payment")
+      )
+    )
+    .limit(200);
+  const duplicate = candidates.find(
+    (row) =>
+      row.id !== excludeTransactionId &&
+      invoiceReferencesMatch(row.invoiceReference, ref)
+  );
+  if (duplicate) {
+    throw new Error(
+      `A payment for invoice “${ref}” is already recorded (entry #${duplicate.id}). Edit that line instead of creating a duplicate.`
+    );
+  }
 }
 
 function likeSearchPattern(query: string) {
@@ -101,25 +140,37 @@ export async function openRegisterSession(
   session: SessionUser,
   openingFloatCents: number
 ) {
-  const existing = await getOpenRegisterSession(organizationId);
-  if (existing) {
-    throw new Error("A register session is already open.");
-  }
   const db = await getControlPlaneDb();
   const ts = nowIso();
-  const inserted = await db
-    .insert(adminRegisterSessions)
-    .values({
-      organizationId,
-      status: "open",
-      openedAt: ts,
-      openedByEmployeeId:
-        session.role === "employee" ? session.employeeId : undefined,
-      openedByAdminId: session.role === "admin" ? session.adminId : undefined,
-      openingFloatCents: Math.max(0, Math.round(openingFloatCents)),
-      createdAt: ts,
-    })
-    .returning();
+  const float = Math.max(0, Math.round(openingFloatCents));
+  const inserted = await db.transaction(async (tx) => {
+    const existing = await tx
+      .select()
+      .from(adminRegisterSessions)
+      .where(
+        and(
+          eq(adminRegisterSessions.organizationId, organizationId),
+          eq(adminRegisterSessions.status, "open")
+        )
+      )
+      .limit(1);
+    if (existing[0]) {
+      throw new Error("A register session is already open.");
+    }
+    return tx
+      .insert(adminRegisterSessions)
+      .values({
+        organizationId,
+        status: "open",
+        openedAt: ts,
+        openedByEmployeeId:
+          session.role === "employee" ? session.employeeId : undefined,
+        openedByAdminId: session.role === "admin" ? session.adminId : undefined,
+        openingFloatCents: float,
+        createdAt: ts,
+      })
+      .returning();
+  });
   await appendRegisterAudit(
     organizationId,
     "register.open",
@@ -185,45 +236,66 @@ export async function closeRegisterSession(
   closingCashCountedCents: number,
   closingNotes?: string
 ) {
-  const open = await getOpenRegisterSession(organizationId);
-  if (!open) throw new Error("No open register session.");
   const counted = Math.round(closingCashCountedCents);
-  const expectedCashCents = await computeExpectedCashCents(
-    open.id,
-    open.openingFloatCents
-  );
-  const cashVarianceCents = counted - expectedCashCents;
   const db = await getControlPlaneDb();
   const ts = nowIso();
-  await db
-    .update(adminRegisterSessions)
-    .set({
-      status: "closed",
-      closedAt: ts,
-      closedByEmployeeId:
-        session.role === "employee" ? session.employeeId : undefined,
-      closedByAdminId: session.role === "admin" ? session.adminId : undefined,
-      closingCashCountedCents: counted,
-      expectedCashCents,
-      cashVarianceCents,
-      closingNotes: closingNotes?.trim() || null,
-    })
-    .where(eq(adminRegisterSessions.id, open.id));
 
-  await db
-    .update(adminRegisterTransactions)
-    .set({ locked: true, updatedAt: ts })
-    .where(eq(adminRegisterTransactions.registerSessionId, open.id));
+  const closedSessionId = await db.transaction(async (tx) => {
+    const [open] = await tx
+      .select()
+      .from(adminRegisterSessions)
+      .where(
+        and(
+          eq(adminRegisterSessions.organizationId, organizationId),
+          eq(adminRegisterSessions.status, "open")
+        )
+      )
+      .limit(1);
+    if (!open) throw new Error("No open register session.");
+
+    const txs = await tx
+      .select()
+      .from(adminRegisterTransactions)
+      .where(eq(adminRegisterTransactions.registerSessionId, open.id));
+    let cashDelta = 0;
+    for (const row of txs) {
+      if (transactionAffectsCashDrawer(row)) cashDelta += row.amountCents;
+    }
+    const expectedCashCents = open.openingFloatCents + cashDelta;
+    const cashVarianceCents = counted - expectedCashCents;
+
+    await tx
+      .update(adminRegisterSessions)
+      .set({
+        status: "closed",
+        closedAt: ts,
+        closedByEmployeeId:
+          session.role === "employee" ? session.employeeId : undefined,
+        closedByAdminId: session.role === "admin" ? session.adminId : undefined,
+        closingCashCountedCents: counted,
+        expectedCashCents,
+        cashVarianceCents,
+        closingNotes: closingNotes?.trim() || null,
+      })
+      .where(eq(adminRegisterSessions.id, open.id));
+
+    await tx
+      .update(adminRegisterTransactions)
+      .set({ locked: true, updatedAt: ts })
+      .where(eq(adminRegisterTransactions.registerSessionId, open.id));
+
+    return { sessionId: open.id, expectedCashCents, cashVarianceCents };
+  });
 
   await appendRegisterAudit(
     organizationId,
     "register.close",
     "register_session",
-    open.id,
+    closedSessionId.sessionId,
     {
       closingCashCountedCents: counted,
-      expectedCashCents,
-      cashVarianceCents,
+      expectedCashCents: closedSessionId.expectedCashCents,
+      cashVarianceCents: closedSessionId.cashVarianceCents,
       closingNotes,
     },
     session
@@ -231,7 +303,7 @@ export async function closeRegisterSession(
   const updated = await db
     .select()
     .from(adminRegisterSessions)
-    .where(eq(adminRegisterSessions.id, open.id))
+    .where(eq(adminRegisterSessions.id, closedSessionId.sessionId))
     .limit(1);
   return updated[0]!;
 }
@@ -308,6 +380,7 @@ export type CreateTransactionInput = {
   receiptReference?: string | null;
   notes?: string | null;
   recordedAt?: string;
+  idempotencyKey?: string | null;
 };
 
 export async function createRegisterTransaction(
@@ -328,6 +401,9 @@ export async function createRegisterTransaction(
   ) {
     throw new Error("Payment method is required.");
   }
+  if (kind === "expense" && !input.expenseCategory?.trim()) {
+    throw new Error("Expense category is required.");
+  }
 
   const open = await getOpenRegisterSession(organizationId);
   const cashier = session.role === "employee" && isCashierStaff(session.roles);
@@ -345,6 +421,26 @@ export async function createRegisterTransaction(
     input.counterpartyName,
     input.invoiceReference
   );
+  await assertNoDuplicatePaymentInvoice(
+    organizationId,
+    kind,
+    input.invoiceReference
+  );
+
+  const idempotencyKey = input.idempotencyKey?.trim() || null;
+  if (idempotencyKey) {
+    const existing = await db
+      .select()
+      .from(adminRegisterTransactions)
+      .where(
+        and(
+          eq(adminRegisterTransactions.organizationId, organizationId),
+          eq(adminRegisterTransactions.idempotencyKey, idempotencyKey)
+        )
+      )
+      .limit(1);
+    if (existing[0]) return existing[0]!;
+  }
 
   const inserted = await db
     .insert(adminRegisterTransactions)
@@ -366,6 +462,7 @@ export async function createRegisterTransaction(
       recordedAt,
       locked: false,
       notes: input.notes?.trim() || null,
+      idempotencyKey: idempotencyKey ?? undefined,
       createdAt: ts,
       updatedAt: ts,
     })
@@ -644,6 +741,19 @@ export async function patchRegisterTransaction(
     merged.counterpartyName,
     merged.invoiceReference
   );
+  await assertNoDuplicatePaymentInvoice(
+    organizationId,
+    merged.kind,
+    merged.invoiceReference,
+    transactionId
+  );
+  const mergedExpense =
+    patch.expenseCategory !== undefined
+      ? patch.expenseCategory
+      : tx.expenseCategory;
+  if (merged.kind === "expense" && !mergedExpense?.trim()) {
+    throw new Error("Expense category is required.");
+  }
 
   let amountCents = tx.amountCents;
   if (patch.amountCents != null) {
@@ -777,6 +887,99 @@ export async function getRegisterReportSummary(
 
   const grandTotal = rows.reduce((s, r) => s + Number(r.totalCents ?? 0), 0);
   return { rows, grandTotalCents: grandTotal };
+}
+
+export type RegisterFinanceOverview = {
+  from: string;
+  to: string;
+  incomeCents: number;
+  expenseCents: number;
+  refundCents: number;
+  netCents: number;
+  paymentCount: number;
+  expenseCount: number;
+  cashDrawerCents: number | null;
+  registerOpen: boolean;
+  byPaymentMethod: Array<{
+    paymentMethod: string | null;
+    totalCents: number;
+    count: number;
+  }>;
+};
+
+export async function getRegisterFinanceOverview(
+  organizationId: number,
+  from: string,
+  to: string
+): Promise<RegisterFinanceOverview> {
+  const db = await getControlPlaneDb();
+  const lines = await db
+    .select()
+    .from(adminRegisterTransactions)
+    .where(
+      and(
+        eq(adminRegisterTransactions.organizationId, organizationId),
+        gte(adminRegisterTransactions.recordedAt, from),
+        lte(adminRegisterTransactions.recordedAt, to)
+      )
+    );
+
+  let incomeCents = 0;
+  let expenseCents = 0;
+  let refundCents = 0;
+  let paymentCount = 0;
+  let expenseCount = 0;
+  const methodMap = new Map<string | null, { totalCents: number; count: number }>();
+
+  for (const line of lines) {
+    const kind = line.kind as AdminTransactionKind;
+    if (kind === "payment" || kind === "adjustment") {
+      if (line.amountCents > 0) {
+        incomeCents += line.amountCents;
+        if (kind === "payment") paymentCount += 1;
+      }
+    } else if (kind === "expense") {
+      expenseCents += Math.abs(line.amountCents);
+      expenseCount += 1;
+    } else if (kind === "return_refund") {
+      refundCents += Math.abs(line.amountCents);
+    }
+
+    if (kind === "payment" || kind === "return_refund") {
+      const key = line.paymentMethod ?? null;
+      const prev = methodMap.get(key) ?? { totalCents: 0, count: 0 };
+      methodMap.set(key, {
+        totalCents: prev.totalCents + line.amountCents,
+        count: prev.count + 1,
+      });
+    }
+  }
+
+  const open = await getOpenRegisterSession(organizationId);
+  let cashDrawerCents: number | null = null;
+  if (open) {
+    cashDrawerCents = await computeExpectedCashCents(
+      open.id,
+      open.openingFloatCents
+    );
+  }
+
+  return {
+    from,
+    to,
+    incomeCents,
+    expenseCents,
+    refundCents,
+    netCents: incomeCents - expenseCents - refundCents,
+    paymentCount,
+    expenseCount,
+    cashDrawerCents,
+    registerOpen: Boolean(open),
+    byPaymentMethod: [...methodMap.entries()].map(([paymentMethod, v]) => ({
+      paymentMethod,
+      ...v,
+    })),
+  };
 }
 
 export type RegisterAuditLogEntry = {

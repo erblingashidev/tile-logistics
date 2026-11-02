@@ -80,6 +80,9 @@ export async function POST(request: NextRequest) {
             : null,
           notes: body.notes ? String(body.notes) : null,
           recordedAt: body.recordedAt ? String(body.recordedAt) : undefined,
+          idempotencyKey: body.idempotencyKey
+            ? String(body.idempotencyKey)
+            : null,
         }
       );
       return NextResponse.json({ transaction: tx });

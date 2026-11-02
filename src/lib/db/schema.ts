@@ -822,6 +822,8 @@ export const adminRegisterTransactions = sqliteTable(
     recordedAt: text("recorded_at").notNull(),
     locked: integer("locked", { mode: "boolean" }).notNull().default(false),
     notes: text("notes"),
+    /** Client-supplied key to prevent double-submit duplicates. */
+    idempotencyKey: text("idempotency_key"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   }

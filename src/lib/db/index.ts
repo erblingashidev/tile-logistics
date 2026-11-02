@@ -272,6 +272,20 @@ async function ensureAdministrationRegisterTables(client: Client) {
   await client.execute(
     "CREATE INDEX IF NOT EXISTS idx_admin_register_audit_org ON admin_register_audit_log(organization_id, created_at)"
   );
+  const txCols = await tableColumns(client, "admin_register_transactions");
+  await addColumnIfMissing(
+    client,
+    "admin_register_transactions",
+    "idempotency_key",
+    "idempotency_key TEXT",
+    txCols
+  );
+  await client.execute(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_register_tx_org_idempotency ON admin_register_transactions(organization_id, idempotency_key) WHERE idempotency_key IS NOT NULL"
+  );
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_admin_register_tx_org_invoice ON admin_register_transactions(organization_id, kind, invoice_reference)"
+  );
 }
 
 async function ensureEmployeeNotificationsTable(client: Client) {

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { format } from "date-fns";
 import {
+  ADMIN_EXPENSE_CATEGORIES,
   ADMIN_PAYMENT_METHODS,
   ADMIN_TRANSACTION_KINDS,
 } from "@/lib/administration/constants";
@@ -337,13 +338,21 @@ export function AdministrationLedgerTable({
               onChange={(e) => setForm((f) => ({ ...f, purpose: e.target.value }))}
             />
             {form.kind === "expense" ? (
-              <Input
+              <Select
                 label="Expense category"
                 value={form.expenseCategory}
                 onChange={(e) =>
                   setForm((f) => ({ ...f, expenseCategory: e.target.value }))
                 }
-              />
+                required
+              >
+                <option value="">Select category…</option>
+                {ADMIN_EXPENSE_CATEGORIES.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.label}
+                  </option>
+                ))}
+              </Select>
             ) : null}
             <Input
               label={

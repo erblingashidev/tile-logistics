@@ -29,6 +29,35 @@ export type AdminEditRequestStatus =
 
 export const ADMIN_REGISTER_STATUSES = ["open", "closed"] as const;
 
+/** Standard expense buckets for reporting and consistency. */
+export const ADMIN_EXPENSE_CATEGORIES = [
+  { id: "fuel", label: "Fuel & transport" },
+  { id: "utilities", label: "Utilities" },
+  { id: "supplies", label: "Office / warehouse supplies" },
+  { id: "maintenance", label: "Maintenance & repairs" },
+  { id: "payroll_advance", label: "Payroll advance / cash to staff" },
+  { id: "vendor", label: "Vendor / supplier payment" },
+  { id: "bank_fees", label: "Bank & card fees" },
+  { id: "other", label: "Other expense" },
+] as const;
+
+export type AdminExpenseCategory =
+  (typeof ADMIN_EXPENSE_CATEGORIES)[number]["id"];
+
+export function isAdminExpenseCategory(
+  value: string
+): value is AdminExpenseCategory {
+  return ADMIN_EXPENSE_CATEGORIES.some((c) => c.id === value);
+}
+
+export function expenseCategoryLabel(id: string | null | undefined): string {
+  if (!id) return "—";
+  return (
+    ADMIN_EXPENSE_CATEGORIES.find((c) => c.id === id)?.label ??
+    id.replace(/_/g, " ")
+  );
+}
+
 export function isAdminPaymentMethod(value: string): value is AdminPaymentMethod {
   return ADMIN_PAYMENT_METHODS.some((m) => m.id === value);
 }

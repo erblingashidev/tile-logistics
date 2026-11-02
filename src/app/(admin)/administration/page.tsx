@@ -3,9 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import {
+  ADMIN_EXPENSE_CATEGORIES,
   ADMIN_PAYMENT_METHODS,
   ADMIN_TRANSACTION_KINDS,
 } from "@/lib/administration/constants";
+import {
+  AdministrationFinanceOverview,
+  type FinanceOverviewData,
+} from "@/components/administration/AdministrationFinanceOverview";
 import {
   AdministrationLedgerTable,
   formatAdminMoney,
@@ -101,6 +106,20 @@ export default function AdministrationPage() {
       count: number;
     }>;
   } | null>(null);
+  const [overview, setOverview] = useState<FinanceOverviewData | null>(null);
+
+  const loadOverview = useCallback(async () => {
+    const params = new URLSearchParams({
+      from: `${filterFrom}T00:00:00.000Z`,
+      to: `${filterTo}T23:59:59.999Z`,
+    });
+    const res = await fetch(`/api/administration/overview?${params}`, {
+      cache: "no-store",
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    setOverview(data.overview ?? null);
+  }, [filterFrom, filterTo]);
 
   const loadRegister = useCallback(async () => {
     const res = await fetch("/api/administration/register", {
@@ -160,11 +179,18 @@ export default function AdministrationPage() {
         loadTransactions(),
         loadPending(),
         loadClosedSessions(),
+        loadOverview(),
       ]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Load failed");
     }
-  }, [loadRegister, loadTransactions, loadPending, loadClosedSessions]);
+  }, [
+    loadRegister,
+    loadTransactions,
+    loadPending,
+    loadClosedSessions,
+    loadOverview,
+  ]);
 
   useEffect(() => {
     void refresh();
@@ -262,6 +288,10 @@ export default function AdministrationPage() {
         return;
       }
     }
+    if (formKind === "expense" && !formExpenseCategory) {
+      setError("Choose an expense category.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -278,6 +308,7 @@ export default function AdministrationPage() {
           expenseCategory:
             formKind === "expense" ? formExpenseCategory : undefined,
           invoiceReference: formInvoiceRef || undefined,
+          idempotencyKey: crypto.randomUUID(),
         }),
       });
       const data = await res.json();
@@ -312,6 +343,14 @@ export default function AdministrationPage() {
     }
   }
 
+  function exportLedgerCsv() {
+    const params = new URLSearchParams({
+      from: `${filterFrom}T00:00:00.000Z`,
+      to: `${filterTo}T23:59:59.999Z`,
+    });
+    window.location.href = `/api/administration/export?${params}`;
+  }
+
   async function runReport() {
     setBusy(true);
     setError("");
@@ -334,7 +373,7 @@ export default function AdministrationPage() {
   return (
     <AppShell
       title="Administration"
-      description="Cash register, payments, expenses, and management oversight. Shifts lock entries; corrections need management approval."
+      description="Cash register, payments, expenses, reconciliation, and audit. Duplicate invoice payments are blocked; shift close runs in one atomic step."
       contentMaxWidth="wide"
     >
       {error ? (
@@ -342,6 +381,13 @@ export default function AdministrationPage() {
           {error}
         </Alert>
       ) : null}
+
+      <PageSection title="Finance overview" className="mb-8">
+        <AdministrationFinanceOverview
+          overview={overview}
+          periodLabel={`Summary for ${filterFrom}${filterTo && filterTo !== filterFrom ? ` → ${filterTo}` : ""} (uses filter dates below)`}
+        />
+      </PageSection>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <PageSection title="Cash register shift">
@@ -459,11 +505,19 @@ export default function AdministrationPage() {
                 onChange={(e) => setFormPurpose(e.target.value)}
               />
               {formKind === "expense" ? (
-                <Input
+                <Select
                   label="Expense category"
                   value={formExpenseCategory}
                   onChange={(e) => setFormExpenseCategory(e.target.value)}
-                />
+                  required
+                >
+                  <option value="">Select category…</option>
+                  {ADMIN_EXPENSE_CATEGORIES.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.label}
+                    </option>
+                  ))}
+                </Select>
               ) : null}
               <Input
                 label={
@@ -559,6 +613,9 @@ export default function AdministrationPage() {
                 Generate report
               </Button>
             ) : null}
+            <Button variant="secondary" disabled={busy} onClick={exportLedgerCsv}>
+              Export CSV
+            </Button>
           </div>
         </Card>
 
