@@ -34,6 +34,10 @@ import {
   completedOnReportDate,
   getDailyReportOrders,
 } from "@/lib/services/daily-operations-report";
+import {
+  getDailyReportReturns,
+  type DailyReturnStats,
+} from "@/lib/services/customer-returns";
 
 function sheetFromRows(rows: Record<string, string | number>[], freezeRow = 1) {
   const ws = XLSX.utils.json_to_sheet(rows);
@@ -225,6 +229,63 @@ export async function buildPartialDeliveriesExcel(filters: {
   XLSX.utils.book_append_sheet(wb, sheetFromRows(orderRows), "Partial orders");
   XLSX.utils.book_append_sheet(wb, sheetFromRows(tripRows), "Delivery trips");
   return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+}
+
+function returnUnitLabel(unit: string) {
+  if (unit === "m2") return "m²";
+  if (unit === "piece") return "pcs";
+  return unit;
+}
+
+function returnsSummaryRows(
+  dateLabel: string,
+  stats: DailyReturnStats
+): Array<{ Metric: string; Value: string | number }> {
+  const rows: Array<{ Metric: string; Value: string | number }> = [
+    { Metric: "Report", Value: "Customer returns" },
+    { Metric: "Date", Value: dateLabel },
+    { Metric: "Returns recorded", Value: stats.returnCount },
+    { Metric: "Product lines", Value: stats.productLineCount },
+  ];
+  for (const [unit, totals] of Object.entries(stats.totalsByUnit)) {
+    const label = returnUnitLabel(unit);
+    rows.push({ Metric: `Total (${label})`, Value: totals.total });
+    rows.push({ Metric: `Untouched (${label})`, Value: totals.untouched });
+    rows.push({ Metric: `Chipped (${label})`, Value: totals.chipped });
+    rows.push({ Metric: `Broken (${label})`, Value: totals.broken });
+  }
+  return rows;
+}
+
+/** Returns report for one local day, or every recorded return when date is all. */
+export async function buildReturnsExcel(options: {
+  date: string | null;
+  from?: string;
+  to?: string;
+}) {
+  const { rows, stats } = await getDailyReportReturns(
+    options.date,
+    options.from && options.to
+      ? { from: options.from, to: options.to }
+      : undefined
+  );
+  const label = options.date ?? "all";
+  const wb = createStyledWorkbook();
+  const usedNames = new Set<string>();
+  addSummarySheet(
+    wb,
+    sanitizeSheetName("Summary", usedNames),
+    returnsSummaryRows(label === "all" ? "All days" : label, stats)
+  );
+  addStyledDataSheet(
+    wb,
+    sanitizeSheetName("Returns", usedNames),
+    buildDailyReturnRows(rows)
+  );
+  return {
+    buffer: await workbookToBuffer(wb),
+    filename: `returns-${label}.xlsx`,
+  };
 }
 
 /** Daily operations Excel — date in filename, color-coded rows. */

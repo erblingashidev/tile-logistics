@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   checklistToReturnLines,
   CustomerReturnChecklist,
@@ -10,12 +10,15 @@ import {
 } from "@/components/CustomerReturnChecklist";
 import { InvoiceNumberField } from "@/components/InvoiceNumberField";
 import { AppShell } from "@/components/layout/AppShell";
-import { Button, Card } from "@/components/ui";
-import { RETURN_CONDITION_LABELS } from "@/lib/customer-return-conditions";
+import { Button, Card, Input } from "@/components/ui";
+import {
+  addDaysToDateString,
+  todayDateString,
+} from "@/lib/delivery-schedule";
 import type {
-  CustomerReturnSummary,
+  DailyReturnProductRow,
+  DailyReturnStats,
   ReturnableLine,
-  ReturnProductBreakdown,
 } from "@/lib/services/customer-returns";
 
 type LookupResult = {
@@ -28,24 +31,24 @@ type LookupResult = {
   hasOpenReturnable: boolean;
 };
 
-function formatBreakdown(product: ReturnProductBreakdown): string {
-  const parts: string[] = [];
-  if (product.untouched > 0) {
-    parts.push(
-      `${RETURN_CONDITION_LABELS.untouched}: ${formatQty(product.unit, product.untouched)}`
-    );
-  }
-  if (product.chipped > 0) {
-    parts.push(
-      `${RETURN_CONDITION_LABELS.chipped}: ${formatQty(product.unit, product.chipped)}`
-    );
-  }
-  if (product.broken > 0) {
-    parts.push(
-      `${RETURN_CONDITION_LABELS.broken}: ${formatQty(product.unit, product.broken)}`
-    );
-  }
-  return parts.join(" · ");
+type ReturnDay = "today" | "yesterday" | "all" | "date";
+
+function localDayRange(day: string) {
+  const [year, month, date] = day.split("-").map(Number);
+  const start = new Date(year, month - 1, date);
+  const end = new Date(year, month - 1, date + 1);
+  return { from: start.toISOString(), to: end.toISOString() };
+}
+
+function unitLabel(unit: string) {
+  if (unit === "m2") return "m²";
+  if (unit === "piece") return "pcs";
+  return unit;
+}
+
+function qtyCell(unit: string, qty: number) {
+  if (qty <= 0) return "—";
+  return `${formatQty(unit, qty)} ${unitLabel(unit)}`;
 }
 
 export default function ReturnsPage() {
@@ -57,18 +60,55 @@ export default function ReturnsPage() {
   const [posting, setPosting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [recent, setRecent] = useState<CustomerReturnSummary[]>([]);
+  const [workDay, setWorkDay] = useState<ReturnDay>("today");
+  const [workDayDate, setWorkDayDate] = useState(() => todayDateString());
+  const [rows, setRows] = useState<DailyReturnProductRow[]>([]);
+  const [stats, setStats] = useState<DailyReturnStats>({
+    returnCount: 0,
+    productLineCount: 0,
+    totalsByUnit: {},
+  });
+  const [reportDate, setReportDate] = useState(() => todayDateString());
 
-  const loadRecent = useCallback(async () => {
-    const res = await fetch("/api/returns");
+  const selectedDay = useMemo(() => {
+    if (workDay === "all") return "all";
+    if (workDay === "yesterday") {
+      return addDaysToDateString(todayDateString(), -1);
+    }
+    if (workDay === "date") return workDayDate || todayDateString();
+    return todayDateString();
+  }, [workDay, workDayDate]);
+
+  const loadReport = useCallback(async () => {
+    const params = new URLSearchParams();
+    if (selectedDay === "all") {
+      params.set("date", "all");
+    } else {
+      const range = localDayRange(selectedDay);
+      params.set("date", selectedDay);
+      params.set("from", range.from);
+      params.set("to", range.to);
+    }
+    const res = await fetch(`/api/returns?${params}`);
     if (!res.ok) return;
-    const data = (await res.json()) as { returns: CustomerReturnSummary[] };
-    setRecent(data.returns ?? []);
-  }, []);
+    const data = (await res.json()) as {
+      date?: string;
+      report?: { rows: DailyReturnProductRow[]; stats: DailyReturnStats };
+    };
+    setReportDate(data.date ?? selectedDay);
+    setRows(data.report?.rows ?? []);
+    setStats(
+      data.report?.stats ?? {
+        returnCount: 0,
+        productLineCount: 0,
+        totalsByUnit: {},
+      }
+    );
+  }, [selectedDay]);
 
   useEffect(() => {
-    void loadRecent();
-  }, [loadRecent]);
+    void loadReport();
+  }, [loadReport]);
 
   async function findInvoice(e?: React.FormEvent) {
     e?.preventDefault();
@@ -134,7 +174,7 @@ export default function ReturnsPage() {
       setChecklist({});
       setReturnNotes("");
       setInvoice("");
-      await loadRecent();
+      await loadReport();
     } catch {
       setError("Could not save return.");
     } finally {
@@ -145,7 +185,7 @@ export default function ReturnsPage() {
   return (
     <AppShell
       title="Customer returns"
-      description="Record what a customer returned against the original invoice — no warehouse or stock required"
+      description="Today’s returns are shown by default. Pick another day, or all days, to see the rest."
     >
       {error ? (
         <p className="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
@@ -217,59 +257,156 @@ export default function ReturnsPage() {
         </Card>
       ) : null}
 
-      {recent.length ? (
-        <section className="max-w-3xl">
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-            Recent returns
-          </h2>
-          <ul className="space-y-3">
-            {recent.map((row) => (
-              <li
-                key={row.id}
-                className="rounded-lg border border-zinc-200 bg-white px-4 py-3"
+      <Card className="mb-4 p-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+            {(
+              [
+                { id: "today", label: "Today" },
+                { id: "yesterday", label: "Yesterday" },
+                { id: "all", label: "All days" },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => {
+                  setWorkDay(tab.id);
+                  setWorkDayDate(todayDateString());
+                }}
+                className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
+                  workDay === tab.id
+                    ? "bg-zinc-900 text-white"
+                    : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+                }`}
               >
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <span className="font-mono font-medium text-zinc-900">
-                    {row.invoiceNumber}
-                  </span>
-                  <span className="text-sm text-zinc-500">
-                    {new Date(row.postedAt ?? row.createdAt).toLocaleString()}
-                  </span>
-                </div>
-                {row.notes ? (
-                  <p className="mt-1 text-sm text-zinc-600">{row.notes}</p>
-                ) : null}
-                {row.products.length ? (
-                  <ul className="mt-2 space-y-2 border-t border-zinc-100 pt-2 text-sm text-zinc-700">
-                    {row.products.map((product) => (
-                      <li key={product.orderItemId}>
-                        <span className="font-medium text-zinc-900">
-                          {product.productName}
-                        </span>
-                        {" — total "}
-                        {formatQty(product.unit, product.total)}
-                        {product.unit === "m2"
-                          ? " m²"
-                          : product.unit === "piece"
-                            ? " pcs"
-                            : ` ${product.unit}`}
-                        <span className="mt-0.5 block text-zinc-600">
-                          {formatBreakdown(product)}
-                        </span>
-                        {product.notes ? (
-                          <span className="mt-0.5 block text-zinc-500">
-                            {product.notes}
-                          </span>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </li>
+                {tab.label}
+              </button>
             ))}
-          </ul>
-        </section>
-      ) : null}
+            <Input
+              label="Pick date"
+              type="date"
+              value={workDay === "date" ? workDayDate : selectedDay === "all" ? workDayDate : selectedDay}
+              onChange={(e) => {
+                setWorkDay("date");
+                setWorkDayDate(e.target.value);
+              }}
+              className="max-w-[160px]"
+            />
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              const params = new URLSearchParams({ type: "returns" });
+              if (selectedDay === "all") {
+                params.set("date", "all");
+              } else {
+                const range = localDayRange(selectedDay);
+                params.set("date", selectedDay);
+                params.set("from", range.from);
+                params.set("to", range.to);
+              }
+              window.open(`/api/export?${params}`, "_blank");
+            }}
+          >
+            Export report
+          </Button>
+        </div>
+      </Card>
+
+      <section className="mb-6">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-sm font-semibold text-zinc-900">
+            {reportDate === "all"
+              ? "Returns report — all days"
+              : `Returns report — ${reportDate}`}
+          </h2>
+          <p className="text-sm text-zinc-500">
+            {stats.returnCount} return{stats.returnCount === 1 ? "" : "s"} ·{" "}
+            {stats.productLineCount} product line
+            {stats.productLineCount === 1 ? "" : "s"}
+          </p>
+        </div>
+        {Object.keys(stats.totalsByUnit).length > 0 ? (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {Object.entries(stats.totalsByUnit).map(([unit, totals]) => (
+              <div
+                key={unit}
+                className="rounded border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700"
+              >
+                <span className="font-medium text-zinc-900">
+                  {qtyCell(unit, totals.total)}
+                </span>
+                <span className="mt-0.5 block text-xs text-zinc-500">
+                  Untouched {qtyCell(unit, totals.untouched)} · Chipped{" "}
+                  {qtyCell(unit, totals.chipped)} · Broken{" "}
+                  {qtyCell(unit, totals.broken)}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        <Card className="overflow-x-auto p-0">
+          {rows.length === 0 ? (
+            <p className="p-4 text-sm text-zinc-500">
+              {reportDate === "all"
+                ? "No returns recorded."
+                : `No returns recorded on ${reportDate}.`}
+            </p>
+          ) : (
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-zinc-200 bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500">
+                <tr>
+                  <th className="px-4 py-3">Invoice</th>
+                  <th className="px-4 py-3">Customer</th>
+                  <th className="px-4 py-3">Product</th>
+                  <th className="px-4 py-3">Total</th>
+                  <th className="px-4 py-3">Untouched</th>
+                  <th className="px-4 py-3">Chipped</th>
+                  <th className="px-4 py-3">Broken</th>
+                  <th className="px-4 py-3">Notes</th>
+                  <th className="px-4 py-3">Recorded</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr
+                    key={`${row.returnId}-${row.productName}-${row.unit}`}
+                    className="border-b border-zinc-100 last:border-0"
+                  >
+                    <td className="px-4 py-3 font-mono font-medium">
+                      {row.invoiceNumber}
+                    </td>
+                    <td className="px-4 py-3">{row.customerName}</td>
+                    <td className="px-4 py-3">{row.productName}</td>
+                    <td className="px-4 py-3 tabular-nums font-medium">
+                      {qtyCell(row.unit, row.total)}
+                    </td>
+                    <td className="px-4 py-3 tabular-nums text-zinc-600">
+                      {qtyCell(row.unit, row.untouched)}
+                    </td>
+                    <td className="px-4 py-3 tabular-nums text-zinc-600">
+                      {qtyCell(row.unit, row.chipped)}
+                    </td>
+                    <td className="px-4 py-3 tabular-nums text-zinc-600">
+                      {qtyCell(row.unit, row.broken)}
+                    </td>
+                    <td className="max-w-[14rem] px-4 py-3 text-zinc-600">
+                      {[row.returnNotes, row.productNotes]
+                        .filter(Boolean)
+                        .join(" · ") || "—"}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-zinc-600">
+                      {new Date(row.recordedAt).toLocaleString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Card>
+      </section>
     </AppShell>
   );
 }

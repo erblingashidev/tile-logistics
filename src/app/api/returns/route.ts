@@ -4,10 +4,11 @@ import type { SessionUser } from "@/lib/auth/session";
 import { sessionHasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import {
   createCustomerReturn,
-  listCustomerReturns,
+  getDailyReportReturns,
   lookupOrderForReturn,
 } from "@/lib/services/customer-returns";
 import { isReturnCondition } from "@/lib/customer-return-conditions";
+import { todayDateString } from "@/lib/delivery-schedule";
 
 export const runtime = "nodejs";
 
@@ -35,8 +36,31 @@ export async function GET(request: Request) {
       }
       return NextResponse.json(order);
     }
-    return NextResponse.json({ returns: await listCustomerReturns() });
+    const dateParam = url.searchParams.get("date")?.trim() || "";
+    const from = url.searchParams.get("from")?.trim() || "";
+    const to = url.searchParams.get("to")?.trim() || "";
+    if (dateParam === "all") {
+      const report = await getDailyReportReturns(null);
+      return NextResponse.json({ date: "all", report });
+    }
+    const date = dateParam || todayDateString();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return NextResponse.json({ error: "Invalid date." }, { status: 400 });
+    }
+    const hasRange = Boolean(from && to);
+    if (hasRange && (!isIsoInstant(from) || !isIsoInstant(to))) {
+      return NextResponse.json({ error: "Invalid date range." }, { status: 400 });
+    }
+    const report = await getDailyReportReturns(
+      date,
+      hasRange ? { from, to } : undefined
+    );
+    return NextResponse.json({ date, report });
   });
+}
+
+function isIsoInstant(value: string) {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(value);
 }
 
 export async function POST(request: Request) {

@@ -4,6 +4,7 @@ import {
   buildLocationGroupedExcel,
   buildPartialDeliveriesExcel,
   buildDailyOperationsExcel,
+  buildReturnsExcel,
 } from "@/lib/export/excel";
 import type { ExportGroupBy } from "@/lib/export/excel-format";
 import { parseWorkDayFilter } from "@/lib/delivery-schedule";
@@ -75,6 +76,28 @@ export async function GET(request: NextRequest) {
           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "Content-Disposition":
           'attachment; filename="partial-deliveries.xlsx"',
+      },
+    });
+  }
+
+  if (type === "returns") {
+    const dateParam = sp.get("date")?.trim() || "";
+    const from = sp.get("from")?.trim() || "";
+    const to = sp.get("to")?.trim() || "";
+    const date = dateParam === "all" ? null : dateParam;
+    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return NextResponse.json({ error: "Invalid date." }, { status: 400 });
+    }
+    const { buffer, filename } = await buildReturnsExcel({
+      date,
+      from: from && to ? from : undefined,
+      to: from && to ? to : undefined,
+    });
+    return new NextResponse(new Uint8Array(buffer), {
+      headers: {
+        "Content-Type":
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="${filename}"`,
       },
     });
   }

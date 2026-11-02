@@ -1,4 +1,4 @@
-import { desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { dbAll, dbOne } from "@/lib/db/query";
 import {
@@ -14,6 +14,7 @@ import {
 import { type OrderUnit } from "@/lib/constants";
 import { isLogisticsLine } from "@/lib/order-lines/classification";
 import { logActivity } from "@/lib/logger";
+import { resolveTenantOrganizationId } from "@/lib/organizations/tenant-context";
 import { getOrderByInvoiceNumber } from "@/lib/services/orders";
 import {
   lineNativeOrdered,
@@ -411,11 +412,24 @@ export function computeDailyReturnStats(
   };
 }
 
+const recordedAtSql = sql`coalesce(${customerReturns.postedAt}, ${customerReturns.createdAt})`;
+
+/** Local-day bounds from the browser, or a calendar date, or every day. */
 export async function getDailyReportReturns(
-  reportDate: string
+  reportDate: string | null,
+  range?: { from?: string; to?: string }
 ): Promise<{ rows: DailyReturnProductRow[]; stats: DailyReturnStats }> {
-  const date = reportDate.trim();
+  const date = reportDate?.trim() || null;
   const db = await getDb();
+  const organizationId = await resolveTenantOrganizationId();
+  const filters: SQL[] = [eq(customerReturns.organizationId, organizationId)];
+  if (range?.from && range?.to) {
+    filters.push(
+      sql`${recordedAtSql} >= ${range.from} AND ${recordedAtSql} < ${range.to}`
+    );
+  } else if (date) {
+    filters.push(sql`substr(${recordedAtSql}, 1, 10) = ${date}`);
+  }
   const headers = await dbAll(
     db
       .select({
@@ -429,9 +443,7 @@ export async function getDailyReportReturns(
       })
       .from(customerReturns)
       .innerJoin(orders, eq(customerReturns.orderId, orders.id))
-      .where(
-        sql`substr(coalesce(${customerReturns.postedAt}, ${customerReturns.createdAt}), 1, 10) = ${date}`
-      )
+      .where(and(...filters))
       .orderBy(desc(customerReturns.postedAt))
   );
 
