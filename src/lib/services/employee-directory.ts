@@ -80,6 +80,24 @@ export async function repairEmployeeOrganizationsFromDirectory() {
   `);
 }
 
+/** Employee ids whose portal login is registered to another company. */
+export async function employeeIdsRegisteredToOtherOrganizations(
+  organizationId: number
+): Promise<Set<number>> {
+  await getControlPlaneDb();
+  const client = await getLibsqlClient();
+  const result = await client.execute({
+    sql: `SELECT employee_id FROM employee_directory WHERE organization_id != ?`,
+    args: [organizationId],
+  });
+  const out = new Set<number>();
+  for (const row of result.rows) {
+    const id = Number(row.employee_id ?? row[0]);
+    if (Number.isFinite(id)) out.add(id);
+  }
+  return out;
+}
+
 export async function usernamesRegisteredToOtherOrganizations(
   organizationId: number
 ): Promise<Set<string>> {

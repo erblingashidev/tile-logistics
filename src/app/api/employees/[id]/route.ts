@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   deleteEmployee,
   EmployeeCredentialError,
+  EmployeeDeleteError,
   EmployeeVehicleError,
   getEmployee,
   updateEmployee,
@@ -64,11 +65,18 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  return runApiCompanyAdmin(async () => {
-    const ok = await deleteEmployee(Number(id));
-    if (!ok) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+  try {
+    return await runApiCompanyAdmin(async () => {
+      const ok = await deleteEmployee(Number(id));
+      if (!ok) {
+        return NextResponse.json({ error: "Not found" }, { status: 404 });
+      }
+      return NextResponse.json({ ok: true });
+    });
+  } catch (err) {
+    if (err instanceof EmployeeDeleteError) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
     }
-    return NextResponse.json({ ok: true });
-  });
+    throw err;
+  }
 }

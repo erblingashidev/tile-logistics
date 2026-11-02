@@ -1,4 +1,4 @@
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, ne, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { dbAll, dbOne } from "@/lib/db/query";
 import {
@@ -106,6 +106,13 @@ export class EmployeeVehicleError extends Error {
   }
 }
 
+export class EmployeeDeleteError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "EmployeeDeleteError";
+  }
+}
+
 async function assertUsernameAvailable(username: string, excludeId?: number) {
   const normalized = username.trim().toLowerCase();
   if (!normalized) {
@@ -119,11 +126,7 @@ async function assertUsernameAvailable(username: string, excludeId?: number) {
       .from(employees)
       .where(eq(employees.username, normalized))
   );
-  if (
-    existing &&
-    existing.id !== excludeId &&
-    existing.organizationId === organizationId
-  ) {
+  if (existing && existing.id !== excludeId) {
     throw new EmployeeCredentialError("That username is already in use");
   }
 
@@ -350,11 +353,16 @@ async function getEmployeeActiveAssignments(employeeId: number) {
 
 export async function listEmployees(roleFilter?: EmployeeRole) {
   const organizationId = await resolveTenantOrganizationId();
-  const { usernamesRegisteredToOtherOrganizations } = await import(
-    "@/lib/services/employee-directory"
-  );
-  const foreignUsernames =
-    await usernamesRegisteredToOtherOrganizations(organizationId);
+  const {
+    employeeIdsRegisteredToOtherOrganizations,
+    repairEmployeeOrganizationsFromDirectory,
+    usernamesRegisteredToOtherOrganizations,
+  } = await import("@/lib/services/employee-directory");
+  await repairEmployeeOrganizationsFromDirectory();
+  const [foreignUsernames, foreignEmployeeIds] = await Promise.all([
+    usernamesRegisteredToOtherOrganizations(organizationId),
+    employeeIdsRegisteredToOtherOrganizations(organizationId),
+  ]);
 
   const db = await getDb();
   const rows = await dbAll(
@@ -365,6 +373,7 @@ export async function listEmployees(roleFilter?: EmployeeRole) {
       .orderBy(desc(employees.updatedAt))
   );
   const scoped = rows.filter((row) => {
+    if (foreignEmployeeIds.has(row.id)) return false;
     const username = row.username?.trim().toLowerCase();
     if (username && foreignUsernames.has(username)) return false;
     return true;
@@ -568,6 +577,26 @@ export async function updateEmployee(id: number, payload: Partial<EmployeePayloa
 
   await db.update(employees).set(updateFields).where(eq(employees.id, id));
 
+  if (touchesCredentials) {
+    const organizationId = await resolveTenantOrganizationId();
+    const { removeEmployeeDirectory, upsertEmployeeDirectory } = await import(
+      "@/lib/services/employee-directory"
+    );
+    const previousUsername = existing.username?.trim().toLowerCase() || null;
+    if (payload.removePortalLogin && previousUsername) {
+      await removeEmployeeDirectory(previousUsername);
+    } else if (nextUsername) {
+      if (previousUsername && previousUsername !== nextUsername) {
+        await removeEmployeeDirectory(previousUsername);
+      }
+      await upsertEmployeeDirectory({
+        username: nextUsername,
+        organizationId,
+        employeeId: id,
+      });
+    }
+  }
+
   if (payload.assignedVehicleId !== undefined) {
     const vehicleId = canHaveVehicle ? payload.assignedVehicleId : null;
     if (vehicleId) {
@@ -670,11 +699,62 @@ export async function updateEmployee(id: number, payload: Partial<EmployeePayloa
   return getEmployee(id);
 }
 
+async function clearEmployeeReferencesBeforeDelete(employeeId: number) {
+  const db = await getDb();
+  const now = new Date().toISOString();
+  await db
+    .update(employees)
+    .set({ managerEmployeeId: null, updatedAt: now })
+    .where(eq(employees.managerEmployeeId, employeeId));
+  await db
+    .update(orders)
+    .set({ salesEmployeeId: null, updatedAt: now })
+    .where(eq(orders.salesEmployeeId, employeeId));
+  await db
+    .update(assignments)
+    .set({ driverEmployeeId: null })
+    .where(eq(assignments.driverEmployeeId, employeeId));
+}
+
 export async function deleteEmployee(id: number) {
+  const organizationId = await resolveTenantOrganizationId();
   const db = await getDb();
   const existing = await getEmployee(id);
   if (!existing) return false;
-  await db.delete(employees).where(eq(employees.id, id));
+
+  const username = existing.username?.trim().toLowerCase() || null;
+
+  try {
+    await clearEmployeeReferencesBeforeDelete(id);
+    await db
+      .delete(employees)
+      .where(
+        and(eq(employees.id, id), eq(employees.organizationId, organizationId))
+      );
+
+    if (username) {
+      const { lookupEmployeeDirectory, removeEmployeeDirectory } =
+        await import("@/lib/services/employee-directory");
+      const directory = await lookupEmployeeDirectory(username);
+      if (!directory || directory.employeeId === id) {
+        await removeEmployeeDirectory(username);
+      }
+      await db
+        .delete(employees)
+        .where(
+          and(eq(employees.username, username), ne(employees.id, id))
+        );
+    }
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Could not delete employee";
+    throw new EmployeeDeleteError(
+      message.includes("FOREIGN KEY")
+        ? "This employee is still linked to orders or other records. Remove those links first, then try again."
+        : "Could not delete this employee. Try again or contact support."
+    );
+  }
+
   await logActivity(
     "delete",
     "employee",
