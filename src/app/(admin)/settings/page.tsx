@@ -167,7 +167,7 @@ export default function SettingsPage() {
 
   async function resetLogs() {
     const confirmed = window.confirm(
-      "Are you sure you want to delete all logs for this company?\n\nThis removes activity logs (orders, vehicles, deliveries, staff) and cash register audit history. This cannot be undone."
+      "Are you sure you want to delete all logs for this company?\n\nThis removes activity logs, cash register audit history, and shift close results. Register payment lines are kept but no longer tied to a shift. This cannot be undone."
     );
     if (!confirmed) return;
 
@@ -461,9 +461,10 @@ export default function SettingsPage() {
               Reset logs
             </h2>
             <p className="mt-1 max-w-2xl text-sm text-zinc-600">
-              Permanently delete all activity and cash register audit logs for
-              this company. Orders, employees, and register entries are not
-              affected — only the log history on the Logs page.
+              Permanently delete activity logs, cash register audit history, and
+              shift close results for this company. Register ledger lines,
+              orders, and employees stay — you may need to open a new register
+              shift after a reset.
             </p>
             {logsResetError ? (
               <div className="mt-3">
