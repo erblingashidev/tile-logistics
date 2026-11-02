@@ -74,14 +74,30 @@ function cashierAdminPathAllowed(pathname: string) {
   );
 }
 
+/** Read-only data the invoicing office needs on Orders & invoices. */
+function cashierReadApiAllowed(pathname: string, method: string) {
+  if (method !== "GET" && method !== "HEAD") return false;
+  if (pathname === "/api/employees") return true;
+  if (pathname === "/api/vehicles") return true;
+  if (/^\/api\/vehicles\/\d+\/truck-workspace$/.test(pathname)) return true;
+  if (pathname === "/api/warehouse/products") return true;
+  if (pathname === "/api/export") return true;
+  return false;
+}
+
 function employeePathAllowed(
   pathname: string,
   roles: EmployeeRole[],
-  wmsEnabled: boolean
+  wmsEnabled: boolean,
+  method: string
 ) {
   if (pathname.startsWith("/api/auth")) return true;
 
-  if (isCashierOnly(roles) && cashierAdminPathAllowed(pathname)) {
+  if (
+    isCashierOnly(roles) &&
+    (cashierAdminPathAllowed(pathname) ||
+      cashierReadApiAllowed(pathname, method))
+  ) {
     return true;
   }
 
@@ -241,7 +257,7 @@ export async function proxy(request: NextRequest) {
         appUrl(request, session, "/administration")
       );
     }
-    if (!employeePathAllowed(pathname, session.roles, wmsEnabled)) {
+    if (!employeePathAllowed(pathname, session.roles, wmsEnabled, request.method)) {
       if (pathname.startsWith("/api/")) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }

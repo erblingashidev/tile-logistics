@@ -7,17 +7,39 @@ import {
   type EmployeePayload,
 } from "@/lib/services/employees";
 import type { EmployeeRole } from "@/lib/constants";
-import { runApiCompanyAdmin } from "@/lib/auth/api-guard";
+import {
+  requireApiTenantSession,
+  runApiCompanyAdmin,
+  runApiWithTenant,
+} from "@/lib/auth/api-guard";
+import { isCashierStaff } from "@/lib/employee-categories";
 import { TenantRequiredError } from "@/lib/organizations/tenant-context";
 
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
   try {
+    const auth = await requireApiTenantSession();
+    if (!auth.ok) return auth.response;
+    const cashier =
+      auth.session.role === "employee" && isCashierStaff(auth.session.roles);
+    if (auth.session.role !== "admin" && !cashier) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const role = request.nextUrl.searchParams.get("role") as EmployeeRole | null;
-    return await runApiCompanyAdmin(async () =>
-      NextResponse.json(await listEmployees(role ?? undefined))
-    );
+    return await runApiWithTenant(async () => {
+      const rows = await listEmployees(role ?? undefined);
+      if (!cashier) return NextResponse.json(rows);
+      return NextResponse.json(
+        rows.map((employee) => ({
+          id: employee.id,
+          name: employee.name,
+          status: employee.status,
+          roles: employee.roles,
+        }))
+      );
+    });
   } catch (err) {
     if (err instanceof TenantRequiredError) {
       return NextResponse.json({ error: err.message }, { status: 403 });

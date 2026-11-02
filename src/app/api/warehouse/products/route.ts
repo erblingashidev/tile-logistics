@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth";
+import { getSession, requireAdmin } from "@/lib/auth";
+import { isCashierStaff } from "@/lib/employee-categories";
 import {
   listProducts,
   confirmProduct,
@@ -22,10 +23,29 @@ function errorMessage(err: unknown, fallback: string) {
 
 export async function GET(request: Request) {
   try {
-    await requireAdmin();
+    const session = await getSession();
+    const cashier =
+      session?.role === "employee" && isCashierStaff(session.roles);
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (session.role !== "admin" && !cashier) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    if (session.role === "admin") {
+      await requireAdmin();
+    } else if (session.organizationId) {
+      const { bindTenantOrganization } = await import(
+        "@/lib/organizations/tenant-context"
+      );
+      bindTenantOrganization(session.organizationId);
+    }
     const { searchParams } = new URL(request.url);
     const q = searchParams.get("q")?.trim();
     const limit = Number(searchParams.get("limit") ?? "200");
+    if (cashier && !q) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
     if (q) {
       const products = await searchProducts(q, Math.min(limit, 30));
       return NextResponse.json(products);
