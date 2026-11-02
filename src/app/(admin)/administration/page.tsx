@@ -8,20 +8,13 @@ import {
   ADMIN_TRANSACTION_KINDS,
 } from "@/lib/administration/constants";
 import {
-  AdministrationFinanceOverview,
-  type FinanceOverviewData,
-} from "@/components/administration/AdministrationFinanceOverview";
-import { AdministrationClientFinance } from "@/components/administration/AdministrationClientFinance";
-import {
   AdministrationLedgerTable,
   formatAdminMoney,
   type AdministrationTransaction,
 } from "@/components/administration/AdministrationLedgerTable";
 import {
-  ClosedRegisterSessionsTable,
   RegisterClosePreview,
   RegisterOpenExpectedBanner,
-  type ClosedRegisterSession,
 } from "@/components/administration/RegisterShiftReconciliation";
 import { formatCashVarianceLabel } from "@/lib/administration/register-cash";
 import {
@@ -64,9 +57,6 @@ export default function AdministrationPage() {
   const [lastCloseVariance, setLastCloseVariance] = useState<number | null>(
     null
   );
-  const [closedSessions, setClosedSessions] = useState<ClosedRegisterSession[]>(
-    []
-  );
   const [transactions, setTransactions] = useState<AdministrationTransaction[]>(
     []
   );
@@ -74,7 +64,6 @@ export default function AdministrationPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [canApprove, setCanApprove] = useState(false);
-  const [canReports, setCanReports] = useState(false);
 
   const [openingFloat, setOpeningFloat] = useState("0");
   const [closingCounted, setClosingCounted] = useState("");
@@ -103,30 +92,6 @@ export default function AdministrationPage() {
   >([]);
   const [invoiceLookupHint, setInvoiceLookupHint] = useState("");
 
-  const [reportSummary, setReportSummary] = useState<{
-    grandTotalCents: number;
-    rows: Array<{
-      paymentMethod: string | null;
-      kind: string;
-      totalCents: number;
-      count: number;
-    }>;
-  } | null>(null);
-  const [overview, setOverview] = useState<FinanceOverviewData | null>(null);
-
-  const loadOverview = useCallback(async () => {
-    const params = new URLSearchParams({
-      from: `${filterFrom}T00:00:00.000Z`,
-      to: `${filterTo}T23:59:59.999Z`,
-    });
-    const res = await fetch(`/api/administration/overview?${params}`, {
-      cache: "no-store",
-    });
-    if (!res.ok) return;
-    const data = await res.json();
-    setOverview(data.overview ?? null);
-  }, [filterFrom, filterTo]);
-
   const loadRegister = useCallback(async () => {
     const res = await fetch("/api/administration/register", {
       cache: "no-store",
@@ -138,19 +103,6 @@ export default function AdministrationPage() {
       typeof data.expectedCashCents === "number" ? data.expectedCashCents : null
     );
   }, []);
-
-  const loadClosedSessions = useCallback(async () => {
-    const params = new URLSearchParams({
-      from: `${filterFrom}T00:00:00.000Z`,
-      to: `${filterTo}T23:59:59.999Z`,
-    });
-    const res = await fetch(`/api/administration/register?${params}`, {
-      cache: "no-store",
-    });
-    if (!res.ok) return;
-    const data = await res.json();
-    setClosedSessions(data.sessions ?? []);
-  }, [filterFrom, filterTo]);
 
   const loadTransactions = useCallback(async () => {
     const params = new URLSearchParams({
@@ -184,8 +136,6 @@ export default function AdministrationPage() {
         loadRegister(),
         loadTransactions(),
         loadPending(),
-        loadClosedSessions(),
-        loadOverview(),
       ]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Load failed");
@@ -194,8 +144,6 @@ export default function AdministrationPage() {
     loadRegister,
     loadTransactions,
     loadPending,
-    loadClosedSessions,
-    loadOverview,
   ]);
 
   useEffect(() => {
@@ -252,11 +200,6 @@ export default function AdministrationPage() {
         const perms: string[] = data?.permissions ?? [];
         setCanApprove(
           perms.includes("administration:approve") || data?.user?.role === "admin"
-        );
-        setCanReports(
-          perms.includes("administration:reports") ||
-            perms.includes("administration:approve") ||
-            data?.user?.role === "admin"
         );
       })
       .catch(() => {});
@@ -404,37 +347,10 @@ export default function AdministrationPage() {
     }
   }
 
-  function exportLedgerCsv() {
-    const params = new URLSearchParams({
-      from: `${filterFrom}T00:00:00.000Z`,
-      to: `${filterTo}T23:59:59.999Z`,
-    });
-    window.location.href = `/api/administration/export?${params}`;
-  }
-
-  async function runReport() {
-    setBusy(true);
-    setError("");
-    try {
-      const params = new URLSearchParams({
-        from: `${filterFrom}T00:00:00.000Z`,
-        to: `${filterTo}T23:59:59.999Z`,
-      });
-      const res = await fetch(`/api/administration/reports?${params}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Report failed");
-      setReportSummary(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Report failed");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
     <AppShell
-      title="Administration"
-      description="Cash register, payments, expenses, reconciliation, and audit. Duplicate invoice payments are blocked; shift close runs in one atomic step."
+      title="Cash register"
+      description="Open and close shifts, record payments and expenses, and review today’s ledger. Duplicate invoice payments are blocked."
       contentMaxWidth="wide"
     >
       {error ? (
@@ -442,13 +358,6 @@ export default function AdministrationPage() {
           {error}
         </Alert>
       ) : null}
-
-      <PageSection title="Finance overview" className="mb-8">
-        <AdministrationFinanceOverview
-          overview={overview}
-          periodLabel={`Summary for ${filterFrom}${filterTo && filterTo !== filterFrom ? ` → ${filterTo}` : ""} (uses filter dates below)`}
-        />
-      </PageSection>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <PageSection title="Cash register shift">
@@ -625,21 +534,7 @@ export default function AdministrationPage() {
         </PageSection>
       </div>
 
-      <PageSection title="Debts & client follow-up" className="mt-8">
-        <AdministrationClientFinance />
-      </PageSection>
-
-      <PageSection title="Shift close results" className="mt-8">
-        <Card className="p-4">
-          <p className="mb-3 text-sm text-zinc-600">
-            Compare counted cash to expected (opening float + cash in − cash out)
-            for each closed shift in the filter range.
-          </p>
-          <ClosedRegisterSessionsTable sessions={closedSessions} />
-        </Card>
-      </PageSection>
-
-      <PageSection title="Ledger & filters" className="mt-8">
+      <PageSection title="Ledger" className="mt-8">
         <Card className="mb-4 grid gap-3 p-4 sm:grid-cols-4">
           <div className="sm:col-span-4">
             <Input
@@ -689,34 +584,8 @@ export default function AdministrationPage() {
             <Button variant="secondary" disabled={busy} onClick={() => void refresh()}>
               Apply filters
             </Button>
-            {canReports ? (
-              <Button variant="secondary" disabled={busy} onClick={() => void runReport()}>
-                Generate report
-              </Button>
-            ) : null}
-            <Button variant="secondary" disabled={busy} onClick={exportLedgerCsv}>
-              Export CSV
-            </Button>
           </div>
         </Card>
-
-        {reportSummary ? (
-          <Card className="mb-4 p-4">
-            <p className="mb-2 font-medium">Report summary</p>
-            <p className="text-sm text-zinc-600">
-              Net total: {formatAdminMoney(reportSummary.grandTotalCents)}
-            </p>
-            <ul className="mt-2 space-y-1 text-sm">
-              {reportSummary.rows.map((r, i) => (
-                <li key={i}>
-                  {r.kind} / {r.paymentMethod ?? "—"}:{" "}
-                  {formatAdminMoney(Number(r.totalCents))}{" "}
-                  ({r.count} lines)
-                </li>
-              ))}
-            </ul>
-          </Card>
-        ) : null}
 
         <AdministrationLedgerTable
           transactions={transactions}

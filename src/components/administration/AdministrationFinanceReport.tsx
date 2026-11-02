@@ -180,10 +180,10 @@ export function AdministrationFinanceReport({
   }
 
   return (
-    <PageSection title="Administration & cash register">
+    <PageSection title="Ledger & reports">
       <p className="-mt-2 mb-4 text-sm text-zinc-600">
-        Payments, expenses, and ledger lines — edit open entries or request
-        management approval when locked.
+        Search register entries, generate summaries, and edit or request
+        corrections on locked lines.
       </p>
       {error ? <Alert tone="error">{error}</Alert> : null}
 

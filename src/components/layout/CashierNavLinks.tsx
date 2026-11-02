@@ -30,7 +30,7 @@ export function CashierNavLinks({
     { href: "/orders", label: "Orders & invoices" },
     ...(modules.returns !== false ? [{ href: "/returns", label: "Returns" }] : []),
     ...(modules.administration !== false
-      ? [{ href: "/administration", label: "Administration" }]
+      ? [{ href: "/administration", label: "Cash register" }]
       : []),
     { href: "/logs", label: "Logs" },
   ];
