@@ -9,7 +9,7 @@ export default function AdministrationFinanceImportsPage() {
   return (
     <FinancePageShell
       title="Finance import"
-      description="Upload Excel exports from your official finance system. Column preview works today; mapped import into debts, sales, and expenses comes with your sample files."
+      description="Import Pro-Data Libri i transaksioneve — sales, credit notes, agents, and debts stay aligned with your finance system."
     >
       <div className="mb-6">
         <Link href="/administration/finance/reports">

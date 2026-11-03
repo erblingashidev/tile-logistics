@@ -302,6 +302,48 @@ async function ensureAdministrationRegisterTables(client: Client) {
   );
 }
 
+async function ensureFinanceProdataImportTables(client: Client) {
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS finance_prodata_import_batches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      file_name TEXT NOT NULL,
+      sheet_name TEXT,
+      row_count INTEGER NOT NULL DEFAULT 0,
+      invoice_count INTEGER NOT NULL DEFAULT 0,
+      date_from TEXT,
+      date_to TEXT,
+      summary_json TEXT,
+      imported_by_admin_id INTEGER REFERENCES admins(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL
+    )
+  `);
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS finance_prodata_invoices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      batch_id INTEGER NOT NULL REFERENCES finance_prodata_import_batches(id) ON DELETE CASCADE,
+      invoice_number TEXT NOT NULL,
+      document_category TEXT NOT NULL,
+      transaction_date TEXT NOT NULL,
+      buyer_name TEXT NOT NULL,
+      sales_agent_name TEXT,
+      net_value_cents INTEGER NOT NULL,
+      line_count INTEGER NOT NULL DEFAULT 1,
+      payment_method_raw TEXT,
+      payment_method TEXT,
+      product_sample TEXT,
+      updated_at TEXT NOT NULL
+    )
+  `);
+  await client.execute(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_finance_prodata_inv_org_number ON finance_prodata_invoices(organization_id, invoice_number)"
+  );
+  await client.execute(
+    "CREATE INDEX IF NOT EXISTS idx_finance_prodata_inv_org_date ON finance_prodata_invoices(organization_id, transaction_date)"
+  );
+}
+
 async function ensureEmployeeNotificationsTable(client: Client) {
   await client.execute(`
     CREATE TABLE IF NOT EXISTS employee_notifications (
@@ -1438,6 +1480,7 @@ export async function bootstrapOperationalDatabase(client: Client) {
   await ensureWarehouseSchemaPatches(client);
   await ensureInvoiceImportTables(client);
   await ensureAdministrationRegisterTables(client);
+  await ensureFinanceProdataImportTables(client);
 }
 
 export async function getControlPlaneDb() {
@@ -1466,6 +1509,7 @@ export async function getControlPlaneDb() {
         await ensureWarehouseSchemaPatches(clientInstance);
         await ensureInvoiceImportTables(clientInstance);
         await ensureAdministrationRegisterTables(clientInstance);
+        await ensureFinanceProdataImportTables(clientInstance);
         dbInstance = drizzle(clientInstance, { schema });
         if (shouldRunStartupBackfill()) {
           const { backfillAdminEmployeeLinks } = await import(

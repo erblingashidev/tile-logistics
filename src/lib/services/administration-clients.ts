@@ -6,6 +6,7 @@ import {
   invoiceRowHasSalesAgent,
 } from "@/lib/administration/validation";
 import { listRegisterTransactions } from "@/lib/services/administration-register";
+import { listProDataFinanceInvoices } from "@/lib/services/finance-prodata-import";
 
 export function normalizeClientKey(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, " ");
@@ -227,25 +228,86 @@ export async function buildClientFinanceProfiles(
     return profile;
   }
 
+  const prodataInvoices = await listProDataFinanceInvoices(organizationId);
+
+  for (const ext of prodataInvoices) {
+    if (!ext.invoiceNumber?.trim()) continue;
+    if (ext.documentCategory === "delivery_note") continue;
+
+    const profile = getProfile(ext.buyerName);
+    const normInv = normalizeInvoiceRef(ext.invoiceNumber);
+    invoiceOwner.set(normInv, profile.clientKey);
+
+    const existing = profile.invoiceByNorm.get(normInv);
+    const agentName = ext.salesAgentName?.trim() || null;
+    const orderDate = ext.transactionDate;
+    const isCredit =
+      ext.documentCategory === "credit_note" || ext.netValueCents < 0;
+    const invoicedCents = isCredit ? 0 : ext.netValueCents;
+    const creditPaidCents = isCredit ? Math.abs(ext.netValueCents) : 0;
+
+    if (existing) {
+      existing.invoicedCents = invoicedCents;
+      if (creditPaidCents > 0) {
+        existing.paidCents = Math.max(existing.paidCents, creditPaidCents);
+      }
+      if (agentName && !existing.salesAgentName) {
+        existing.salesAgentName = agentName;
+      }
+      if (orderDate) {
+        existing.orderDate = orderDate;
+      }
+      existing.daysOutstanding = daysSinceDate(existing.orderDate ?? orderDate);
+      existing.balanceDueCents = Math.max(
+        0,
+        existing.invoicedCents - existing.paidCents
+      );
+    } else {
+      profile.invoiceByNorm.set(normInv, {
+        invoiceNumber: ext.invoiceNumber.trim(),
+        orderId: null,
+        orderDate,
+        orderStatus: null,
+        location: null,
+        invoicedCents,
+        paidCents: creditPaidCents,
+        balanceDueCents: Math.max(0, invoicedCents - creditPaidCents),
+        salesEmployeeId: null,
+        salesAgentName: agentName,
+        daysOutstanding: daysSinceDate(orderDate),
+      });
+    }
+    touchActivity(profile, orderDate);
+  }
+
   for (const order of orderRows) {
     if (!order.invoiceNumber?.trim()) continue;
     const profile = getProfile(order.customerName);
     const normInv = normalizeInvoiceRef(order.invoiceNumber);
     invoiceOwner.set(normInv, profile.clientKey);
     const invoicedCents = Math.round(Number(order.price) * 100);
+    const existing = profile.invoiceByNorm.get(normInv);
     const row: ClientInvoiceRow = {
       invoiceNumber: order.invoiceNumber,
       orderId: order.id,
       orderDate: order.orderDate,
       orderStatus: order.status,
       location: order.location,
-      invoicedCents,
-      paidCents: 0,
-      balanceDueCents: invoicedCents,
-      salesEmployeeId: order.salesEmployeeId ?? null,
-      salesAgentName: order.salesAgentName?.trim() || null,
+      invoicedCents: existing?.invoicedCents ?? invoicedCents,
+      paidCents: existing?.paidCents ?? 0,
+      balanceDueCents:
+        existing?.balanceDueCents ??
+        Math.max(0, (existing?.invoicedCents ?? invoicedCents) - 0),
+      salesEmployeeId: order.salesEmployeeId ?? existing?.salesEmployeeId ?? null,
+      salesAgentName:
+        order.salesAgentName?.trim() ||
+        existing?.salesAgentName ||
+        null,
       daysOutstanding: daysSinceDate(order.orderDate),
     };
+    if (!existing) {
+      row.balanceDueCents = row.invoicedCents;
+    }
     profile.invoiceByNorm.set(normInv, row);
     touchActivity(profile, order.orderDate);
   }

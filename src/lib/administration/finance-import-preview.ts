@@ -1,17 +1,23 @@
 import * as XLSX from "xlsx";
+import {
+  isProDataTransactionBookHeaders,
+  parseProDataTransactionBook,
+  type ProDataImportAnalysis,
+} from "@/lib/administration/prodata-transaction-book";
 
 export type FinanceImportPreview = {
+  format: "generic" | "prodata_transaction_book";
   fileName: string;
   sheetName: string;
   rowCount: number;
   columns: string[];
   sampleRows: string[][];
+  prodata?: ProDataImportAnalysis;
 };
 
 const MAX_PREVIEW_ROWS = 8;
 
-/** Parse an Excel export for column mapping — full import rules come once sample files are provided. */
-export function previewFinanceSpreadsheet(
+function previewGenericSpreadsheet(
   buffer: Buffer,
   fileName: string
 ): FinanceImportPreview {
@@ -43,10 +49,36 @@ export function previewFinanceSpreadsheet(
     columns.map((_, i) => String(row[i] ?? "").trim())
   );
   return {
+    format: "generic",
     fileName,
     sheetName,
     rowCount: dataRows.length,
     columns,
     sampleRows,
   };
+}
+
+/** Parse finance export — auto-detects Pro-Data Libri i transaksioneve. */
+export function previewFinanceSpreadsheet(
+  buffer: Buffer,
+  fileName: string
+): FinanceImportPreview {
+  const generic = previewGenericSpreadsheet(buffer, fileName);
+  if (!isProDataTransactionBookHeaders(generic.columns)) {
+    return generic;
+  }
+  try {
+    const prodata = parseProDataTransactionBook(buffer, fileName);
+    return {
+      format: "prodata_transaction_book",
+      fileName,
+      sheetName: prodata.sheetName,
+      rowCount: prodata.rowCount,
+      columns: prodata.columns,
+      sampleRows: prodata.sampleRows,
+      prodata,
+    };
+  } catch {
+    return generic;
+  }
 }

@@ -870,6 +870,54 @@ export const adminRegisterEditRequests = sqliteTable(
   }
 );
 
+/** Pro-Data “Libri i transaksioneve” import batch metadata. */
+export const financeProdataImportBatches = sqliteTable(
+  "finance_prodata_import_batches",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    organizationId: integer("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    fileName: text("file_name").notNull(),
+    sheetName: text("sheet_name"),
+    rowCount: integer("row_count").notNull().default(0),
+    invoiceCount: integer("invoice_count").notNull().default(0),
+    dateFrom: text("date_from"),
+    dateTo: text("date_to"),
+    summaryJson: text("summary_json"),
+    importedByAdminId: integer("imported_by_admin_id").references(
+      () => admins.id,
+      { onDelete: "set null" }
+    ),
+    createdAt: text("created_at").notNull(),
+  }
+);
+
+/** Invoice-level totals from Pro-Data finance exports (official sales book). */
+export const financeProdataInvoices = sqliteTable(
+  "finance_prodata_invoices",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    organizationId: integer("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    batchId: integer("batch_id")
+      .notNull()
+      .references(() => financeProdataImportBatches.id, { onDelete: "cascade" }),
+    invoiceNumber: text("invoice_number").notNull(),
+    documentCategory: text("document_category").notNull(),
+    transactionDate: text("transaction_date").notNull(),
+    buyerName: text("buyer_name").notNull(),
+    salesAgentName: text("sales_agent_name"),
+    netValueCents: integer("net_value_cents").notNull(),
+    lineCount: integer("line_count").notNull().default(1),
+    paymentMethodRaw: text("payment_method_raw"),
+    paymentMethod: text("payment_method"),
+    productSample: text("product_sample"),
+    updatedAt: text("updated_at").notNull(),
+  }
+);
+
 /** Append-only audit trail for register actions (anti-theft). */
 export const adminRegisterAuditLog = sqliteTable("admin_register_audit_log", {
   id: integer("id").primaryKey({ autoIncrement: true }),

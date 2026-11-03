@@ -37,10 +37,18 @@ export async function POST(request: NextRequest) {
   try {
     const buffer = Buffer.from(await file.arrayBuffer());
     const preview = previewFinanceSpreadsheet(buffer, name);
+    const message =
+      preview.format === "prodata_transaction_book" && preview.prodata
+        ? `Pro-Data transaction book detected — ${preview.prodata.invoices.length} invoice(s), ${preview.rowCount} line(s)${
+            preview.prodata.dateFrom
+              ? ` (${preview.prodata.dateFrom}${preview.prodata.dateTo !== preview.prodata.dateFrom ? ` → ${preview.prodata.dateTo}` : ""})`
+              : ""
+          }. Review categories, then import into finance.`
+        : "Unrecognized finance export — use Pro-Data Libri i transaksioneve (.xlsx).";
+
     return NextResponse.json({
       preview,
-      message:
-        "Preview only — column mapping and import into sales, expenses, and debts will be enabled once we align with your official export format.",
+      message,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Could not read file";
