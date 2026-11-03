@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { format } from "date-fns";
 import { AppShell } from "@/components/layout/AppShell";
@@ -77,9 +78,19 @@ export default function AdministrationFinancePage() {
   return (
     <AppShell
       title="Finance"
-      description="KPIs, shift reconciliation, ledger search, reports, and CSV export."
+      description="Payment tracking, KPIs, reconciliation, reports, Excel import, and client follow-up (separate from the cash register)."
       contentMaxWidth="wide"
     >
+      <Card className="mb-6 flex flex-wrap items-center justify-between gap-3 p-4">
+        <p className="text-sm text-zinc-600">
+          Roadmap: daily sales grid (client, agent, product, payment method, debt),
+          expense import, and PDF/Excel reports like your Finance Core exports.
+        </p>
+        <Link href="/administration/finance/imports">
+          <Button variant="secondary">Import Excel…</Button>
+        </Link>
+      </Card>
+
       {error ? <Alert tone="error">{error}</Alert> : null}
 
       <PageSection title="Finance overview" className="mb-8">

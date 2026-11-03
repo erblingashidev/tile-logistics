@@ -72,6 +72,10 @@ function buildNavGroups(
             items: [
               { href: "/administration", label: "Cash register" },
               { href: "/administration/finance", label: "Finance" },
+              {
+                href: "/administration/finance/imports",
+                label: "Finance import",
+              },
               { href: "/administration/clients", label: "Clients & debts" },
             ],
           },
@@ -99,6 +103,9 @@ function isActive(pathname: string, href: string) {
   if (href === "/vehicles") return pathname === "/vehicles";
   if (href === "/warehouse") return pathname === "/warehouse";
   if (href === "/administration") return pathname === "/administration";
+  if (href === "/administration/finance") {
+    return pathname === "/administration/finance";
+  }
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 

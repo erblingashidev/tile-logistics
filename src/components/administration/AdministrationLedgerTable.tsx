@@ -90,10 +90,12 @@ export function AdministrationLedgerTable({
   onBusyChange,
   onError,
   onUpdated,
+  registerStrictTraceability = false,
   emptyTitle = "No transactions in this range",
 }: {
   transactions: AdministrationTransaction[];
   canApprove: boolean;
+  registerStrictTraceability?: boolean;
   busy: boolean;
   onBusyChange: (v: boolean) => void;
   onError: (message: string) => void;
@@ -173,20 +175,24 @@ export function AdministrationLedgerTable({
   async function submitEditor(e: React.FormEvent) {
     e.preventDefault();
     if (!editor) return;
-    if (!form.invoiceReference.trim()) {
-      onError("Invoice or receipt number is required on every register entry.");
-      return;
-    }
-    const incomeLike =
-      form.kind === "payment" || form.kind === "return_refund";
-    if (incomeLike) {
-      if (!form.counterparty.trim()) {
-        onError("Customer name is required for payment and refund entries.");
+    if (registerStrictTraceability) {
+      if (!form.invoiceReference.trim()) {
+        onError(
+          "Invoice or receipt number is required on every register entry."
+        );
         return;
       }
-      if (!form.salesEmployeeId) {
-        onError("Sales agent is required for payment and refund entries.");
-        return;
+      const incomeLike =
+        form.kind === "payment" || form.kind === "return_refund";
+      if (incomeLike) {
+        if (!form.counterparty.trim()) {
+          onError("Customer name is required for payment and refund entries.");
+          return;
+        }
+        if (!form.salesEmployeeId) {
+          onError("Sales agent is required for payment and refund entries.");
+          return;
+        }
       }
     }
     onBusyChange(true);
@@ -374,7 +380,8 @@ export function AdministrationLedgerTable({
                 setForm((f) => ({ ...f, counterparty: e.target.value }))
               }
               required={
-                form.kind === "payment" || form.kind === "return_refund"
+                registerStrictTraceability &&
+                (form.kind === "payment" || form.kind === "return_refund")
               }
             />
             <Input
@@ -409,7 +416,7 @@ export function AdministrationLedgerTable({
               onChange={(e) =>
                 setForm((f) => ({ ...f, invoiceReference: e.target.value }))
               }
-              required
+              required={registerStrictTraceability}
             />
             {form.kind === "payment" || form.kind === "return_refund" ? (
               <Select
@@ -418,7 +425,7 @@ export function AdministrationLedgerTable({
                 onChange={(e) =>
                   setForm((f) => ({ ...f, salesEmployeeId: e.target.value }))
                 }
-                required
+                required={registerStrictTraceability}
               >
                 <option value="">Select agent…</option>
                 {salesAgents.map((a) => (

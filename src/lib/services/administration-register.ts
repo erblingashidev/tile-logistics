@@ -29,6 +29,7 @@ import {
 } from "@/lib/administration/validation";
 import { getOrderByInvoiceNumber } from "@/lib/services/orders";
 import { getEmployee } from "@/lib/services/employees";
+import { getAdministrationSettings } from "@/lib/services/administration-settings";
 
 export type RegisterSessionRow = typeof adminRegisterSessions.$inferSelect;
 export type RegisterTransactionRow = typeof adminRegisterTransactions.$inferSelect;
@@ -443,7 +444,7 @@ export async function createRegisterTransaction(
     salesEmployeeId: input.salesEmployeeId ?? null,
     salesAgentName: input.salesAgentName ?? null,
   };
-  const salesResolved = await assertRegisterMutationIntegrity(
+  const salesResolved = await resolveRegisterTraceability(
     organizationId,
     mergedForCreate
   );
@@ -587,6 +588,44 @@ async function assertRegisterMutationIntegrity(
   return resolveSalesForIncomeKind(merged);
 }
 
+async function resolveRegisterTraceability(
+  organizationId: number,
+  merged: ReturnType<typeof mergedTraceabilityFields>,
+  excludeTransactionId?: number
+) {
+  const settings = await getAdministrationSettings(organizationId);
+  if (settings.registerStrictTraceability) {
+    return assertRegisterMutationIntegrity(
+      organizationId,
+      merged,
+      excludeTransactionId
+    );
+  }
+
+  if (isIncomeLikeRegisterKind(merged.kind)) {
+    const resolved = await resolveSalesAgentForPayment({
+      invoiceReference: merged.invoiceReference,
+      salesEmployeeId: merged.salesEmployeeId,
+      salesAgentName: merged.salesAgentName,
+    });
+    if (merged.invoiceReference?.trim()) {
+      await assertNoDuplicatePaymentInvoice(
+        organizationId,
+        merged.kind,
+        merged.invoiceReference,
+        excludeTransactionId
+      );
+    }
+    return resolved;
+  }
+
+  return {
+    salesEmployeeId: null as number | null,
+    salesAgentName: null as string | null,
+    orderId: null as number | null,
+  };
+}
+
 export async function createTransactionEditRequest(
   organizationId: number,
   session: SessionUser,
@@ -632,7 +671,7 @@ export async function createTransactionEditRequest(
   if (pending[0]) throw new Error("An edit request is already pending.");
 
   const merged = mergedTraceabilityFields(tx, proposedChanges);
-  await assertRegisterMutationIntegrity(organizationId, merged, tx.id);
+  await resolveRegisterTraceability(organizationId, merged, tx.id);
 
   const ts = nowIso();
   const inserted = await db
@@ -719,7 +758,7 @@ export async function reviewTransactionEditRequest(
   if (!tx) throw new Error("Transaction missing.");
 
   const merged = mergedTraceabilityFields(tx, patch);
-  const salesResolved = await assertRegisterMutationIntegrity(
+  const salesResolved = await resolveRegisterTraceability(
     organizationId,
     merged,
     tx.id
@@ -817,7 +856,7 @@ export async function patchRegisterTransaction(
   if (!tx) throw new Error("Transaction not found.");
 
   const merged = mergedTraceabilityFields(tx, patch);
-  const salesResolved = await assertRegisterMutationIntegrity(
+  const salesResolved = await resolveRegisterTraceability(
     organizationId,
     merged,
     transactionId

@@ -7,6 +7,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { BRAND } from "@/lib/brand";
 import { ChangePasswordCard } from "@/components/portal/ChangePasswordCard";
 import { CompanySettingsCard } from "@/components/company/CompanySettingsCard";
+import { AdministrationSettingsCard } from "@/components/administration/AdministrationSettingsCard";
 import { broadcastFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 import {
   FEATURE_FLAG_META,
@@ -452,6 +453,8 @@ export default function SettingsPage() {
           </Card>
 
           <CompanySettingsCard />
+
+          <AdministrationSettingsCard />
 
           <Card className="border-red-200 bg-red-50/40 p-5">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-red-700">

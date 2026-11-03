@@ -64,6 +64,7 @@ export default function AdministrationPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [canApprove, setCanApprove] = useState(false);
+  const [registerStrict, setRegisterStrict] = useState(false);
 
   const [openingFloat, setOpeningFloat] = useState("0");
   const [closingCounted, setClosingCounted] = useState("");
@@ -196,6 +197,15 @@ export default function AdministrationPage() {
   }, [formKind, formInvoiceRef]);
 
   useEffect(() => {
+    fetch("/api/administration/settings", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        setRegisterStrict(data?.settings?.registerStrictTraceability === true);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     void refresh();
     fetch("/api/auth/me", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
@@ -276,18 +286,22 @@ export default function AdministrationPage() {
 
   async function submitTransaction(e: React.FormEvent) {
     e.preventDefault();
-    if (!formInvoiceRef.trim()) {
-      setError("Invoice or receipt number is required on every register entry.");
-      return;
-    }
-    if (incomeLikeKind) {
-      if (!formCounterparty.trim()) {
-        setError("Customer name is required for payment and refund entries.");
+    if (registerStrict) {
+      if (!formInvoiceRef.trim()) {
+        setError(
+          "Invoice or receipt number is required on every register entry."
+        );
         return;
       }
-      if (!formSalesAgentId) {
-        setError("Sales agent is required for payment and refund entries.");
-        return;
+      if (incomeLikeKind) {
+        if (!formCounterparty.trim()) {
+          setError("Customer name is required for payment and refund entries.");
+          return;
+        }
+        if (!formSalesAgentId) {
+          setError("Sales agent is required for payment and refund entries.");
+          return;
+        }
       }
     }
     if (formKind === "expense" && !formExpenseCategory) {
@@ -353,7 +367,7 @@ export default function AdministrationPage() {
   return (
     <AppShell
       title="Cash register"
-      description="Open and close shifts, record payments and expenses, and review today’s ledger. Duplicate invoice payments are blocked."
+      description="Open and close shifts and record lines. Turn on strict invoice + agent rules in Settings when you need full traceability on this page."
       contentMaxWidth="wide"
     >
       {error ? (
@@ -361,6 +375,18 @@ export default function AdministrationPage() {
           {error}
         </Alert>
       ) : null}
+
+      {registerStrict ? (
+        <Alert tone="info">
+          Strict traceability is on — every line needs an invoice/receipt;
+          payments and refunds need customer and sales agent.
+        </Alert>
+      ) : (
+        <Alert tone="info">
+          Relaxed mode — optional invoice and agent on the register. Finance
+          debts and call lists still require invoice + agent on orders.
+        </Alert>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <PageSection title="Cash register shift">
@@ -472,7 +498,7 @@ export default function AdministrationPage() {
                 }
                 value={formCounterparty}
                 onChange={(e) => setFormCounterparty(e.target.value)}
-                required={incomeLikeKind}
+                required={registerStrict && incomeLikeKind}
               />
               <Input
                 label="Purpose / description"
@@ -500,12 +526,17 @@ export default function AdministrationPage() {
                 }
                 value={formInvoiceRef}
                 onChange={(e) => setFormInvoiceRef(e.target.value)}
-                required
+                required={registerStrict}
                 hint={
-                  incomeLikeKind
-                    ? invoiceLookupHint ||
-                      "Required — links to order, customer, and sales agent."
-                    : "Required on every register line for audit and client follow-up."
+                  registerStrict
+                    ? incomeLikeKind
+                      ? invoiceLookupHint ||
+                        "Required — links to order, customer, and sales agent."
+                      : "Required on every register line."
+                    : incomeLikeKind
+                      ? invoiceLookupHint ||
+                        "Optional unless strict mode is on in Settings."
+                      : "Optional unless strict mode is on in Settings."
                 }
               />
               {incomeLikeKind ? (
@@ -513,7 +544,7 @@ export default function AdministrationPage() {
                   label="Sales agent"
                   value={formSalesAgentId}
                   onChange={(e) => setFormSalesAgentId(e.target.value)}
-                  required
+                  required={registerStrict}
                 >
                   <option value="">Select agent…</option>
                   {salesAgents.map((a) => (
@@ -593,6 +624,7 @@ export default function AdministrationPage() {
         <AdministrationLedgerTable
           transactions={transactions}
           canApprove={canApprove}
+          registerStrictTraceability={registerStrict}
           busy={busy}
           onBusyChange={setBusy}
           onError={setError}
