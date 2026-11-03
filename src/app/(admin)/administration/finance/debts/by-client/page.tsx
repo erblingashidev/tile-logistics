@@ -10,6 +10,7 @@ import { useFinanceSearch } from "@/components/administration/finance/FinanceSea
 import { clientProfileMatchesSearch } from "@/lib/administration/finance-search";
 import { FinancePageShell } from "@/components/administration/finance/FinancePageShell";
 import { useFinanceDebts } from "@/components/administration/finance/useFinanceDebts";
+import { useAppMessages } from "@/components/i18n/LocaleProvider";
 import { Alert, Button, Card, EmptyState, LoadingState } from "@/components/ui";
 
 function ClientDebtRow({
@@ -25,6 +26,8 @@ function ClientDebtRow({
   callReasons: string[];
   onOpen: () => void;
 }) {
+  const t = useAppMessages();
+  const p = t.finance.pages.byClient;
   return (
     <tr className="border-t border-zinc-100 hover:bg-zinc-50/80">
       <td className="px-3 py-2 font-medium text-zinc-900">{displayName}</td>
@@ -35,7 +38,7 @@ function ClientDebtRow({
       </td>
       <td className="px-3 py-2 text-right">
         <Button size="sm" variant="secondary" onClick={onOpen}>
-          Client card
+          {p.clientCard}
         </Button>
       </td>
     </tr>
@@ -43,6 +46,8 @@ function ClientDebtRow({
 }
 
 export default function FinanceDebtsByClientPage() {
+  const t = useAppMessages();
+  const page = t.finance.pages.byClient;
   const { loading, error, data, selected, setSelected, openClient } =
     useFinanceDebts();
   const { query } = useFinanceSearch();
@@ -86,14 +91,11 @@ export default function FinanceDebtsByClientPage() {
   }, [data, query, clientKeysForAgent]);
 
   return (
-    <FinancePageShell
-      title="Debts by client"
-      description="One row per client with total balance due, plus a call list for follow-up. Invoice-level detail is on Open debts."
-    >
+    <FinancePageShell title={page.title} description={page.description}>
       {error ? <Alert tone="error">{error}</Alert> : null}
 
       {loading ? (
-        <LoadingState title="Loading clients…" />
+        <LoadingState title={page.loading} />
       ) : data ? (
         <div className="space-y-10">
           <FinanceDebtFilters
@@ -110,20 +112,20 @@ export default function FinanceDebtsByClientPage() {
 
           <section>
             <h2 className="mb-2 text-sm font-semibold text-zinc-900">
-              Clients with open balance
+              {page.clientsSection}
             </h2>
             <Card className="overflow-x-auto">
               {filteredDebts.length === 0 ? (
-                <EmptyState title="No clients match these filters." />
+                <EmptyState title={page.noClients} />
               ) : (
                 <table className="min-w-full text-left text-sm">
                   <thead className="bg-zinc-50 text-xs uppercase text-zinc-500">
                     <tr>
-                      <th className="px-3 py-2">Client</th>
-                      <th className="px-3 py-2">Balance due</th>
-                      <th className="px-3 py-2">Invoices</th>
-                      <th className="px-3 py-2">Notes</th>
-                      <th className="px-3 py-2 text-right">Report</th>
+                      <th className="px-3 py-2">{page.client}</th>
+                      <th className="px-3 py-2">{page.balanceDue}</th>
+                      <th className="px-3 py-2">{page.invoices}</th>
+                      <th className="px-3 py-2">{page.notes}</th>
+                      <th className="px-3 py-2 text-right">{page.report}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -144,23 +146,22 @@ export default function FinanceDebtsByClientPage() {
           </section>
 
           <section>
-            <h2 className="mb-2 text-sm font-semibold text-zinc-900">To call list</h2>
-            <p className="mb-3 text-sm text-zinc-600">
-              Clients flagged for follow-up (unpaid balance, on-account lines with
-              invoice, delivered-but-unpaid, or 14+ days overdue).
-            </p>
+            <h2 className="mb-2 text-sm font-semibold text-zinc-900">
+              {page.callListSection}
+            </h2>
+            <p className="mb-3 text-sm text-zinc-600">{page.callListHint}</p>
             <Card className="overflow-x-auto">
               {filteredCallList.length === 0 ? (
-                <EmptyState title="Nobody on the call list for these filters." />
+                <EmptyState title={page.noCallList} />
               ) : (
                 <table className="min-w-full text-left text-sm">
                   <thead className="bg-zinc-50 text-xs uppercase text-zinc-500">
                     <tr>
-                      <th className="px-3 py-2">Client</th>
-                      <th className="px-3 py-2">Balance due</th>
-                      <th className="px-3 py-2">Invoices</th>
-                      <th className="px-3 py-2">Why call</th>
-                      <th className="px-3 py-2 text-right">Report</th>
+                      <th className="px-3 py-2">{page.client}</th>
+                      <th className="px-3 py-2">{page.balanceDue}</th>
+                      <th className="px-3 py-2">{page.invoices}</th>
+                      <th className="px-3 py-2">{page.whyCall}</th>
+                      <th className="px-3 py-2 text-right">{page.report}</th>
                     </tr>
                   </thead>
                   <tbody>

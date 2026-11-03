@@ -105,6 +105,10 @@ function buildNavGroups(
                 href: "/administration/finance/imports",
                 label: t.nav.items.financeImport,
               },
+              {
+                href: "/administration/finance/settlements",
+                label: t.nav.items.paymentStatus,
+              },
             ],
           },
         ]

@@ -3,17 +3,18 @@
 import Link from "next/link";
 import { AdministrationFinanceImport } from "@/components/administration/AdministrationFinanceImport";
 import { FinancePageShell } from "@/components/administration/finance/FinancePageShell";
+import { useAppMessages } from "@/components/i18n/LocaleProvider";
 import { Button } from "@/components/ui";
 
 export default function AdministrationFinanceImportsPage() {
+  const t = useAppMessages();
+  const p = t.finance.pages.import;
+
   return (
-    <FinancePageShell
-      title="Finance import"
-      description="Import Pro-Data Libri i transaksioneve — sales, credit notes, agents, and debts stay aligned with your finance system."
-    >
+    <FinancePageShell title={p.title} description={p.description}>
       <div className="mb-6">
         <Link href="/administration/finance/reports">
-          <Button variant="secondary">← Overall reports</Button>
+          <Button variant="secondary">{p.backToReports}</Button>
         </Link>
       </div>
       <AdministrationFinanceImport />

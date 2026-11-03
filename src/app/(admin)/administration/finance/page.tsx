@@ -12,9 +12,13 @@ import {
   ClosedRegisterSessionsTable,
   type ClosedRegisterSession,
 } from "@/components/administration/RegisterShiftReconciliation";
+import { useAppMessages } from "@/components/i18n/LocaleProvider";
 import { Alert, Button, Card, Input, PageSection } from "@/components/ui";
 
 export default function AdministrationFinancePage() {
+  const t = useAppMessages();
+  const p = t.finance.pages.register;
+  const c = t.finance.common;
   const [filterFrom, setFilterFrom] = useState(() =>
     format(new Date(), "yyyy-MM-dd")
   );
@@ -75,32 +79,29 @@ export default function AdministrationFinancePage() {
   }
 
   return (
-    <FinancePageShell
-      title="Register & ledger"
-      description="Period KPIs from the cash register, shift reconciliation, ledger search, and CSV export."
-    >
+    <FinancePageShell title={p.title} description={p.description}>
       {error ? <Alert tone="error">{error}</Alert> : null}
 
-      <PageSection title="Finance overview" className="mb-8">
+      <PageSection title={p.overviewTitle} className="mb-8">
         <Card className="mb-4 grid gap-3 p-4 sm:grid-cols-3">
           <Input
-            label="From"
+            label={c.from}
             type="date"
             value={filterFrom}
             onChange={(e) => setFilterFrom(e.target.value)}
           />
           <Input
-            label="To"
+            label={c.to}
             type="date"
             value={filterTo}
             onChange={(e) => setFilterTo(e.target.value)}
           />
           <div className="flex flex-wrap items-end gap-2">
             <Button variant="secondary" onClick={() => void refreshSummary()}>
-              Apply period
+              {c.applyPeriod}
             </Button>
             <Button variant="secondary" onClick={exportLedgerCsv}>
-              Export CSV
+              {c.exportCsv}
             </Button>
           </div>
         </Card>
@@ -112,12 +113,9 @@ export default function AdministrationFinancePage() {
         />
       </PageSection>
 
-      <PageSection title="Shift close results" className="mb-8">
+      <PageSection title={p.shiftCloseTitle} className="mb-8">
         <Card className="p-4">
-          <p className="mb-3 text-sm text-zinc-600">
-            Compare counted cash to expected (opening float + cash in − cash out)
-            for each closed shift in the period above.
-          </p>
+          <p className="mb-3 text-sm text-zinc-600">{p.shiftCloseHint}</p>
           <ClosedRegisterSessionsTable sessions={closedSessions} />
         </Card>
       </PageSection>

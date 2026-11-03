@@ -4,10 +4,11 @@ import { useMemo, useState } from "react";
 import type { ProDataInvoiceAggregate } from "@/lib/administration/prodata-transaction-book";
 import {
   INVOICE_SETTLEMENT_STATUSES,
-  settlementStatusLabel,
   settlementStatusRequiresAmount,
   type InvoiceSettlementStatus,
 } from "@/lib/administration/invoice-settlement";
+import { useAppMessages } from "@/components/i18n/LocaleProvider";
+import { settlementLabel } from "@/lib/i18n/finance-labels";
 import { ADMIN_PAYMENT_METHODS } from "@/lib/administration/constants";
 import type { AdminPaymentMethod } from "@/lib/administration/constants";
 import type { ProDataInvoiceSettlementOverride } from "@/lib/services/finance-prodata-import";
@@ -63,6 +64,8 @@ export function ProDataImportSettlementEditor({
   rows: Record<string, SettlementRowState>;
   onRowsChange: (next: Record<string, SettlementRowState>) => void;
 }) {
+  const t = useAppMessages();
+  const s = t.finance.settlement;
   const [filter, setFilter] = useState<"all" | "needs">("all");
   const [bulkStatus, setBulkStatus] = useState<InvoiceSettlementStatus>("unpaid");
 
@@ -105,39 +108,36 @@ export function ProDataImportSettlementEditor({
   return (
     <Card className="mt-6 overflow-hidden p-0">
       <div className="border-b border-zinc-200 bg-zinc-50 px-4 py-3">
-        <p className="text-sm font-medium text-zinc-900">
-          MENYRA E PAGESES → payment status in our system
-        </p>
-        <p className="mt-1 text-xs text-zinc-600">
-          Set how each invoice is settled (full debt, paid entirely, partial,
-          prepaid, etc.). Partial and prepaid partial need an amount in €.
-        </p>
+        <p className="text-sm font-medium text-zinc-900">{s.editorTitle}</p>
+        <p className="mt-1 text-xs text-zinc-600">{s.editorHint}</p>
         <div className="mt-3 flex flex-wrap items-end gap-2">
           <Select
-            label="Show"
+            label={s.show}
             value={filter}
             onChange={(e) => setFilter(e.target.value as "all" | "needs")}
           >
-            <option value="needs">Needs assignment first</option>
-            <option value="all">All invoices ({invoices.length})</option>
+            <option value="needs">{s.showNeeds}</option>
+            <option value="all">
+              {s.showAll} ({invoices.length})
+            </option>
           </Select>
           <Select
-            label="Apply to empty / not set"
+            label={s.bulkApply}
             value={bulkStatus}
             onChange={(e) =>
               setBulkStatus(e.target.value as InvoiceSettlementStatus)
             }
           >
-            {INVOICE_SETTLEMENT_STATUSES.filter((s) => s.id !== "unknown").map(
-              (s) => (
-                <option key={s.id} value={s.id}>
-                  {s.label}
+            {INVOICE_SETTLEMENT_STATUSES.filter((st) => st.id !== "unknown").map(
+              (st) => (
+                <option key={st.id} value={st.id}>
+                  {settlementLabel(t, st.id)}
                 </option>
               )
             )}
           </Select>
           <Button size="sm" variant="secondary" onClick={applyBulkToNeeds}>
-            Apply bulk
+            {s.applyBulk}
           </Button>
         </div>
       </div>
@@ -145,13 +145,13 @@ export function ProDataImportSettlementEditor({
         <table className="min-w-full text-left text-sm">
           <thead className="sticky top-0 bg-white text-xs uppercase text-zinc-500 shadow-sm">
             <tr>
-              <th className="px-3 py-2">Invoice</th>
-              <th className="px-3 py-2">Client</th>
-              <th className="px-3 py-2">Total</th>
-              <th className="px-3 py-2">Pro-Data (Menyra)</th>
-              <th className="px-3 py-2">Our status</th>
-              <th className="px-3 py-2">Paid €</th>
-              <th className="px-3 py-2">Register method</th>
+              <th className="px-3 py-2">{s.invoice}</th>
+              <th className="px-3 py-2">{t.finance.table.client}</th>
+              <th className="px-3 py-2">{s.total}</th>
+              <th className="px-3 py-2">{s.prodataMenyra}</th>
+              <th className="px-3 py-2">{s.ourStatus}</th>
+              <th className="px-3 py-2">{s.paidEuros}</th>
+              <th className="px-3 py-2">{s.registerMethod}</th>
             </tr>
           </thead>
           <tbody>
@@ -172,7 +172,7 @@ export function ProDataImportSettlementEditor({
                     €{inv.netValueEuros.toFixed(2)}
                   </td>
                   <td className="max-w-[8rem] truncate px-3 py-2 text-xs text-zinc-500">
-                    {inv.paymentMethodRaw.trim() || "— empty —"}
+                    {inv.paymentMethodRaw.trim() || s.emptyMenyra}
                   </td>
                   <td className="px-3 py-2">
                     <select
@@ -185,9 +185,9 @@ export function ProDataImportSettlementEditor({
                         })
                       }
                     >
-                      {INVOICE_SETTLEMENT_STATUSES.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.label}
+                      {INVOICE_SETTLEMENT_STATUSES.map((st) => (
+                        <option key={st.id} value={st.id}>
+                          {settlementLabel(t, st.id)}
                         </option>
                       ))}
                     </select>
@@ -232,17 +232,9 @@ export function ProDataImportSettlementEditor({
         </table>
       </div>
       {visible.length === 0 ? (
-        <p className="p-4 text-sm text-zinc-500">
-          No rows in this view — switch to &quot;All invoices&quot; or adjust
-          bulk assignment.
-        </p>
+        <p className="p-4 text-sm text-zinc-500">{s.noRowsView}</p>
       ) : null}
     </Card>
   );
 }
 
-export function settlementSummaryLine(
-  status: InvoiceSettlementStatus
-): string {
-  return settlementStatusLabel(status);
-}

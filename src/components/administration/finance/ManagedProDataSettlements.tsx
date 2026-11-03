@@ -9,6 +9,7 @@ import {
 import type { ProDataInvoiceAggregate } from "@/lib/administration/prodata-transaction-book";
 import { proDataFinanceRowToAggregate } from "@/lib/services/prodata-invoice-display";
 import { saveInvoiceSettlement } from "@/components/administration/finance/InlineInvoiceSettlementForm";
+import { useAppMessages } from "@/components/i18n/LocaleProvider";
 import { Alert, Button, LoadingState } from "@/components/ui";
 
 type ApiInvoice = {
@@ -39,6 +40,8 @@ function rowsFromInvoices(invoices: ProDataInvoiceAggregate[]) {
 }
 
 export function ManagedProDataSettlements() {
+  const t = useAppMessages();
+  const s = t.finance.settlement;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -57,7 +60,7 @@ export function ManagedProDataSettlements() {
         invoices?: ApiInvoice[];
         error?: string;
       };
-      if (!res.ok) throw new Error(data.error ?? "Could not load invoices");
+      if (!res.ok) throw new Error(data.error ?? t.finance.common.loadFailed);
       const list = (data.invoices ?? []).map((r) =>
         proDataFinanceRowToAggregate({
           ...r,
@@ -68,11 +71,11 @@ export function ManagedProDataSettlements() {
       setInvoices(list);
       setRows(rowsFromInvoices(list));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Load failed");
+      setError(e instanceof Error ? e.message : t.finance.common.loadFailed);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t.finance.common.loadFailed]);
 
   useEffect(() => {
     void load();
@@ -94,27 +97,21 @@ export function ManagedProDataSettlements() {
         });
         saved += 1;
       }
-      setMessage(`Saved payment status for ${saved} invoice(s). Open debts will refresh on next load.`);
+      setMessage(s.savedCount.replace("{count}", String(saved)));
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Save failed");
+      setError(e instanceof Error ? e.message : t.finance.common.loadFailed);
     } finally {
       setSaving(false);
     }
   }
 
   if (loading) {
-    return <LoadingState title="Loading imported invoices…" />;
+    return <LoadingState title={s.loadingInvoices} />;
   }
 
   if (invoices.length === 0) {
-    return (
-      <Alert tone="info">
-        No Pro-Data invoices in the system yet. Go to{" "}
-        <strong>Excel import</strong>, upload Libri i transaksioneve, preview,
-        set MENYRA E PAGESES in the table, then import.
-      </Alert>
-    );
+    return <Alert tone="info">{s.noInvoicesYet}</Alert>;
   }
 
   return (
@@ -123,10 +120,10 @@ export function ManagedProDataSettlements() {
       {message ? <Alert tone="info">{message}</Alert> : null}
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="primary" disabled={saving} onClick={() => void saveAll()}>
-          {saving ? "Saving…" : "Save all changes to system"}
+          {saving ? s.saving : s.saveAll}
         </Button>
         <Button variant="secondary" disabled={saving} onClick={() => void load()}>
-          Reload
+          {s.reload}
         </Button>
       </div>
       <ProDataImportSettlementEditor

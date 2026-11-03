@@ -8,7 +8,8 @@ import {
   ProDataImportSettlementEditor,
   type SettlementRowState,
 } from "@/components/administration/ProDataImportSettlementEditor";
-import { settlementStatusLabel } from "@/lib/administration/invoice-settlement";
+import { useAppMessages } from "@/components/i18n/LocaleProvider";
+import { settlementLabel } from "@/lib/i18n/finance-labels";
 import { Alert, Button, Card, PageSection } from "@/components/ui";
 
 function formatEuros(n: number) {
@@ -19,6 +20,9 @@ function formatEuros(n: number) {
 }
 
 export function AdministrationFinanceImport() {
+  const t = useAppMessages();
+  const ip = t.finance.importProdata;
+  const st = t.finance.settlement;
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<FinanceImportPreview | null>(null);
   const [message, setMessage] = useState("");
@@ -33,7 +37,7 @@ export function AdministrationFinanceImport() {
 
   async function runPreview() {
     if (!file) {
-      setError("Choose a Pro-Data Excel export first.");
+      setError(ip.chooseFile);
       return;
     }
     setBusy(true);
@@ -81,7 +85,7 @@ export function AdministrationFinanceImport() {
       return;
     }
     if (preview?.format !== "prodata_transaction_book") {
-      setError("Preview a Pro-Data transaction book before importing.");
+      setError(ip.previewFirst);
       return;
     }
     setImporting(true);
@@ -117,15 +121,8 @@ export function AdministrationFinanceImport() {
   const prodata = preview?.prodata;
 
   return (
-    <PageSection title="Pro-Data transaction book">
-      <p className="-mt-2 mb-4 text-sm text-zinc-600">
-        Upload <strong>Libri i transaksioneve</strong> exports from Pro-Data
-        Finance+ (sheet &quot;Pro-Data Export&quot;). Lines are grouped by
-        invoice, classified as sales, credit notes, or delivery documents, and
-        merged into open debts, client totals, and sales-by-agent views. Use the
-        table below to set paid / partial / prepaid / unpaid for each invoice
-        (especially when MENYRA E PAGESES is empty in Excel).
-      </p>
+    <PageSection title={ip.sectionTitle}>
+      <p className="-mt-2 mb-4 text-sm text-zinc-600">{ip.intro}</p>
 
       {error ? <Alert tone="error">{error}</Alert> : null}
       {message ? <Alert tone="info">{message}</Alert> : null}
@@ -146,7 +143,7 @@ export function AdministrationFinanceImport() {
         />
         <div className="flex flex-wrap items-center gap-3">
           <Button disabled={busy || !file} onClick={() => void runPreview()}>
-            {busy ? "Reading…" : "Preview & classify"}
+            {busy ? ip.reading : ip.preview}
           </Button>
           <label className="flex items-center gap-2 text-sm text-zinc-600">
             <input
@@ -154,14 +151,14 @@ export function AdministrationFinanceImport() {
               checked={syncRegister}
               onChange={(e) => setSyncRegister(e.target.checked)}
             />
-            Create register payments when payment method is present
+            {ip.syncRegister}
           </label>
           <Button
             variant="primary"
             disabled={importing || !file || preview?.format !== "prodata_transaction_book"}
             onClick={() => void runImport()}
           >
-            {importing ? "Importing…" : "Import into finance"}
+            {importing ? ip.importing : ip.importIntoFinance}
           </Button>
         </div>
       </Card>
@@ -169,10 +166,7 @@ export function AdministrationFinanceImport() {
       {prodata?.invoices.length ? (
         <div id="menyra-e-pageses" className="mt-6 scroll-mt-4">
           <div className="mb-3">
-            <Alert tone="info">
-              <strong>Step 2 — MENYRA E PAGESES:</strong> use the table below to
-              choose payment status and partial amounts before you click Import.
-            </Alert>
+            <Alert tone="info">{st.step2Import}</Alert>
           </div>
           <ProDataImportSettlementEditor
             invoices={prodata.invoices}
@@ -185,7 +179,7 @@ export function AdministrationFinanceImport() {
       {prodata ? (
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
           <Card className="p-4">
-            <p className="text-sm font-medium text-zinc-900">By document type</p>
+            <p className="text-sm font-medium text-zinc-900">{ip.byDocumentType}</p>
             <ul className="mt-3 space-y-2 text-sm">
               {(
                 Object.keys(prodata.byCategory) as Array<
@@ -208,13 +202,12 @@ export function AdministrationFinanceImport() {
               })}
             </ul>
             <p className="mt-4 text-xs text-zinc-500">
-              {prodata.needsSettlementCount} invoice(s) need payment status
-              assigned before import (or use bulk apply).
+              {prodata.needsSettlementCount} {ip.needsSettlement}
             </p>
           </Card>
 
           <Card className="p-4">
-            <p className="text-sm font-medium text-zinc-900">By payment status</p>
+            <p className="text-sm font-medium text-zinc-900">{ip.byPaymentStatus}</p>
             <ul className="mt-3 space-y-2 text-sm">
               {(
                 Object.keys(prodata.bySettlement) as Array<
@@ -228,7 +221,7 @@ export function AdministrationFinanceImport() {
                     key={key}
                     className="flex justify-between gap-3 border-b border-zinc-100 pb-2"
                   >
-                    <span>{settlementStatusLabel(key)}</span>
+                    <span>{settlementLabel(t, key)}</span>
                     <span className="tabular-nums text-zinc-700">
                       {row.count} · {formatEuros(row.totalEuros)}
                     </span>
@@ -239,7 +232,7 @@ export function AdministrationFinanceImport() {
           </Card>
 
           <Card className="p-4 lg:col-span-2">
-            <p className="text-sm font-medium text-zinc-900">Top sales agents</p>
+            <p className="text-sm font-medium text-zinc-900">{ip.topAgents}</p>
             <ul className="mt-3 space-y-2 text-sm">
               {prodata.byAgent.slice(0, 8).map((row) => (
                 <li

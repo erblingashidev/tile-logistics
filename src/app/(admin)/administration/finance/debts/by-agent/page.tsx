@@ -11,9 +11,12 @@ import {
   debtInvoiceMatchesSearch,
   financeTextMatchesQuery,
 } from "@/lib/administration/finance-search";
+import { useAppMessages } from "@/components/i18n/LocaleProvider";
 import { Alert, Button, Card, EmptyState, LoadingState, Select } from "@/components/ui";
 
 export default function FinanceDebtsByAgentPage() {
+  const t = useAppMessages();
+  const p = t.finance.pages.byAgent;
   const { loading, error, data, selected, setSelected, openClient, reload } =
     useFinanceDebts();
   const { query } = useFinanceSearch();
@@ -42,21 +45,18 @@ export default function FinanceDebtsByAgentPage() {
   }, [activeGroup, query]);
 
   return (
-    <FinancePageShell
-      title="Debts by sales agent"
-      description="Totals per agent for follow-up and commission-style review. Matches how Finance Core groups overdue by referent."
-    >
+    <FinancePageShell title={p.title} description={p.description}>
       {error ? <Alert tone="error">{error}</Alert> : null}
 
       {loading ? (
-        <LoadingState title="Loading agent balances…" />
+        <LoadingState title={p.loading} />
       ) : groups.length === 0 ? (
         <Card>
-          <EmptyState title="No open debts with assigned agents." />
+          <EmptyState title={p.noAgents} />
         </Card>
       ) : visibleGroups.length === 0 ? (
         <Card>
-          <EmptyState title="No agents or invoices match your search." />
+          <EmptyState title={p.noSearchMatch} />
         </Card>
       ) : (
         <>
@@ -64,7 +64,7 @@ export default function FinanceDebtsByAgentPage() {
             {visibleGroups.map((group) => (
               <Card key={group.salesAgentName} className="p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                  Sales agent
+                  {p.salesAgent}
                 </p>
                 <p className="mt-1 font-semibold text-zinc-900">
                   {group.salesAgentName}
@@ -81,18 +81,18 @@ export default function FinanceDebtsByAgentPage() {
                   className="mt-3"
                   onClick={() => setAgentFilter(group.salesAgentName)}
                 >
-                  View invoices
+                  {p.viewInvoices}
                 </Button>
               </Card>
             ))}
           </div>
 
           <Select
-            label="Focus agent"
+            label={p.focusAgent}
             value={agentFilter}
             onChange={(e) => setAgentFilter(e.target.value)}
           >
-            <option value="">Select an agent…</option>
+            <option value="">{p.selectAgent}</option>
             {groups.map((g) => (
               <option key={g.salesAgentName} value={g.salesAgentName}>
                 {g.salesAgentName} ({formatAdminMoney(g.totalDueCents)})
@@ -104,10 +104,10 @@ export default function FinanceDebtsByAgentPage() {
             <div className="mt-6">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <h2 className="text-sm font-semibold text-zinc-900">
-                  Invoices — {agentFilter}
+                  {p.invoicesFor} {agentFilter}
                 </h2>
                 <Button size="sm" variant="ghost" onClick={() => setAgentFilter("")}>
-                  Clear
+                  {p.clear}
                 </Button>
               </div>
               <OpenDebtsTable

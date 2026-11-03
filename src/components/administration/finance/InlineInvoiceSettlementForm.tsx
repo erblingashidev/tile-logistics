@@ -3,12 +3,13 @@
 import { useState } from "react";
 import {
   INVOICE_SETTLEMENT_STATUSES,
-  settlementStatusLabel,
   settlementStatusRequiresAmount,
   type InvoiceSettlementStatus,
 } from "@/lib/administration/invoice-settlement";
 import { ADMIN_PAYMENT_METHODS } from "@/lib/administration/constants";
 import type { AdminPaymentMethod } from "@/lib/administration/constants";
+import { useAppMessages } from "@/components/i18n/LocaleProvider";
+import { settlementLabel } from "@/lib/i18n/finance-labels";
 import { Button } from "@/components/ui";
 
 export async function saveInvoiceSettlement(input: {
@@ -39,6 +40,9 @@ export function InlineInvoiceSettlementForm({
   onSaved?: () => void;
   compact?: boolean;
 }) {
+  const t = useAppMessages();
+  const s = t.finance.settlement;
+  const tbl = t.finance.table;
   const [status, setStatus] = useState(
     (initialStatus as InvoiceSettlementStatus | null) ?? "unknown"
   );
@@ -65,7 +69,7 @@ export function InlineInvoiceSettlementForm({
       });
       onSaved?.();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Save failed");
+      setError(e instanceof Error ? e.message : t.finance.common.loadFailed);
     } finally {
       setBusy(false);
     }
@@ -76,16 +80,16 @@ export function InlineInvoiceSettlementForm({
   return (
     <div className={compact ? "space-y-1" : "space-y-2"}>
       <p className="text-xs text-zinc-600">
-        {settlementStatusLabel(initialStatus)}
+        {settlementLabel(t, initialStatus)}
       </p>
       <select
         className="w-full rounded border border-zinc-200 px-1.5 py-1 text-xs"
         value={status}
         onChange={(e) => setStatus(e.target.value as InvoiceSettlementStatus)}
       >
-        {INVOICE_SETTLEMENT_STATUSES.map((s) => (
-          <option key={s.id} value={s.id}>
-            {s.label}
+        {INVOICE_SETTLEMENT_STATUSES.map((st) => (
+          <option key={st.id} value={st.id}>
+            {settlementLabel(t, st.id)}
           </option>
         ))}
       </select>
@@ -93,7 +97,7 @@ export function InlineInvoiceSettlementForm({
         <input
           type="text"
           inputMode="decimal"
-          placeholder="Paid € (partial)"
+          placeholder={s.partialPlaceholder}
           className="w-full rounded border border-zinc-200 px-1.5 py-1 text-xs"
           value={paidEuros}
           onChange={(e) => setPaidEuros(e.target.value)}
@@ -104,7 +108,7 @@ export function InlineInvoiceSettlementForm({
         value={paymentMethod}
         onChange={(e) => setPaymentMethod(e.target.value)}
       >
-        <option value="">Register method (optional)</option>
+        <option value="">{s.registerOptional}</option>
         {ADMIN_PAYMENT_METHODS.map((m) => (
           <option key={m.id} value={m.id}>
             {m.label}
@@ -118,11 +122,11 @@ export function InlineInvoiceSettlementForm({
         disabled={busy}
         onClick={() => void save()}
       >
-        {busy ? "…" : "Save status"}
+        {busy ? t.common.loading : s.saveStatus}
       </Button>
       {paymentMethodRaw?.trim() ? (
         <span className="block truncate text-[10px] text-zinc-400">
-          Excel Menyra: {paymentMethodRaw}
+          {tbl.excelMenyra} {paymentMethodRaw}
         </span>
       ) : null}
     </div>

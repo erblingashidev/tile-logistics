@@ -2,6 +2,7 @@
 
 import { Button, Select } from "@/components/ui";
 import { useFinanceSearch } from "@/components/administration/finance/FinanceSearchProvider";
+import { useAppMessages } from "@/components/i18n/LocaleProvider";
 import { debtInvoiceMatchesSearch } from "@/lib/administration/finance-search";
 import type { DebtInvoiceLine } from "@/components/administration/finance/finance-debt-types";
 
@@ -22,6 +23,8 @@ export function FinanceDebtFilters({
   showMinDays?: boolean;
   onClear: () => void;
 }) {
+  const t = useAppMessages();
+  const f = t.finance.filters;
   const { query, clearQuery } = useFinanceSearch();
   const hasFilter =
     Boolean(agent) || Boolean(query.trim()) || (showMinDays && minDays !== "0");
@@ -29,11 +32,11 @@ export function FinanceDebtFilters({
   return (
     <div className="mb-4 grid gap-3 rounded-lg border border-zinc-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
       <Select
-        label="Sales agent"
+        label={f.salesAgent}
         value={agent}
         onChange={(e) => onAgentChange(e.target.value)}
       >
-        <option value="">All agents</option>
+        <option value="">{f.allAgents}</option>
         {agentOptions.map((name) => (
           <option key={name} value={name}>
             {name}
@@ -42,14 +45,14 @@ export function FinanceDebtFilters({
       </Select>
       {showMinDays ? (
         <Select
-          label="Minimum days outstanding"
+          label={f.minDays}
           value={minDays}
           onChange={(e) => onMinDaysChange(e.target.value)}
         >
-          <option value="0">Any age</option>
-          <option value="7">7+ days</option>
-          <option value="14">14+ days</option>
-          <option value="30">30+ days</option>
+          <option value="0">{f.anyAge}</option>
+          <option value="7">{f.days7}</option>
+          <option value="14">{f.days14}</option>
+          <option value="30">{f.days30}</option>
         </Select>
       ) : null}
       <div className="flex items-end">
@@ -61,7 +64,7 @@ export function FinanceDebtFilters({
             onClear();
           }}
         >
-          Clear filters
+          {f.clearFilters}
         </Button>
       </div>
     </div>

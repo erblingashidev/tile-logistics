@@ -4,6 +4,7 @@ import { format } from "date-fns";
 import { formatAdminMoney } from "@/components/administration/AdministrationLedgerTable";
 import { InlineInvoiceSettlementForm } from "@/components/administration/finance/InlineInvoiceSettlementForm";
 import type { DebtInvoiceLine } from "@/components/administration/finance/finance-debt-types";
+import { useAppMessages } from "@/components/i18n/LocaleProvider";
 import { Button, Card, EmptyState } from "@/components/ui";
 
 export function OpenDebtsTable({
@@ -15,10 +16,13 @@ export function OpenDebtsTable({
   onOpenClient: (clientKey: string) => void;
   onSettlementSaved?: () => void;
 }) {
+  const t = useAppMessages();
+  const tbl = t.finance.table;
+
   if (rows.length === 0) {
     return (
       <Card>
-        <EmptyState title="No open debts match these filters." />
+        <EmptyState title={tbl.noOpenDebts} />
       </Card>
     );
   }
@@ -28,15 +32,15 @@ export function OpenDebtsTable({
       <table className="min-w-full text-left text-sm">
         <thead className="bg-zinc-50 text-xs uppercase text-zinc-500">
           <tr>
-            <th className="px-3 py-2">Agent</th>
-            <th className="px-3 py-2">Client</th>
-            <th className="px-3 py-2">Invoice</th>
-            <th className="px-3 py-2">Order date</th>
-            <th className="px-3 py-2">Days</th>
-            <th className="px-3 py-2">Invoiced</th>
-            <th className="px-3 py-2">Due</th>
-            <th className="px-3 py-2">MENYRA E PAGESES</th>
-            <th className="px-3 py-2 text-right">Client card</th>
+            <th className="px-3 py-2">{tbl.agent}</th>
+            <th className="px-3 py-2">{tbl.client}</th>
+            <th className="px-3 py-2">{tbl.invoice}</th>
+            <th className="px-3 py-2">{tbl.orderDate}</th>
+            <th className="px-3 py-2">{tbl.days}</th>
+            <th className="px-3 py-2">{tbl.invoiced}</th>
+            <th className="px-3 py-2">{tbl.due}</th>
+            <th className="px-3 py-2">{tbl.paymentStatus}</th>
+            <th className="px-3 py-2 text-right">{tbl.clientCard}</th>
           </tr>
         </thead>
         <tbody>
@@ -70,7 +74,7 @@ export function OpenDebtsTable({
                   variant="secondary"
                   onClick={() => onOpenClient(row.clientKey)}
                 >
-                  Open
+                  {tbl.open}
                 </Button>
               </td>
             </tr>

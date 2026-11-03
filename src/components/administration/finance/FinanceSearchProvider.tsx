@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useAppMessages } from "@/components/i18n/LocaleProvider";
 import { Input } from "@/components/ui";
 
 type FinanceSearchContextValue = {
@@ -31,6 +32,7 @@ export function useFinanceSearch() {
 }
 
 export function FinanceSearchProvider({ children }: { children: ReactNode }) {
+  const t = useAppMessages();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -80,13 +82,13 @@ export function FinanceSearchProvider({ children }: { children: ReactNode }) {
     <FinanceSearchContext.Provider value={value}>
       <div className="mb-5 rounded-xl border border-zinc-200 bg-gradient-to-b from-white to-zinc-50/80 p-4 shadow-sm">
         <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">
-          Search finance
+          {t.finance.search.label}
         </label>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <div className="min-w-[min(100%,20rem)] flex-1">
             <Input
-              aria-label="Search finance"
-              placeholder="Client name, invoice # (e.g. 26-SHV01), sales agent, location…"
+              aria-label={t.finance.search.label}
+              placeholder={t.finance.search.placeholder}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
@@ -114,15 +116,11 @@ export function FinanceSearchProvider({ children }: { children: ReactNode }) {
                 setDraft("");
               }}
             >
-              Clear
+              {t.common.clear}
             </button>
           ) : null}
         </div>
-        <p className="mt-2 text-xs text-zinc-500">
-          Press Enter to search. Matches client, invoice number, agent, order
-          location, and register notes. Filter applies on this page and stays in
-          the URL when you switch finance tabs.
-        </p>
+        <p className="mt-2 text-xs text-zinc-500">{t.finance.search.hint}</p>
       </div>
       {children}
     </FinanceSearchContext.Provider>
