@@ -202,8 +202,8 @@ function NavLinks({
                 key={item.href}
                 href={orgPath(item.href)}
                 onClick={onNavigate}
-                className={`block rounded px-3 transition ${
-                  mobile ? "py-2.5 text-sm" : "py-2 text-sm"
+                className={`block rounded-md px-3 transition ${
+                  mobile ? "py-3 text-base" : "py-2.5 text-[15px]"
                 } ${
                   active
                     ? "bg-white/10 font-medium text-white"
@@ -450,21 +450,21 @@ function AdminAppShell({
                   </button>
                 ) : null}
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-zinc-900">
+                  <p className="truncate text-base font-semibold text-zinc-900">
                     {title ?? BRAND.name}
                   </p>
                   {description ? (
-                    <p className="truncate text-xs text-zinc-500">{description}</p>
+                    <p className="truncate text-sm text-zinc-600">{description}</p>
                   ) : null}
                 </div>
               </div>
               {title && (
                 <div className="hidden min-w-0 lg:block">
-                  <h1 className="text-lg font-semibold tracking-tight text-zinc-900">
+                  <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
                     {title}
                   </h1>
                   {description ? (
-                    <p className="mt-0.5 text-sm text-zinc-500">{description}</p>
+                    <p className="mt-1 text-base text-zinc-600">{description}</p>
                   ) : null}
                 </div>
               )}
@@ -548,7 +548,7 @@ function AdminAppShell({
           )}
 
           <main
-            className={`safe-bottom mx-auto w-full flex-1 px-4 py-5 sm:px-6 lg:px-8 lg:py-6 ${mainMaxWidthClass}`}
+            className={`safe-bottom mx-auto w-full flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8 ${mainMaxWidthClass}`}
           >
             {children}
           </main>

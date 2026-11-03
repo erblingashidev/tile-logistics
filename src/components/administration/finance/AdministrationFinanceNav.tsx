@@ -34,17 +34,17 @@ export function AdministrationFinanceNav() {
   const q = searchParams.get("q");
   const querySuffix = q ? `?q=${encodeURIComponent(q)}` : "";
   return (
-    <nav className="mb-6 flex flex-wrap gap-2 border-b border-zinc-200 pb-3">
+    <nav className="mb-6 flex flex-wrap gap-2 border-b border-zinc-200 pb-4">
       {LINKS.map((link) => {
         const active = isActive(pathname, link.href);
         return (
           <Link
             key={link.href}
             href={`${link.href}${querySuffix}`}
-            className={`rounded-full px-3 py-1.5 text-sm transition ${
+            className={`rounded-full px-4 py-2 text-base font-semibold shadow-sm transition ${
               active
-                ? "bg-zinc-900 font-medium text-white"
-                : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+                ? "bg-zinc-900 text-white"
+                : "bg-white text-zinc-800 ring-1 ring-zinc-200 hover:bg-zinc-50"
             }`}
           >
             {t.finance.nav[link.key]}

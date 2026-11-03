@@ -99,10 +99,10 @@ export function FinanceSearchBar() {
   }
 
   return (
-    <div className="mb-5 rounded-xl border border-zinc-200 bg-gradient-to-b from-white to-zinc-50/80 p-4 shadow-sm">
-      <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">
-        {t.finance.search.label}
-      </label>
+    <div className="mb-6 rounded-xl border border-zinc-200 bg-gradient-to-b from-white to-zinc-50/90 p-5 shadow-md">
+        <label className="block text-sm font-semibold uppercase tracking-wide text-zinc-600">
+          {t.finance.search.label}
+        </label>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <div className="min-w-[min(100%,20rem)] flex-1">
           <Input
@@ -129,7 +129,7 @@ export function FinanceSearchBar() {
         {draft.trim() || query.trim() ? (
           <button
             type="button"
-            className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-600 hover:bg-zinc-50"
+              className="rounded-lg border border-zinc-300 bg-white px-4 py-2.5 text-base font-medium text-zinc-700 shadow-sm hover:bg-zinc-50"
             onClick={() => {
               clearQuery();
               setDraft("");
@@ -139,7 +139,7 @@ export function FinanceSearchBar() {
           </button>
         ) : null}
       </div>
-      <p className="mt-2 text-xs text-zinc-500">{t.finance.search.hint}</p>
+        <p className="mt-2.5 text-sm leading-relaxed text-zinc-600">{t.finance.search.hint}</p>
     </div>
   );
 }

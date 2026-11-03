@@ -13,9 +13,9 @@ export function Card({
 }) {
   return (
     <div
-      className={`rounded border border-zinc-200 bg-white ${
+      className={`rounded-lg border border-zinc-200 bg-white shadow-sm ${
         interactive
-          ? "transition hover:border-zinc-300 hover:shadow-sm"
+          ? "transition hover:border-zinc-300 hover:shadow-md"
           : ""
       } ${className}`}
     >
@@ -35,18 +35,20 @@ export function Button({
   size?: "sm" | "md";
 }) {
   const styles = {
-    primary: "bg-zinc-900 text-white hover:bg-zinc-800",
-    secondary: "border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50",
-    danger: "bg-red-600 text-white hover:bg-red-700",
-    ghost: "text-zinc-600 hover:bg-zinc-100",
+    primary:
+      "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800 hover:shadow",
+    secondary:
+      "border border-zinc-300 bg-white text-zinc-800 shadow-sm hover:bg-zinc-50 hover:border-zinc-400",
+    danger: "bg-red-600 text-white shadow-sm hover:bg-red-700",
+    ghost: "text-zinc-700 hover:bg-zinc-100",
   };
   const sizes = {
-    sm: "px-2.5 py-1 text-xs",
-    md: "min-h-10 px-3.5 py-2 text-sm",
+    sm: "min-h-9 rounded-md px-3.5 py-2 text-sm font-semibold",
+    md: "min-h-11 rounded-lg px-4 py-2.5 text-base font-semibold",
   };
   return (
     <button
-      className={`inline-flex items-center justify-center rounded font-medium transition disabled:opacity-50 ${styles[variant]} ${sizes[size]} ${className}`}
+      className={`inline-flex items-center justify-center transition disabled:opacity-50 ${styles[variant]} ${sizes[size]} ${className}`}
       {...props}
     >
       {children}
@@ -66,15 +68,15 @@ export function Input({
   return (
     <label className="block">
       {label && (
-        <span className="mb-1 block text-xs font-medium text-zinc-600">
+        <span className="mb-1.5 block text-sm font-semibold text-zinc-700">
           {label}
         </span>
       )}
       <input
-        className={`w-full rounded border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900 ${className}`}
+        className={`w-full rounded-lg border border-zinc-300 bg-white px-3.5 py-2.5 text-base text-zinc-900 shadow-sm outline-none placeholder:text-zinc-400 focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/20 ${className}`}
         {...props}
       />
-      {hint && <span className="mt-1 block text-xs text-zinc-500">{hint}</span>}
+      {hint && <span className="mt-1.5 block text-sm text-zinc-500">{hint}</span>}
     </label>
   );
 }
@@ -88,12 +90,12 @@ export function Select({
   return (
     <label className="block">
       {label && (
-        <span className="mb-1 block text-xs font-medium text-zinc-600">
+        <span className="mb-1.5 block text-sm font-semibold text-zinc-700">
           {label}
         </span>
       )}
       <select
-        className={`w-full rounded border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900 ${className}`}
+        className={`w-full rounded-lg border border-zinc-300 bg-white px-3.5 py-2.5 text-base text-zinc-900 shadow-sm outline-none focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/20 ${className}`}
         {...props}
       >
         {children}
@@ -114,12 +116,12 @@ export function Textarea({
   return (
     <label className="block">
       {label && (
-        <span className="mb-1 block text-xs font-medium text-zinc-600">
+        <span className="mb-1.5 block text-sm font-semibold text-zinc-700">
           {label}
         </span>
       )}
       <textarea
-        className={`w-full rounded border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900 ${className}`}
+        className={`w-full rounded-lg border border-zinc-300 bg-white px-3.5 py-2.5 text-base text-zinc-900 shadow-sm outline-none placeholder:text-zinc-400 focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/20 ${className}`}
         {...props}
       />
       {hint && <span className="mt-1 block text-xs text-zinc-500">{hint}</span>}
@@ -179,7 +181,7 @@ export function Alert({
     info: "border-zinc-200 bg-zinc-50 text-zinc-700",
   };
   return (
-    <div className={`rounded border px-3 py-2.5 text-sm ${tones[tone]}`}>
+    <div className={`rounded-lg border px-4 py-3 text-base leading-relaxed shadow-sm ${tones[tone]}`}>
       {children}
     </div>
   );
@@ -187,13 +189,13 @@ export function Alert({
 
 export function EmptyState({ title }: { title: string }) {
   return (
-    <p className="py-10 text-center text-sm text-zinc-500">{title}</p>
+    <p className="py-12 text-center text-base text-zinc-600">{title}</p>
   );
 }
 
 export function LoadingState({ title = "Loading…" }: { title?: string }) {
   return (
-    <p className="py-10 text-center text-sm text-zinc-500 animate-pulse">
+    <p className="py-12 text-center text-base text-zinc-600 animate-pulse">
       {title}
     </p>
   );
@@ -211,7 +213,7 @@ export function PageSection({
   return (
     <section className={`mb-6 ${className}`}>
       {title && (
-        <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-500">
+        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-zinc-600">
           {title}
         </h2>
       )}
@@ -230,11 +232,11 @@ export function StatCard({
   hint?: string;
 }) {
   return (
-    <div className="rounded border border-zinc-200 bg-white px-4 py-3">
-      <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+    <div className="rounded-lg border border-zinc-200 bg-white px-5 py-4 shadow-sm">
+      <p className="text-sm font-semibold uppercase tracking-wide text-zinc-600">
         {label}
       </p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-zinc-900">
+      <p className="mt-1.5 text-3xl font-semibold tabular-nums tracking-tight text-zinc-900">
         {value}
       </p>
       {hint ? <p className="mt-1 text-xs text-zinc-500">{hint}</p> : null}
@@ -263,12 +265,12 @@ export function StatLink({
   return (
     <a
       href={href}
-      className={`block rounded border border-zinc-200 bg-white px-4 py-3 transition hover:shadow-sm ${accents[accent ?? "default"]}`}
+      className={`block rounded-lg border border-zinc-200 bg-white px-5 py-4 shadow-sm transition hover:shadow-md ${accents[accent ?? "default"]}`}
     >
-      <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+      <p className="text-sm font-semibold uppercase tracking-wide text-zinc-600">
         {label}
       </p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-zinc-900">
+      <p className="mt-1.5 text-3xl font-semibold tabular-nums tracking-tight text-zinc-900">
         {value}
       </p>
       {hint ? <p className="mt-1 text-xs text-zinc-500">{hint}</p> : null}
@@ -288,8 +290,8 @@ export function SegmentedControl<T extends string>({
   size?: "sm" | "md";
 }) {
   const sizes = {
-    sm: "px-2.5 py-1 text-xs",
-    md: "px-3 py-1.5 text-sm",
+    sm: "px-3 py-1.5 text-sm font-semibold",
+    md: "px-4 py-2 text-base font-semibold",
   };
   return (
     <div
@@ -385,7 +387,7 @@ export function CollapsibleCard({
 }
 
 export const tableClass =
-  "min-w-full text-sm [&_th]:border-b [&_th]:border-zinc-200 [&_th]:px-3 [&_th]:py-2.5 [&_th]:text-left [&_th]:text-xs [&_th]:font-medium [&_th]:text-zinc-500 [&_td]:border-b [&_td]:border-zinc-100 [&_td]:px-3 [&_td]:py-2.5 [&_tbody_tr:last-child_td]:border-0";
+  "min-w-full text-base [&_th]:border-b [&_th]:border-zinc-200 [&_th]:px-4 [&_th]:py-3 [&_th]:text-left [&_th]:text-sm [&_th]:font-semibold [&_th]:text-zinc-600 [&_td]:border-b [&_td]:border-zinc-100 [&_td]:px-4 [&_td]:py-3 [&_tbody_tr:last-child_td]:border-0";
 
 export function Switch({
   checked,

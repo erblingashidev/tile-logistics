@@ -6,34 +6,7 @@ import {
 } from "@/lib/administration/invoice-settlement";
 import { useAppMessages } from "@/components/i18n/LocaleProvider";
 import { settlementLabel } from "@/lib/i18n/finance-labels";
-
-function StatusButton({
-  active,
-  onClick,
-  compact,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  compact?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      className={`rounded-md border text-left font-medium transition ${
-        compact ? "px-2 py-1 text-[10px] leading-tight" : "px-2.5 py-1.5 text-xs"
-      } ${
-        active
-          ? "border-zinc-900 bg-zinc-900 text-white shadow-sm"
-          : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300 hover:bg-zinc-50"
-      }`}
-      onClick={onClick}
-    >
-      {children}
-    </button>
-  );
-}
+import { pickerChipClass } from "@/components/administration/picker-button-styles";
 
 export function AdminSettlementStatusPicker({
   value,
@@ -54,24 +27,24 @@ export function AdminSettlementStatusPicker({
   );
 
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-2">
       {label ? (
         <span
-          className={`block font-medium text-zinc-700 ${compact ? "text-[10px]" : "text-xs"}`}
+          className={`block font-semibold text-zinc-800 ${compact ? "text-xs" : "text-sm"}`}
         >
           {label}
         </span>
       ) : null}
-      <div className={`flex flex-wrap ${compact ? "gap-1" : "gap-1.5"}`}>
+      <div className={`flex flex-wrap ${compact ? "gap-1.5" : "gap-2"}`}>
         {options.map((st) => (
-          <StatusButton
+          <button
             key={st.id}
-            active={value === st.id}
-            compact={compact}
+            type="button"
+            className={pickerChipClass(value === st.id, compact)}
             onClick={() => onChange(st.id)}
           >
             {settlementLabel(t, st.id)}
-          </StatusButton>
+          </button>
         ))}
       </div>
     </div>
