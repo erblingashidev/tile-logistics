@@ -50,7 +50,7 @@ function methodLabel(id: string | null) {
   return id.replace(/_/g, " ");
 }
 
-function ClientReportCard({
+export function ClientReportCard({
   profile,
   onClose,
 }: {

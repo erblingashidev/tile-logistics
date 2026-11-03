@@ -380,25 +380,27 @@ export function findClientsByInvoice(
   );
 }
 
-export function listOverdueDebts(
+function debtInvoiceItems(
   profiles: ClientFinanceProfile[],
-  minDays = 14
+  options: { minDaysOutstanding?: number; requireOrderDate?: boolean }
 ): OverdueDebtItem[] {
+  const minDays = options.minDaysOutstanding ?? 0;
+  const requireOrderDate = options.requireOrderDate ?? minDays > 0;
   const items: OverdueDebtItem[] = [];
   for (const profile of profiles) {
     for (const inv of profile.invoices) {
       if (!inv.invoiceNumber.trim()) continue;
       if (!invoiceRowHasSalesAgent(inv)) continue;
       if (inv.balanceDueCents <= 0) continue;
-      if (inv.daysOutstanding < minDays) continue;
-      if (!inv.orderDate) continue;
+      if (minDays > 0 && inv.daysOutstanding < minDays) continue;
+      if (requireOrderDate && !inv.orderDate) continue;
       items.push({
         clientKey: profile.clientKey,
         displayName: profile.displayName,
         invoiceNumber: inv.invoiceNumber,
         balanceDueCents: inv.balanceDueCents,
         invoicedCents: inv.invoicedCents,
-        orderDate: inv.orderDate,
+        orderDate: inv.orderDate ?? "",
         daysOutstanding: inv.daysOutstanding,
         salesEmployeeId: inv.salesEmployeeId,
         salesAgentName:
@@ -411,7 +413,66 @@ export function listOverdueDebts(
       });
     }
   }
-  return items.sort((a, b) => b.daysOutstanding - a.daysOutstanding);
+  return items.sort((a, b) => b.balanceDueCents - a.balanceDueCents);
+}
+
+/** Every open invoice with balance due (traceable invoice + agent). */
+export function listOpenDebtInvoices(
+  profiles: ClientFinanceProfile[]
+): OverdueDebtItem[] {
+  return debtInvoiceItems(profiles, {
+    minDaysOutstanding: 0,
+    requireOrderDate: false,
+  });
+}
+
+export function listOverdueDebts(
+  profiles: ClientFinanceProfile[],
+  minDays = 14
+): OverdueDebtItem[] {
+  return debtInvoiceItems(profiles, {
+    minDaysOutstanding: minDays,
+    requireOrderDate: true,
+  });
+}
+
+export type ReceivablesSummary = {
+  totalDebtCents: number;
+  openInvoiceCount: number;
+  clientsWithDebt: number;
+  totalInvoicedCents: number;
+  totalPaidOnInvoicesCents: number;
+  overdue14Count: number;
+  overdue14Cents: number;
+};
+
+export function computeReceivablesSummary(
+  profiles: ClientFinanceProfile[]
+): ReceivablesSummary {
+  const debts = listDebts(profiles);
+  const openLines = listOpenDebtInvoices(profiles);
+  const overdue14 = listOverdueDebts(profiles, 14);
+  let totalInvoicedCents = 0;
+  let totalPaidOnInvoicesCents = 0;
+  for (const p of profiles) {
+    totalInvoicedCents += p.totalInvoicedCents;
+    totalPaidOnInvoicesCents += p.totalPaidCents;
+  }
+  return {
+    totalDebtCents: openLines.reduce((s, i) => s + i.balanceDueCents, 0),
+    openInvoiceCount: openLines.length,
+    clientsWithDebt: debts.length,
+    totalInvoicedCents,
+    totalPaidOnInvoicesCents,
+    overdue14Count: overdue14.length,
+    overdue14Cents: overdue14.reduce((s, i) => s + i.balanceDueCents, 0),
+  };
+}
+
+export function groupDebtInvoicesByAgent(
+  items: OverdueDebtItem[]
+): AgentDebtGroup[] {
+  return groupOverdueDebtsByAgent(items);
 }
 
 export function groupOverdueDebtsByAgent(

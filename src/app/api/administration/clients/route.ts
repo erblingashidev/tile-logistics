@@ -3,10 +3,13 @@ import { requireAdministrationRead } from "@/lib/auth/administration-api";
 import { runWithTenantOrganizationAsync } from "@/lib/organizations/tenant-context";
 import {
   buildClientFinanceProfiles,
+  computeReceivablesSummary,
   getClientFinanceProfile,
+  groupDebtInvoicesByAgent,
   groupOverdueDebtsByAgent,
   listCallQueue,
   listDebts,
+  listOpenDebtInvoices,
   listOverdueDebts,
   normalizeClientKey,
 } from "@/lib/services/administration-clients";
@@ -39,10 +42,14 @@ export async function GET(request: NextRequest) {
       clients,
       Number.isFinite(overdueDays) ? overdueDays : 14
     );
+    const openDebtInvoices = listOpenDebtInvoices(clients);
     return NextResponse.json({
       clients,
+      summary: computeReceivablesSummary(clients),
       debts: listDebts(clients),
       callList: listCallQueue(clients),
+      openDebtInvoices,
+      debtsByAgent: groupDebtInvoicesByAgent(openDebtInvoices),
       overdueDebts,
       overdueByAgent: groupOverdueDebtsByAgent(overdueDebts),
     });

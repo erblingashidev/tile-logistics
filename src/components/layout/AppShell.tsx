@@ -71,12 +71,24 @@ function buildNavGroups(
             label: "Administration",
             items: [
               { href: "/administration", label: "Cash register" },
-              { href: "/administration/finance", label: "Finance" },
+              {
+                href: "/administration/finance/reports",
+                label: "Finance reports",
+              },
+              { href: "/administration/finance/debts", label: "Open debts" },
+              {
+                href: "/administration/finance/debts/by-agent",
+                label: "Debts by agent",
+              },
+              {
+                href: "/administration/finance/debts/by-client",
+                label: "Debts by client",
+              },
+              { href: "/administration/finance", label: "Register & ledger" },
               {
                 href: "/administration/finance/imports",
                 label: "Finance import",
               },
-              { href: "/administration/clients", label: "Clients & debts" },
             ],
           },
         ]
@@ -105,6 +117,24 @@ function isActive(pathname: string, href: string) {
   if (href === "/administration") return pathname === "/administration";
   if (href === "/administration/finance") {
     return pathname === "/administration/finance";
+  }
+  if (href === "/administration/finance/debts") {
+    return pathname === "/administration/finance/debts";
+  }
+  if (href === "/administration/finance/debts/by-agent") {
+    return (
+      pathname === "/administration/finance/debts/by-agent" ||
+      pathname.startsWith("/administration/finance/debts/by-agent/")
+    );
+  }
+  if (href === "/administration/finance/debts/by-client") {
+    return (
+      pathname === "/administration/finance/debts/by-client" ||
+      pathname.startsWith("/administration/finance/debts/by-client/")
+    );
+  }
+  if (href === "/administration/finance/reports") {
+    return pathname.startsWith("/administration/finance/reports");
   }
   return pathname === href || pathname.startsWith(`${href}/`);
 }
