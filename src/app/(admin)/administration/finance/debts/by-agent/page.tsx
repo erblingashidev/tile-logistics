@@ -5,22 +5,41 @@ import { ClientReportCard } from "@/components/administration/AdministrationClie
 import { formatAdminMoney } from "@/components/administration/AdministrationLedgerTable";
 import { FinancePageShell } from "@/components/administration/finance/FinancePageShell";
 import { OpenDebtsTable } from "@/components/administration/finance/OpenDebtsTable";
+import { useFinanceSearch } from "@/components/administration/finance/FinanceSearchProvider";
 import { useFinanceDebts } from "@/components/administration/finance/useFinanceDebts";
+import {
+  debtInvoiceMatchesSearch,
+  financeTextMatchesQuery,
+} from "@/lib/administration/finance-search";
 import { Alert, Button, Card, EmptyState, LoadingState, Select } from "@/components/ui";
 
 export default function FinanceDebtsByAgentPage() {
   const { loading, error, data, selected, setSelected, openClient } =
     useFinanceDebts();
+  const { query } = useFinanceSearch();
   const [agentFilter, setAgentFilter] = useState("");
 
   const groups = data?.debtsByAgent ?? [];
+
+  const visibleGroups = useMemo(() => {
+    if (!query.trim()) return groups;
+    return groups.filter(
+      (g) =>
+        financeTextMatchesQuery(g.salesAgentName, query) ||
+        g.items.some((item) => debtInvoiceMatchesSearch(item, query))
+    );
+  }, [groups, query]);
 
   const activeGroup = useMemo(() => {
     if (!agentFilter) return null;
     return groups.find((g) => g.salesAgentName === agentFilter) ?? null;
   }, [groups, agentFilter]);
 
-  const tableRows = activeGroup?.items ?? [];
+  const tableRows = useMemo(() => {
+    const rows = activeGroup?.items ?? [];
+    if (!query.trim()) return rows;
+    return rows.filter((row) => debtInvoiceMatchesSearch(row, query));
+  }, [activeGroup, query]);
 
   return (
     <FinancePageShell
@@ -35,10 +54,14 @@ export default function FinanceDebtsByAgentPage() {
         <Card>
           <EmptyState title="No open debts with assigned agents." />
         </Card>
+      ) : visibleGroups.length === 0 ? (
+        <Card>
+          <EmptyState title="No agents or invoices match your search." />
+        </Card>
       ) : (
         <>
           <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {groups.map((group) => (
+            {visibleGroups.map((group) => (
               <Card key={group.salesAgentName} className="p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
                   Sales agent

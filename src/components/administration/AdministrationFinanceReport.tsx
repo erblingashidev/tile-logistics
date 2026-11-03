@@ -15,6 +15,8 @@ import {
   ClosedRegisterSessionsTable,
   type ClosedRegisterSession,
 } from "@/components/administration/RegisterShiftReconciliation";
+import { useFinanceSearch } from "@/components/administration/finance/FinanceSearchProvider";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { Alert, Button, Card, Input, PageSection, Select } from "@/components/ui";
 
 type EditRequest = {
@@ -39,7 +41,8 @@ export function AdministrationFinanceReport({
   );
   const [filterPayment, setFilterPayment] = useState("");
   const [filterKind, setFilterKind] = useState("");
-  const [filterSearch, setFilterSearch] = useState("");
+  const { query: financeSearchQuery } = useFinanceSearch();
+  const debouncedSearch = useDebouncedValue(financeSearchQuery, 350);
   const [transactions, setTransactions] = useState<AdministrationTransaction[]>(
     []
   );
@@ -88,14 +91,14 @@ export function AdministrationFinanceReport({
     });
     if (filterPayment) params.set("paymentMethod", filterPayment);
     if (filterKind) params.set("kind", filterKind);
-    if (filterSearch.trim()) params.set("search", filterSearch.trim());
+    if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
     const res = await fetch(`/api/administration/transactions?${params}`, {
       cache: "no-store",
     });
     if (!res.ok) throw new Error("Could not load register entries");
     const data = await res.json();
     setTransactions(data.transactions ?? []);
-  }, [filterFrom, filterTo, filterPayment, filterKind, filterSearch]);
+  }, [filterFrom, filterTo, filterPayment, filterKind, debouncedSearch]);
 
   const loadClosedSessions = useCallback(async () => {
     const params = new URLSearchParams({
@@ -188,14 +191,12 @@ export function AdministrationFinanceReport({
       {error ? <Alert tone="error">{error}</Alert> : null}
 
       <Card className="mb-4 grid gap-3 p-4 sm:grid-cols-4">
-        <div className="sm:col-span-4">
-          <Input
-            label="Search register"
-            placeholder="Customer name, invoice #, purpose, notes…"
-            value={filterSearch}
-            onChange={(e) => setFilterSearch(e.target.value)}
-          />
-        </div>
+        {financeSearchQuery.trim() ? (
+          <p className="sm:col-span-4 text-sm text-zinc-600">
+            Register filtered by finance search:{" "}
+            <span className="font-medium text-zinc-900">{financeSearchQuery}</span>
+          </p>
+        ) : null}
         <Input
           label="From"
           type="date"
@@ -234,7 +235,7 @@ export function AdministrationFinanceReport({
         </Select>
         <div className="flex flex-wrap items-end gap-2 sm:col-span-4">
           <Button variant="secondary" disabled={busy} onClick={() => void refresh()}>
-            Apply filters
+            Refresh ledger
           </Button>
           {canReports ? (
             <Button variant="secondary" disabled={busy} onClick={() => void runReport()}>

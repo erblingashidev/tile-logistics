@@ -26,6 +26,7 @@ import {
   Select,
 } from "@/components/ui";
 import { format } from "date-fns";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 
 type RegisterSession = {
   id: number;
@@ -79,6 +80,7 @@ export default function AdministrationPage() {
   const [filterPayment, setFilterPayment] = useState("");
   const [filterKind, setFilterKind] = useState("");
   const [filterSearch, setFilterSearch] = useState("");
+  const debouncedRegisterSearch = useDebouncedValue(filterSearch, 350);
 
   const [formKind, setFormKind] = useState("payment");
   const [formPayment, setFormPayment] = useState("cash");
@@ -112,14 +114,22 @@ export default function AdministrationPage() {
     });
     if (filterPayment) params.set("paymentMethod", filterPayment);
     if (filterKind) params.set("kind", filterKind);
-    if (filterSearch.trim()) params.set("search", filterSearch.trim());
+    if (debouncedRegisterSearch.trim()) {
+      params.set("search", debouncedRegisterSearch.trim());
+    }
     const res = await fetch(`/api/administration/transactions?${params}`, {
       cache: "no-store",
     });
     if (!res.ok) throw new Error("Could not load transactions");
     const data = await res.json();
     setTransactions(data.transactions ?? []);
-  }, [filterFrom, filterTo, filterPayment, filterKind, filterSearch]);
+  }, [
+    filterFrom,
+    filterTo,
+    filterPayment,
+    filterKind,
+    debouncedRegisterSearch,
+  ]);
 
   const loadPending = useCallback(async () => {
     const res = await fetch("/api/administration/edit-requests", {
@@ -573,10 +583,13 @@ export default function AdministrationPage() {
           <div className="sm:col-span-4">
             <Input
               label="Search register"
-              placeholder="Customer name, invoice #, purpose, notes…"
+              placeholder="Client, invoice #, sales agent, purpose, notes, receipt #…"
               value={filterSearch}
               onChange={(e) => setFilterSearch(e.target.value)}
             />
+            <p className="mt-1 text-xs text-zinc-500">
+              Results update as you type. Press Escape to clear the box.
+            </p>
           </div>
           <Input
             label="From"
@@ -616,7 +629,7 @@ export default function AdministrationPage() {
           </Select>
           <div className="flex flex-wrap items-end gap-2 sm:col-span-4">
             <Button variant="secondary" disabled={busy} onClick={() => void refresh()}>
-              Apply filters
+              Refresh ledger
             </Button>
           </div>
         </Card>

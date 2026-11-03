@@ -6,6 +6,8 @@ import {
 } from "@/components/administration/AdministrationClientFinance";
 import { formatAdminMoney } from "@/components/administration/AdministrationLedgerTable";
 import { FinanceDebtFilters } from "@/components/administration/finance/FinanceDebtFilters";
+import { useFinanceSearch } from "@/components/administration/finance/FinanceSearchProvider";
+import { clientProfileMatchesSearch } from "@/lib/administration/finance-search";
 import { FinancePageShell } from "@/components/administration/finance/FinancePageShell";
 import { useFinanceDebts } from "@/components/administration/finance/useFinanceDebts";
 import { Alert, Button, Card, EmptyState, LoadingState } from "@/components/ui";
@@ -43,7 +45,7 @@ function ClientDebtRow({
 export default function FinanceDebtsByClientPage() {
   const { loading, error, data, selected, setSelected, openClient } =
     useFinanceDebts();
-  const [clientSearch, setClientSearch] = useState("");
+  const { query } = useFinanceSearch();
   const [agent, setAgent] = useState("");
 
   const agentOptions = useMemo(
@@ -67,23 +69,21 @@ export default function FinanceDebtsByClientPage() {
 
   const filteredDebts = useMemo(() => {
     if (!data) return [];
-    const q = clientSearch.trim().toLowerCase();
     return data.debts.filter((p) => {
-      if (q && !p.displayName.toLowerCase().includes(q)) return false;
+      if (!clientProfileMatchesSearch(p, query)) return false;
       if (clientKeysForAgent && !clientKeysForAgent.has(p.clientKey)) return false;
       return true;
     });
-  }, [data, clientSearch, clientKeysForAgent]);
+  }, [data, query, clientKeysForAgent]);
 
   const filteredCallList = useMemo(() => {
     if (!data) return [];
-    const q = clientSearch.trim().toLowerCase();
     return data.callList.filter((p) => {
-      if (q && !p.displayName.toLowerCase().includes(q)) return false;
+      if (!clientProfileMatchesSearch(p, query)) return false;
       if (clientKeysForAgent && !clientKeysForAgent.has(p.clientKey)) return false;
       return true;
     });
-  }, [data, clientSearch, clientKeysForAgent]);
+  }, [data, query, clientKeysForAgent]);
 
   return (
     <FinancePageShell
@@ -100,14 +100,11 @@ export default function FinanceDebtsByClientPage() {
             agent={agent}
             onAgentChange={setAgent}
             agentOptions={agentOptions}
-            clientSearch={clientSearch}
-            onClientSearchChange={setClientSearch}
             minDays="0"
             onMinDaysChange={() => {}}
             showMinDays={false}
             onClear={() => {
               setAgent("");
-              setClientSearch("");
             }}
           />
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useAppMessages } from "@/components/i18n/LocaleProvider";
 
 const LINKS = [
@@ -25,7 +25,10 @@ function isActive(pathname: string, href: string) {
 
 export function AdministrationFinanceNav() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const t = useAppMessages();
+  const q = searchParams.get("q");
+  const querySuffix = q ? `?q=${encodeURIComponent(q)}` : "";
   return (
     <nav className="mb-6 flex flex-wrap gap-2 border-b border-zinc-200 pb-3">
       {LINKS.map((link) => {
@@ -33,7 +36,7 @@ export function AdministrationFinanceNav() {
         return (
           <Link
             key={link.href}
-            href={link.href}
+            href={`${link.href}${querySuffix}`}
             className={`rounded-full px-3 py-1.5 text-sm transition ${
               active
                 ? "bg-zinc-900 font-medium text-white"

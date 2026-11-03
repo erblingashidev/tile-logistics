@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useFinanceSearch } from "@/components/administration/finance/FinanceSearchProvider";
 import {
   ClientReportCard,
 } from "@/components/administration/AdministrationClientFinance";
@@ -17,8 +18,8 @@ import { Alert, Card, LoadingState } from "@/components/ui";
 export default function FinanceOpenDebtsPage() {
   const { loading, error, data, selected, setSelected, openClient } =
     useFinanceDebts();
+  const { query } = useFinanceSearch();
   const [agent, setAgent] = useState("");
-  const [clientSearch, setClientSearch] = useState("");
   const [minDays, setMinDays] = useState("0");
 
   const agentOptions = useMemo(
@@ -36,10 +37,10 @@ export default function FinanceOpenDebtsPage() {
     return filterDebtLines(
       data.openDebtInvoices,
       agent,
-      clientSearch,
+      query,
       Number(minDays) || 0
     );
-  }, [data, agent, clientSearch, minDays]);
+  }, [data, agent, query, minDays]);
 
   const filteredTotal = filtered.reduce((s, r) => s + r.balanceDueCents, 0);
 
@@ -77,13 +78,10 @@ export default function FinanceOpenDebtsPage() {
             agent={agent}
             onAgentChange={setAgent}
             agentOptions={agentOptions}
-            clientSearch={clientSearch}
-            onClientSearchChange={setClientSearch}
             minDays={minDays}
             onMinDaysChange={setMinDays}
             onClear={() => {
               setAgent("");
-              setClientSearch("");
               setMinDays("0");
             }}
           />

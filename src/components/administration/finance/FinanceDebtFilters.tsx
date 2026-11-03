@@ -1,13 +1,14 @@
 "use client";
 
-import { Button, Input, Select } from "@/components/ui";
+import { Button, Select } from "@/components/ui";
+import { useFinanceSearch } from "@/components/administration/finance/FinanceSearchProvider";
+import { debtInvoiceMatchesSearch } from "@/lib/administration/finance-search";
+import type { DebtInvoiceLine } from "@/components/administration/finance/finance-debt-types";
 
 export function FinanceDebtFilters({
   agent,
   onAgentChange,
   agentOptions,
-  clientSearch,
-  onClientSearchChange,
   minDays,
   onMinDaysChange,
   showMinDays = true,
@@ -16,15 +17,14 @@ export function FinanceDebtFilters({
   agent: string;
   onAgentChange: (v: string) => void;
   agentOptions: string[];
-  clientSearch: string;
-  onClientSearchChange: (v: string) => void;
   minDays: string;
   onMinDaysChange: (v: string) => void;
   showMinDays?: boolean;
   onClear: () => void;
 }) {
+  const { query, clearQuery } = useFinanceSearch();
   const hasFilter =
-    Boolean(agent) || Boolean(clientSearch.trim()) || (showMinDays && minDays !== "0");
+    Boolean(agent) || Boolean(query.trim()) || (showMinDays && minDays !== "0");
 
   return (
     <div className="mb-4 grid gap-3 rounded-lg border border-zinc-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -40,12 +40,6 @@ export function FinanceDebtFilters({
           </option>
         ))}
       </Select>
-      <Input
-        label="Client search"
-        placeholder="Customer name…"
-        value={clientSearch}
-        onChange={(e) => onClientSearchChange(e.target.value)}
-      />
       {showMinDays ? (
         <Select
           label="Minimum days outstanding"
@@ -59,7 +53,14 @@ export function FinanceDebtFilters({
         </Select>
       ) : null}
       <div className="flex items-end">
-        <Button variant="secondary" disabled={!hasFilter} onClick={onClear}>
+        <Button
+          variant="secondary"
+          disabled={!hasFilter}
+          onClick={() => {
+            clearQuery();
+            onClear();
+          }}
+        >
           Clear filters
         </Button>
       </div>
@@ -67,22 +68,15 @@ export function FinanceDebtFilters({
   );
 }
 
-export function filterDebtLines<
-  T extends {
-    salesAgentName: string;
-    displayName: string;
-    daysOutstanding: number;
-  },
->(
-  lines: T[],
+export function filterDebtLines(
+  lines: DebtInvoiceLine[],
   agent: string,
-  clientSearch: string,
+  searchQuery: string,
   minDays: number
-): T[] {
-  const q = clientSearch.trim().toLowerCase();
+): DebtInvoiceLine[] {
   return lines.filter((row) => {
     if (agent && row.salesAgentName !== agent) return false;
-    if (q && !row.displayName.toLowerCase().includes(q)) return false;
+    if (!debtInvoiceMatchesSearch(row, searchQuery)) return false;
     if (minDays > 0 && row.daysOutstanding < minDays) return false;
     return true;
   });

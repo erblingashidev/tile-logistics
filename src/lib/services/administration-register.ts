@@ -343,7 +343,8 @@ export async function listRegisterTransactions(
         like(adminRegisterTransactions.notes, pattern),
         like(adminRegisterTransactions.receiptReference, pattern),
         like(adminRegisterTransactions.paymentMethod, pattern),
-        like(adminRegisterTransactions.kind, pattern)
+        like(adminRegisterTransactions.kind, pattern),
+        like(adminRegisterTransactions.salesAgentName, pattern)
       )!
     );
   }
