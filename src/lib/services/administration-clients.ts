@@ -272,7 +272,8 @@ export async function buildClientFinanceProfiles(
     if (!ext.invoiceNumber?.trim()) continue;
     if (ext.documentCategory === "delivery_note") continue;
 
-    const profile = getProfile(ext.buyerName);
+    const buyerLabel = ext.buyerName?.trim() || "Unknown client";
+    const profile = getProfile(buyerLabel);
     const normInv = normalizeInvoiceRef(ext.invoiceNumber);
     invoiceOwner.set(normInv, profile.clientKey);
 

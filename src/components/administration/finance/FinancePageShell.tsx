@@ -35,8 +35,7 @@ export function FinancePageShell({
     <Suspense
       fallback={
         <AppShell title={title} description={description} contentMaxWidth="wide">
-          <AdministrationFinanceNav />
-          {children}
+          <p className="text-sm text-zinc-500">Loading finance…</p>
         </AppShell>
       }
     >

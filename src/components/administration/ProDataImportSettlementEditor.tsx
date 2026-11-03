@@ -63,7 +63,7 @@ export function ProDataImportSettlementEditor({
   rows: Record<string, SettlementRowState>;
   onRowsChange: (next: Record<string, SettlementRowState>) => void;
 }) {
-  const [filter, setFilter] = useState<"all" | "needs">("needs");
+  const [filter, setFilter] = useState<"all" | "needs">("all");
   const [bulkStatus, setBulkStatus] = useState<InvoiceSettlementStatus>("unpaid");
 
   const visible = useMemo(() => {

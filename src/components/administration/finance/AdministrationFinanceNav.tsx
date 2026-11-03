@@ -11,6 +11,10 @@ const LINKS = [
   { href: "/administration/finance/debts/by-client", key: "byClient" as const },
   { href: "/administration/finance", key: "registerLedger" as const },
   { href: "/administration/finance/imports", key: "excelImport" as const },
+  {
+    href: "/administration/finance/settlements",
+    key: "paymentStatus" as const,
+  },
 ] as const;
 
 function isActive(pathname: string, href: string) {

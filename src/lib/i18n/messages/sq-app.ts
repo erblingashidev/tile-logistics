@@ -113,6 +113,7 @@ export const sqApp: AppMessages = {
       byClient: "Borxhet sipas klientit",
       registerLedger: "Arka & libri",
       excelImport: "Import Excel",
+      paymentStatus: "MENYRA E PAGESES",
     },
   },
 };

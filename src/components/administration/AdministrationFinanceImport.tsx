@@ -166,6 +166,22 @@ export function AdministrationFinanceImport() {
         </div>
       </Card>
 
+      {prodata?.invoices.length ? (
+        <div id="menyra-e-pageses" className="mt-6 scroll-mt-4">
+          <div className="mb-3">
+            <Alert tone="info">
+              <strong>Step 2 — MENYRA E PAGESES:</strong> use the table below to
+              choose payment status and partial amounts before you click Import.
+            </Alert>
+          </div>
+          <ProDataImportSettlementEditor
+            invoices={prodata.invoices}
+            rows={settlementRows}
+            onRowsChange={setSettlementRows}
+          />
+        </div>
+      ) : null}
+
       {prodata ? (
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
           <Card className="p-4">
@@ -239,14 +255,6 @@ export function AdministrationFinanceImport() {
             </ul>
           </Card>
         </div>
-      ) : null}
-
-      {prodata?.invoices.length ? (
-        <ProDataImportSettlementEditor
-          invoices={prodata.invoices}
-          rows={settlementRows}
-          onRowsChange={setSettlementRows}
-        />
       ) : null}
 
       {preview ? (

@@ -111,6 +111,7 @@ export const en = {
       byClient: "Debts by client",
       registerLedger: "Register & ledger",
       excelImport: "Excel import",
+      paymentStatus: "MENYRA E PAGESES",
     },
   },
 };

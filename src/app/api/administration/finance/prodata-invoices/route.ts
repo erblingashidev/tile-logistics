@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdministrationWrite } from "@/lib/auth/administration-api";
+import {
+  requireAdministrationRead,
+  requireAdministrationWrite,
+} from "@/lib/auth/administration-api";
+import { listProDataFinanceInvoices } from "@/lib/services/finance-prodata-import";
 import { isInvoiceSettlementStatus } from "@/lib/administration/invoice-settlement";
 import {
   isAdminPaymentMethod,
@@ -9,6 +13,16 @@ import { runWithTenantOrganizationAsync } from "@/lib/organizations/tenant-conte
 import { updateProDataInvoiceSettlement } from "@/lib/services/finance-prodata-import";
 
 export const runtime = "nodejs";
+
+export async function GET() {
+  const auth = await requireAdministrationRead();
+  if (!auth.ok) return auth.response;
+
+  return runWithTenantOrganizationAsync(auth.organizationId, async () => {
+    const invoices = await listProDataFinanceInvoices(auth.organizationId);
+    return NextResponse.json({ invoices });
+  });
+}
 
 export async function PATCH(request: NextRequest) {
   const auth = await requireAdministrationWrite();
