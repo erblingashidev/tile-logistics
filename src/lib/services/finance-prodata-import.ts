@@ -5,11 +5,18 @@ import {
   financeProdataInvoices,
 } from "@/lib/db/schema";
 import {
+  isInvoiceSettlementStatus,
+  settlementPaidCentsFromStatus,
+  settlementStatusRequiresAmount,
+  type InvoiceSettlementStatus,
+} from "@/lib/administration/invoice-settlement";
+import {
   parseProDataTransactionBook,
   type FinanceDocumentCategory,
   type ProDataImportAnalysis,
   type ProDataInvoiceAggregate,
 } from "@/lib/administration/prodata-transaction-book";
+import type { AdminPaymentMethod } from "@/lib/administration/constants";
 import {
   adminRegisterTransactions,
 } from "@/lib/db/schema";
@@ -25,7 +32,47 @@ export type ProDataFinanceInvoiceRow = {
   netValueCents: number;
   lineCount: number;
   paymentMethod: string | null;
+  paymentMethodRaw: string | null;
+  settlementStatus: InvoiceSettlementStatus;
+  paidAmountCents: number | null;
 };
+
+export type ProDataInvoiceSettlementOverride = {
+  invoiceNumber: string;
+  settlementStatus: InvoiceSettlementStatus;
+  paidAmountCents?: number | null;
+  paymentMethod?: AdminPaymentMethod | null;
+};
+
+export function applySettlementOverrides(
+  analysis: ProDataImportAnalysis,
+  overrides: ProDataInvoiceSettlementOverride[]
+): ProDataImportAnalysis {
+  if (overrides.length === 0) return analysis;
+  const byInv = new Map(
+    overrides.map((o) => [o.invoiceNumber.trim().toLowerCase(), o])
+  );
+  const invoices = analysis.invoices.map((inv) => {
+    const o = byInv.get(inv.invoiceNumber.trim().toLowerCase());
+    if (!o) return inv;
+    if (!isInvoiceSettlementStatus(o.settlementStatus)) return inv;
+    let paidAmountCents = o.paidAmountCents ?? inv.paidAmountCents;
+    if (
+      settlementStatusRequiresAmount(o.settlementStatus) &&
+      paidAmountCents == null
+    ) {
+      paidAmountCents = null;
+    }
+    return {
+      ...inv,
+      settlementStatus: o.settlementStatus,
+      paidAmountCents,
+      paymentMethod:
+        o.paymentMethod !== undefined ? o.paymentMethod : inv.paymentMethod,
+    };
+  });
+  return { ...analysis, invoices };
+}
 
 export function analyzeProDataFinanceExport(
   buffer: Buffer,
@@ -52,7 +99,49 @@ export async function listProDataFinanceInvoices(
     netValueCents: r.netValueCents,
     lineCount: r.lineCount,
     paymentMethod: r.paymentMethod,
+    paymentMethodRaw: r.paymentMethodRaw,
+    settlementStatus: (r.settlementStatus ??
+      "unknown") as InvoiceSettlementStatus,
+    paidAmountCents: r.paidAmountCents,
   }));
+}
+
+export async function updateProDataInvoiceSettlement(
+  organizationId: number,
+  invoiceNumber: string,
+  patch: ProDataInvoiceSettlementOverride
+) {
+  const db = await getControlPlaneDb();
+  if (!isInvoiceSettlementStatus(patch.settlementStatus)) {
+    throw new Error("Invalid settlement status.");
+  }
+  if (
+    settlementStatusRequiresAmount(patch.settlementStatus) &&
+    (patch.paidAmountCents == null || patch.paidAmountCents <= 0)
+  ) {
+    throw new Error("Enter the amount paid or prepaid for partial status.");
+  }
+  const ts = new Date().toISOString();
+  const set: Record<string, unknown> = {
+    settlementStatus: patch.settlementStatus,
+    paidAmountCents: patch.paidAmountCents ?? null,
+    updatedAt: ts,
+  };
+  if (patch.paymentMethod !== undefined) {
+    set.paymentMethod = patch.paymentMethod;
+  }
+  const updated = await db
+    .update(financeProdataInvoices)
+    .set(set)
+    .where(
+      and(
+        eq(financeProdataInvoices.organizationId, organizationId),
+        eq(financeProdataInvoices.invoiceNumber, invoiceNumber.trim())
+      )
+    );
+  if ((updated.rowsAffected ?? 0) === 0) {
+    throw new Error("Invoice not found in Pro-Data import data.");
+  }
 }
 
 export type CommitProDataImportResult = {
@@ -97,6 +186,8 @@ async function upsertProDataInvoice(
     lineCount: inv.lineCount,
     paymentMethodRaw: inv.paymentMethodRaw || null,
     paymentMethod: inv.paymentMethod,
+    settlementStatus: inv.settlementStatus,
+    paidAmountCents: inv.paidAmountCents,
     productSample: inv.productSample || null,
     updatedAt: ts,
   };
@@ -135,10 +226,20 @@ async function importRegisterLineForInvoice(
   inv: ProDataInvoiceAggregate,
   stats: CommitProDataImportResult
 ) {
-  if (!inv.paymentMethod) return;
-
   const absCents = Math.abs(inv.netValueCents);
   if (absCents <= 0) return;
+
+  const registerCents =
+    inv.settlementStatus === "paid_partial" ||
+    inv.settlementStatus === "prepaid_partial"
+      ? inv.paidAmountCents ?? 0
+      : inv.settlementStatus === "paid_full" ||
+          inv.settlementStatus === "prepaid_full"
+        ? absCents
+        : 0;
+
+  if (registerCents <= 0) return;
+  if (!inv.paymentMethod) return;
 
   if (inv.documentCategory === "credit_note" || inv.netValueCents < 0) {
     const key = idempotencyForInvoice(inv.invoiceNumber, "credit");
@@ -149,7 +250,7 @@ async function importRegisterLineForInvoice(
     await createRegisterTransaction(organizationId, session, {
       kind: "return_refund",
       paymentMethod: inv.paymentMethod,
-      amountCents: absCents,
+      amountCents: registerCents,
       counterpartyName: inv.buyerName,
       invoiceReference: inv.invoiceNumber,
       salesAgentName: inv.salesAgentName || undefined,
@@ -174,7 +275,7 @@ async function importRegisterLineForInvoice(
   await createRegisterTransaction(organizationId, session, {
     kind: "payment",
     paymentMethod: inv.paymentMethod,
-    amountCents: absCents,
+    amountCents: registerCents,
     counterpartyName: inv.buyerName,
     invoiceReference: inv.invoiceNumber,
     salesAgentName: inv.salesAgentName || undefined,
@@ -191,9 +292,18 @@ export async function commitProDataFinanceImport(
   session: SessionUser,
   buffer: Buffer,
   fileName: string,
-  options?: { syncRegisterPayments?: boolean }
+  options?: {
+    syncRegisterPayments?: boolean;
+    settlementOverrides?: ProDataInvoiceSettlementOverride[];
+  }
 ): Promise<{ analysis: ProDataImportAnalysis; result: CommitProDataImportResult }> {
-  const analysis = parseProDataTransactionBook(buffer, fileName);
+  let analysis = parseProDataTransactionBook(buffer, fileName);
+  if (options?.settlementOverrides?.length) {
+    analysis = applySettlementOverrides(
+      analysis,
+      options.settlementOverrides
+    );
+  }
   const syncRegister = options?.syncRegisterPayments !== false;
   const db = await getControlPlaneDb();
   const ts = new Date().toISOString();
@@ -231,6 +341,14 @@ export async function commitProDataFinanceImport(
   };
 
   for (const inv of analysis.invoices) {
+    if (
+      settlementStatusRequiresAmount(inv.settlementStatus) &&
+      (inv.paidAmountCents == null || inv.paidAmountCents <= 0)
+    ) {
+      throw new Error(
+        `Invoice ${inv.invoiceNumber}: enter paid amount for partial settlement.`
+      );
+    }
     await upsertProDataInvoice(organizationId, batchId, inv, ts);
     result.invoicesUpserted += 1;
     if (syncRegister) {

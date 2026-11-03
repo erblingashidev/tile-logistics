@@ -6,7 +6,15 @@ import {
   invoiceRowHasSalesAgent,
 } from "@/lib/administration/validation";
 import { listRegisterTransactions } from "@/lib/services/administration-register";
-import { listProDataFinanceInvoices } from "@/lib/services/finance-prodata-import";
+import {
+  settlementIsFullySettled,
+  settlementPaidCentsFromStatus,
+  type InvoiceSettlementStatus,
+} from "@/lib/administration/invoice-settlement";
+import {
+  listProDataFinanceInvoices,
+  type ProDataFinanceInvoiceRow,
+} from "@/lib/services/finance-prodata-import";
 
 export function normalizeClientKey(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, " ");
@@ -36,6 +44,8 @@ export type ClientInvoiceRow = {
   salesEmployeeId: number | null;
   salesAgentName: string | null;
   daysOutstanding: number;
+  settlementStatus: InvoiceSettlementStatus | null;
+  paymentMethodRaw: string | null;
 };
 
 export type OverdueDebtItem = {
@@ -50,6 +60,8 @@ export type OverdueDebtItem = {
   salesAgentName: string;
   orderStatus: string | null;
   location: string | null;
+  settlementStatus: InvoiceSettlementStatus | null;
+  paymentMethodRaw: string | null;
 };
 
 export type AgentDebtGroup = {
@@ -60,6 +72,32 @@ export type AgentDebtGroup = {
   clientCount: number;
   items: OverdueDebtItem[];
 };
+
+function applyProDataSettlementToInvoice(
+  invoicedCents: number,
+  priorPaidCents: number,
+  ext: ProDataFinanceInvoiceRow
+): Pick<
+  ClientInvoiceRow,
+  "paidCents" | "balanceDueCents" | "settlementStatus" | "paymentMethodRaw"
+> {
+  const fromStatus = settlementPaidCentsFromStatus(
+    invoicedCents,
+    ext.settlementStatus,
+    ext.paidAmountCents
+  );
+  let paidCents = Math.max(priorPaidCents, fromStatus);
+  if (settlementIsFullySettled(ext.settlementStatus)) {
+    paidCents = Math.max(paidCents, Math.abs(invoicedCents));
+  }
+  const balanceDueCents = Math.max(0, invoicedCents - paidCents);
+  return {
+    paidCents,
+    balanceDueCents,
+    settlementStatus: ext.settlementStatus,
+    paymentMethodRaw: ext.paymentMethodRaw,
+  };
+}
 
 function daysSinceDate(isoDate: string): number {
   const start = new Date(isoDate.slice(0, 10) + "T12:00:00");
@@ -245,11 +283,23 @@ export async function buildClientFinanceProfiles(
       ext.documentCategory === "credit_note" || ext.netValueCents < 0;
     const invoicedCents = isCredit ? 0 : ext.netValueCents;
     const creditPaidCents = isCredit ? Math.abs(ext.netValueCents) : 0;
+    const settlementApply = isCredit
+      ? null
+      : applyProDataSettlementToInvoice(invoicedCents, creditPaidCents, ext);
 
     if (existing) {
       existing.invoicedCents = invoicedCents;
       if (creditPaidCents > 0) {
         existing.paidCents = Math.max(existing.paidCents, creditPaidCents);
+      }
+      if (settlementApply) {
+        existing.paidCents = Math.max(
+          existing.paidCents,
+          settlementApply.paidCents
+        );
+        existing.balanceDueCents = settlementApply.balanceDueCents;
+        existing.settlementStatus = settlementApply.settlementStatus;
+        existing.paymentMethodRaw = settlementApply.paymentMethodRaw;
       }
       if (agentName && !existing.salesAgentName) {
         existing.salesAgentName = agentName;
@@ -258,10 +308,12 @@ export async function buildClientFinanceProfiles(
         existing.orderDate = orderDate;
       }
       existing.daysOutstanding = daysSinceDate(existing.orderDate ?? orderDate);
-      existing.balanceDueCents = Math.max(
-        0,
-        existing.invoicedCents - existing.paidCents
-      );
+      if (!settlementApply) {
+        existing.balanceDueCents = Math.max(
+          0,
+          existing.invoicedCents - existing.paidCents
+        );
+      }
     } else {
       profile.invoiceByNorm.set(normInv, {
         invoiceNumber: ext.invoiceNumber.trim(),
@@ -270,11 +322,15 @@ export async function buildClientFinanceProfiles(
         orderStatus: null,
         location: null,
         invoicedCents,
-        paidCents: creditPaidCents,
-        balanceDueCents: Math.max(0, invoicedCents - creditPaidCents),
+        paidCents: settlementApply?.paidCents ?? creditPaidCents,
+        balanceDueCents:
+          settlementApply?.balanceDueCents ??
+          Math.max(0, invoicedCents - creditPaidCents),
         salesEmployeeId: null,
         salesAgentName: agentName,
         daysOutstanding: daysSinceDate(orderDate),
+        settlementStatus: settlementApply?.settlementStatus ?? null,
+        paymentMethodRaw: settlementApply?.paymentMethodRaw ?? ext.paymentMethodRaw,
       });
     }
     touchActivity(profile, orderDate);
@@ -304,6 +360,8 @@ export async function buildClientFinanceProfiles(
         existing?.salesAgentName ||
         null,
       daysOutstanding: daysSinceDate(order.orderDate),
+      settlementStatus: existing?.settlementStatus ?? null,
+      paymentMethodRaw: existing?.paymentMethodRaw ?? null,
     };
     if (!existing) {
       row.balanceDueCents = row.invoicedCents;
@@ -370,6 +428,8 @@ export async function buildClientFinanceProfiles(
         salesEmployeeId: tx.salesEmployeeId ?? null,
         salesAgentName: tx.salesAgentName ?? null,
         daysOutstanding: daysSinceDate(tx.recordedAt),
+        settlementStatus: null,
+        paymentMethodRaw: null,
       });
     }
   }
@@ -472,6 +532,8 @@ function debtInvoiceItems(
             : ""),
         orderStatus: inv.orderStatus,
         location: inv.location,
+        settlementStatus: inv.settlementStatus,
+        paymentMethodRaw: inv.paymentMethodRaw,
       });
     }
   }

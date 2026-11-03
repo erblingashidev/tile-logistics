@@ -92,6 +92,7 @@ describe("prodata transaction book", () => {
     expect(sale?.netValueEuros).toBe(135);
     expect(sale?.documentCategory).toBe("sale");
     expect(sale?.paymentMethod).toBe("cash");
+    expect(sale?.settlementStatus).toBe("paid_full");
     expect(analysis.byCategory.sale.count).toBe(1);
     expect(analysis.byCategory.credit_note.count).toBe(1);
   });

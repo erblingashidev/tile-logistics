@@ -14,7 +14,7 @@ import {
 import { Alert, Button, Card, EmptyState, LoadingState, Select } from "@/components/ui";
 
 export default function FinanceDebtsByAgentPage() {
-  const { loading, error, data, selected, setSelected, openClient } =
+  const { loading, error, data, selected, setSelected, openClient, reload } =
     useFinanceDebts();
   const { query } = useFinanceSearch();
   const [agentFilter, setAgentFilter] = useState("");
@@ -113,6 +113,7 @@ export default function FinanceDebtsByAgentPage() {
               <OpenDebtsTable
                 rows={tableRows}
                 onOpenClient={(k) => void openClient(k)}
+                onSettlementSaved={() => void reload()}
               />
             </div>
           ) : null}

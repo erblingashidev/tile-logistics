@@ -1,6 +1,11 @@
 import * as XLSX from "xlsx";
 import { documentKindFromInvoiceNumber } from "@/lib/invoices/parse-agimi-invoice";
 import type { AdminPaymentMethod } from "@/lib/administration/constants";
+import {
+  INVOICE_SETTLEMENT_STATUSES,
+  mapProDataSettlementStatus,
+  type InvoiceSettlementStatus,
+} from "@/lib/administration/invoice-settlement";
 
 /** Pro-Data “Libri i transaksioneve” / Pro-Data Export sheet. */
 export const PRODATA_TRANSACTION_BOOK_HEADERS = [
@@ -49,6 +54,8 @@ export type ProDataInvoiceAggregate = {
   lineCount: number;
   paymentMethodRaw: string;
   paymentMethod: AdminPaymentMethod | null;
+  settlementStatus: InvoiceSettlementStatus;
+  paidAmountCents: number | null;
   productSample: string;
 };
 
@@ -67,8 +74,13 @@ export type ProDataImportAnalysis = {
     { count: number; totalEuros: number }
   >;
   byAgent: Array<{ salesAgentName: string; invoiceCount: number; totalEuros: number }>;
+  bySettlement: Record<
+    InvoiceSettlementStatus,
+    { count: number; totalEuros: number }
+  >;
   paymentsDetected: number;
   openSalesCount: number;
+  needsSettlementCount: number;
 };
 
 function normalizeHeader(cell: unknown): string {
@@ -260,6 +272,8 @@ export function parseProDataTransactionBook(
     const paymentMethodRaw =
       paymentMethods.length === 1 ? paymentMethods[0]! : paymentMethods.join(", ");
     const primary = group[0]!;
+    const settlement = mapProDataSettlementStatus(paymentMethodRaw);
+    const paymentMethod = mapProDataPaymentMethod(paymentMethodRaw);
     invoices.push({
       invoiceNumber,
       documentCategory: financeDocumentCategory(invoiceNumber, netValueEuros),
@@ -270,7 +284,9 @@ export function parseProDataTransactionBook(
       netValueCents: Math.round(netValueEuros * 100),
       lineCount: group.length,
       paymentMethodRaw,
-      paymentMethod: mapProDataPaymentMethod(paymentMethodRaw),
+      paymentMethod,
+      settlementStatus: settlement.settlementStatus,
+      paidAmountCents: settlement.paidAmountCents,
       productSample: primary.description || primary.productCode,
     });
   }
@@ -328,11 +344,33 @@ export function parseProDataTransactionBook(
     l.paymentMethodRaw,
   ]);
 
+  const bySettlement = Object.fromEntries(
+    INVOICE_SETTLEMENT_STATUSES.map((s) => [
+      s.id,
+      { count: 0, totalEuros: 0 },
+    ])
+  ) as ProDataImportAnalysis["bySettlement"];
+
   let paymentsDetected = 0;
   let openSalesCount = 0;
+  let needsSettlementCount = 0;
   for (const inv of invoices) {
-    if (inv.paymentMethod) paymentsDetected += 1;
-    else if (inv.documentCategory === "sale" && inv.netValueEuros > 0) {
+    const bucket = bySettlement[inv.settlementStatus];
+    if (bucket) {
+      bucket.count += 1;
+      bucket.totalEuros += inv.netValueEuros;
+    }
+    if (inv.paymentMethod && inv.paymentMethod !== "unpaid") {
+      paymentsDetected += 1;
+    }
+    if (inv.settlementStatus === "unknown") needsSettlementCount += 1;
+    if (
+      inv.documentCategory === "sale" &&
+      inv.netValueEuros > 0 &&
+      (inv.settlementStatus === "unknown" ||
+        inv.settlementStatus === "unpaid" ||
+        inv.settlementStatus === "on_terms")
+    ) {
       openSalesCount += 1;
     }
   }
@@ -349,7 +387,9 @@ export function parseProDataTransactionBook(
     invoices,
     byCategory,
     byAgent,
+    bySettlement,
     paymentsDetected,
     openSalesCount,
+    needsSettlementCount,
   };
 }

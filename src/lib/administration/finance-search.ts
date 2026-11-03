@@ -25,6 +25,8 @@ export function debtInvoiceSearchBlob(row: DebtInvoiceLine): string {
     String(row.daysOutstanding),
     String(row.balanceDueCents / 100),
     String(row.invoicedCents / 100),
+    row.settlementStatus ?? "",
+    row.paymentMethodRaw ?? "",
   ]
     .filter(Boolean)
     .join(" ");

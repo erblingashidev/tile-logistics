@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdministrationWrite } from "@/lib/auth/administration-api";
 import { runWithTenantOrganizationAsync } from "@/lib/organizations/tenant-context";
-import { commitProDataFinanceImport } from "@/lib/services/finance-prodata-import";
+import {
+  commitProDataFinanceImport,
+  type ProDataInvoiceSettlementOverride,
+} from "@/lib/services/finance-prodata-import";
+import { isInvoiceSettlementStatus } from "@/lib/administration/invoice-settlement";
+import { isAdminPaymentMethod } from "@/lib/administration/constants";
 import { isProDataTransactionBookHeaders } from "@/lib/administration/prodata-transaction-book";
 import * as XLSX from "xlsx";
 
@@ -51,6 +56,50 @@ export async function POST(request: NextRequest) {
   }
 
   const syncRegister = form.get("syncRegister") !== "false";
+  let settlementOverrides: ProDataInvoiceSettlementOverride[] = [];
+  const settlementsRaw = form.get("settlements");
+  if (typeof settlementsRaw === "string" && settlementsRaw.trim()) {
+    try {
+      const parsed = JSON.parse(settlementsRaw) as unknown;
+      if (Array.isArray(parsed)) {
+        settlementOverrides = parsed
+          .map((row) => {
+            if (!row || typeof row !== "object") return null;
+            const invoiceNumber = String(
+              (row as { invoiceNumber?: string }).invoiceNumber ?? ""
+            ).trim();
+            const settlementStatus = String(
+              (row as { settlementStatus?: string }).settlementStatus ?? ""
+            );
+            if (!invoiceNumber || !isInvoiceSettlementStatus(settlementStatus)) {
+              return null;
+            }
+            const paidRaw = (row as { paidAmountCents?: number }).paidAmountCents;
+            const pm = (row as { paymentMethod?: string | null }).paymentMethod;
+            return {
+              invoiceNumber,
+              settlementStatus,
+              paidAmountCents:
+                paidRaw != null && Number.isFinite(Number(paidRaw))
+                  ? Math.round(Number(paidRaw))
+                  : null,
+              paymentMethod:
+                pm === undefined
+                  ? undefined
+                  : pm && isAdminPaymentMethod(pm)
+                    ? pm
+                    : null,
+            } satisfies ProDataInvoiceSettlementOverride;
+          })
+          .filter(Boolean) as ProDataInvoiceSettlementOverride[];
+      }
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid settlements payload." },
+        { status: 400 }
+      );
+    }
+  }
 
   try {
     const buffer = Buffer.from(await file.arrayBuffer());
@@ -71,7 +120,10 @@ export async function POST(request: NextRequest) {
         auth.session,
         buffer,
         name,
-        { syncRegisterPayments: syncRegister }
+        {
+          syncRegisterPayments: syncRegister,
+          settlementOverrides,
+        }
       );
       return NextResponse.json({
         ok: true,

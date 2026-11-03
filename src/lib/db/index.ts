@@ -342,6 +342,21 @@ async function ensureFinanceProdataImportTables(client: Client) {
   await client.execute(
     "CREATE INDEX IF NOT EXISTS idx_finance_prodata_inv_org_date ON finance_prodata_invoices(organization_id, transaction_date)"
   );
+  const invCols = await tableColumns(client, "finance_prodata_invoices");
+  await addColumnIfMissing(
+    client,
+    "finance_prodata_invoices",
+    "settlement_status",
+    "settlement_status TEXT NOT NULL DEFAULT 'unknown'",
+    invCols
+  );
+  await addColumnIfMissing(
+    client,
+    "finance_prodata_invoices",
+    "paid_amount_cents",
+    "paid_amount_cents INTEGER",
+    invCols
+  );
 }
 
 async function ensureEmployeeNotificationsTable(client: Client) {

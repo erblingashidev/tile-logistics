@@ -12,6 +12,8 @@ export type DebtInvoiceLine = {
   salesAgentName: string;
   orderStatus: string | null;
   location: string | null;
+  settlementStatus: string | null;
+  paymentMethodRaw: string | null;
 };
 
 export type AgentDebtGroup = {

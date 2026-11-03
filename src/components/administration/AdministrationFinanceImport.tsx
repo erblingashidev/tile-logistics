@@ -3,6 +3,12 @@
 import { useState } from "react";
 import type { FinanceImportPreview } from "@/lib/administration/finance-import-preview";
 import { financeDocumentCategoryLabel } from "@/lib/administration/prodata-transaction-book";
+import {
+  buildSettlementOverrides,
+  ProDataImportSettlementEditor,
+  type SettlementRowState,
+} from "@/components/administration/ProDataImportSettlementEditor";
+import { settlementStatusLabel } from "@/lib/administration/invoice-settlement";
 import { Alert, Button, Card, PageSection } from "@/components/ui";
 
 function formatEuros(n: number) {
@@ -21,6 +27,9 @@ export function AdministrationFinanceImport() {
   const [importing, setImporting] = useState(false);
   const [syncRegister, setSyncRegister] = useState(true);
   const [lastImport, setLastImport] = useState<string>("");
+  const [settlementRows, setSettlementRows] = useState<
+    Record<string, SettlementRowState>
+  >({});
 
   async function runPreview() {
     if (!file) {
@@ -32,6 +41,7 @@ export function AdministrationFinanceImport() {
     setMessage("");
     setPreview(null);
     setLastImport("");
+    setSettlementRows({});
     try {
       const form = new FormData();
       form.append("file", file);
@@ -41,7 +51,22 @@ export function AdministrationFinanceImport() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Preview failed");
-      setPreview(data.preview as FinanceImportPreview);
+      const nextPreview = data.preview as FinanceImportPreview;
+      setPreview(nextPreview);
+      if (nextPreview.prodata?.invoices) {
+        const init: Record<string, SettlementRowState> = {};
+        for (const inv of nextPreview.prodata.invoices) {
+          init[inv.invoiceNumber] = {
+            settlementStatus: inv.settlementStatus,
+            paidAmountEuros:
+              inv.paidAmountCents != null
+                ? String(inv.paidAmountCents / 100)
+                : "",
+            paymentMethod: inv.paymentMethod ?? "",
+          };
+        }
+        setSettlementRows(init);
+      }
       setMessage(data.message ?? "");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Preview failed");
@@ -66,6 +91,14 @@ export function AdministrationFinanceImport() {
       const form = new FormData();
       form.append("file", file);
       if (!syncRegister) form.append("syncRegister", "false");
+      if (preview.prodata?.invoices.length) {
+        form.append(
+          "settlements",
+          JSON.stringify(
+            buildSettlementOverrides(preview.prodata.invoices, settlementRows)
+          )
+        );
+      }
       const res = await fetch("/api/administration/imports/commit", {
         method: "POST",
         body: form,
@@ -89,9 +122,9 @@ export function AdministrationFinanceImport() {
         Upload <strong>Libri i transaksioneve</strong> exports from Pro-Data
         Finance+ (sheet &quot;Pro-Data Export&quot;). Lines are grouped by
         invoice, classified as sales, credit notes, or delivery documents, and
-        merged into open debts, client totals, and sales-by-agent views. When
-        payment method is filled, matching register payments can be created
-        automatically.
+        merged into open debts, client totals, and sales-by-agent views. Use the
+        table below to set paid / partial / prepaid / unpaid for each invoice
+        (especially when MENYRA E PAGESES is empty in Excel).
       </p>
 
       {error ? <Alert tone="error">{error}</Alert> : null}
@@ -108,6 +141,7 @@ export function AdministrationFinanceImport() {
             setMessage("");
             setError("");
             setLastImport("");
+            setSettlementRows({});
           }}
         />
         <div className="flex flex-wrap items-center gap-3">
@@ -158,13 +192,37 @@ export function AdministrationFinanceImport() {
               })}
             </ul>
             <p className="mt-4 text-xs text-zinc-500">
-              {prodata.openSalesCount} sale(s) without payment method on the
-              export — these appear as invoiced amounts in debts until paid in
-              the register.
+              {prodata.needsSettlementCount} invoice(s) need payment status
+              assigned before import (or use bulk apply).
             </p>
           </Card>
 
           <Card className="p-4">
+            <p className="text-sm font-medium text-zinc-900">By payment status</p>
+            <ul className="mt-3 space-y-2 text-sm">
+              {(
+                Object.keys(prodata.bySettlement) as Array<
+                  keyof typeof prodata.bySettlement
+                >
+              ).map((key) => {
+                const row = prodata.bySettlement[key];
+                if (row.count === 0) return null;
+                return (
+                  <li
+                    key={key}
+                    className="flex justify-between gap-3 border-b border-zinc-100 pb-2"
+                  >
+                    <span>{settlementStatusLabel(key)}</span>
+                    <span className="tabular-nums text-zinc-700">
+                      {row.count} · {formatEuros(row.totalEuros)}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
+
+          <Card className="p-4 lg:col-span-2">
             <p className="text-sm font-medium text-zinc-900">Top sales agents</p>
             <ul className="mt-3 space-y-2 text-sm">
               {prodata.byAgent.slice(0, 8).map((row) => (
@@ -181,6 +239,14 @@ export function AdministrationFinanceImport() {
             </ul>
           </Card>
         </div>
+      ) : null}
+
+      {prodata?.invoices.length ? (
+        <ProDataImportSettlementEditor
+          invoices={prodata.invoices}
+          rows={settlementRows}
+          onRowsChange={setSettlementRows}
+        />
       ) : null}
 
       {preview ? (

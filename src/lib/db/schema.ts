@@ -913,6 +913,8 @@ export const financeProdataInvoices = sqliteTable(
     lineCount: integer("line_count").notNull().default(1),
     paymentMethodRaw: text("payment_method_raw"),
     paymentMethod: text("payment_method"),
+    settlementStatus: text("settlement_status").notNull().default("unknown"),
+    paidAmountCents: integer("paid_amount_cents"),
     productSample: text("product_sample"),
     updatedAt: text("updated_at").notNull(),
   }

@@ -16,7 +16,7 @@ import { useFinanceDebts } from "@/components/administration/finance/useFinanceD
 import { Alert, Card, LoadingState } from "@/components/ui";
 
 export default function FinanceOpenDebtsPage() {
-  const { loading, error, data, selected, setSelected, openClient } =
+  const { loading, error, data, selected, setSelected, openClient, reload } =
     useFinanceDebts();
   const { query } = useFinanceSearch();
   const [agent, setAgent] = useState("");
@@ -86,7 +86,11 @@ export default function FinanceOpenDebtsPage() {
             }}
           />
 
-          <OpenDebtsTable rows={filtered} onOpenClient={(k) => void openClient(k)} />
+          <OpenDebtsTable
+            rows={filtered}
+            onOpenClient={(k) => void openClient(k)}
+            onSettlementSaved={() => void reload()}
+          />
         </>
       ) : null}
 

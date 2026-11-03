@@ -17,6 +17,8 @@ const sampleRow: DebtInvoiceLine = {
   salesAgentName: "KUSHTRIM VULA",
   orderStatus: "delivered",
   location: "PR",
+  settlementStatus: "unpaid",
+  paymentMethodRaw: null,
 };
 
 describe("finance search", () => {
