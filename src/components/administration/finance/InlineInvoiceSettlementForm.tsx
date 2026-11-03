@@ -2,12 +2,12 @@
 
 import { useState } from "react";
 import {
-  INVOICE_SETTLEMENT_STATUSES,
   settlementStatusRequiresAmount,
   type InvoiceSettlementStatus,
 } from "@/lib/administration/invoice-settlement";
 import type { AdminPaymentMethod } from "@/lib/administration/constants";
 import { AdminPaymentMethodPicker } from "@/components/administration/AdminPaymentMethodPicker";
+import { AdminSettlementStatusPicker } from "@/components/administration/AdminSettlementStatusPicker";
 import { useAppMessages } from "@/components/i18n/LocaleProvider";
 import { settlementLabel } from "@/lib/i18n/finance-labels";
 import { Button } from "@/components/ui";
@@ -82,17 +82,11 @@ export function InlineInvoiceSettlementForm({
       <p className="text-xs text-zinc-600">
         {settlementLabel(t, initialStatus)}
       </p>
-      <select
-        className="w-full rounded border border-zinc-200 px-1.5 py-1 text-xs"
+      <AdminSettlementStatusPicker
         value={status}
-        onChange={(e) => setStatus(e.target.value as InvoiceSettlementStatus)}
-      >
-        {INVOICE_SETTLEMENT_STATUSES.map((st) => (
-          <option key={st.id} value={st.id}>
-            {settlementLabel(t, st.id)}
-          </option>
-        ))}
-      </select>
+        onChange={setStatus}
+        compact={compact}
+      />
       {needsAmount ? (
         <input
           type="text"
