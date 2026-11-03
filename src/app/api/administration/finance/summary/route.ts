@@ -23,7 +23,8 @@ export async function GET(request: NextRequest) {
     sp.get("to")?.trim() ||
     `${new Date().toISOString().slice(0, 10)}T23:59:59.999Z`;
 
-  return runWithTenantOrganizationAsync(auth.organizationId, async () => {
+  try {
+    return await runWithTenantOrganizationAsync(auth.organizationId, async () => {
     const profiles = await buildClientFinanceProfiles(auth.organizationId);
     const receivables = computeReceivablesSummary(profiles);
     const register = await getRegisterFinanceOverview(
@@ -41,5 +42,11 @@ export async function GET(request: NextRequest) {
       openDebtInvoices: openDebtInvoices.length,
       overdueDebtInvoices: overdueDebts.length,
     });
-  });
+    });
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Could not load finance summary";
+    console.error("[administration/finance/summary]", err);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

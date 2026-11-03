@@ -253,15 +253,15 @@ export async function buildClientFinanceProfiles(
   const profiles = new Map<string, ProfileMutable>();
   const invoiceOwner = new Map<string, string>();
 
-  function getProfile(name: string): ProfileMutable {
-    const key = normalizeClientKey(name);
-    if (!key) throw new Error("Invalid client name");
+  function getProfile(rawName: string): ProfileMutable {
+    const displayName = (rawName ?? "").trim() || "Unknown client";
+    const key = normalizeClientKey(displayName);
     let profile = profiles.get(key);
     if (!profile) {
-      profile = emptyProfile(key, name.trim());
+      profile = emptyProfile(key, displayName);
       profiles.set(key, profile);
     } else {
-      profile.displayName = pickDisplayName(profile.displayName, name);
+      profile.displayName = pickDisplayName(profile.displayName, displayName);
     }
     return profile;
   }
@@ -272,8 +272,7 @@ export async function buildClientFinanceProfiles(
     if (!ext.invoiceNumber?.trim()) continue;
     if (ext.documentCategory === "delivery_note") continue;
 
-    const buyerLabel = ext.buyerName?.trim() || "Unknown client";
-    const profile = getProfile(buyerLabel);
+    const profile = getProfile(ext.buyerName);
     const normInv = normalizeInvoiceRef(ext.invoiceNumber);
     invoiceOwner.set(normInv, profile.clientKey);
 

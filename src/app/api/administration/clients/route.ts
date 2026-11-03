@@ -22,7 +22,8 @@ export async function GET(request: NextRequest) {
 
   const clientKey = request.nextUrl.searchParams.get("clientKey");
 
-  return runWithTenantOrganizationAsync(auth.organizationId, async () => {
+  try {
+    return await runWithTenantOrganizationAsync(auth.organizationId, async () => {
     if (clientKey?.trim()) {
       const profile = await getClientFinanceProfile(
         auth.organizationId,
@@ -53,5 +54,11 @@ export async function GET(request: NextRequest) {
       overdueDebts,
       overdueByAgent: groupOverdueDebtsByAgent(overdueDebts),
     });
-  });
+    });
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Could not load finance data";
+    console.error("[administration/clients]", err);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
