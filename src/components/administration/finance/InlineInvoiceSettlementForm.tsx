@@ -6,8 +6,8 @@ import {
   settlementStatusRequiresAmount,
   type InvoiceSettlementStatus,
 } from "@/lib/administration/invoice-settlement";
-import { ADMIN_PAYMENT_METHODS } from "@/lib/administration/constants";
 import type { AdminPaymentMethod } from "@/lib/administration/constants";
+import { AdminPaymentMethodPicker } from "@/components/administration/AdminPaymentMethodPicker";
 import { useAppMessages } from "@/components/i18n/LocaleProvider";
 import { settlementLabel } from "@/lib/i18n/finance-labels";
 import { Button } from "@/components/ui";
@@ -103,18 +103,13 @@ export function InlineInvoiceSettlementForm({
           onChange={(e) => setPaidEuros(e.target.value)}
         />
       ) : null}
-      <select
-        className="w-full rounded border border-zinc-200 px-1.5 py-1 text-xs"
+      <AdminPaymentMethodPicker
+        label={s.registerMethod}
         value={paymentMethod}
-        onChange={(e) => setPaymentMethod(e.target.value)}
-      >
-        <option value="">{s.registerOptional}</option>
-        {ADMIN_PAYMENT_METHODS.map((m) => (
-          <option key={m.id} value={m.id}>
-            {m.label}
-          </option>
-        ))}
-      </select>
+        onChange={(id) => setPaymentMethod(id)}
+        allowClear
+        clearLabel="—"
+      />
       {error ? <p className="text-xs text-red-600">{error}</p> : null}
       <Button
         size="sm"

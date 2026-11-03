@@ -9,8 +9,8 @@ import {
 } from "@/lib/administration/invoice-settlement";
 import { useAppMessages } from "@/components/i18n/LocaleProvider";
 import { settlementLabel } from "@/lib/i18n/finance-labels";
-import { ADMIN_PAYMENT_METHODS } from "@/lib/administration/constants";
 import type { AdminPaymentMethod } from "@/lib/administration/constants";
+import { AdminPaymentMethodPicker } from "@/components/administration/AdminPaymentMethodPicker";
 import type { ProDataInvoiceSettlementOverride } from "@/lib/services/finance-prodata-import";
 import { Button, Card, Select } from "@/components/ui";
 
@@ -207,23 +207,15 @@ export function ProDataImportSettlementEditor({
                       }
                     />
                   </td>
-                  <td className="px-3 py-2">
-                    <select
-                      className="w-full min-w-[7rem] rounded border border-zinc-200 px-2 py-1.5 text-sm"
+                  <td className="min-w-[12rem] px-3 py-2">
+                    <AdminPaymentMethodPicker
                       value={row.paymentMethod}
-                      onChange={(e) =>
+                      onChange={(id) =>
                         patchRow(inv.invoiceNumber, {
-                          paymentMethod: e.target.value,
+                          paymentMethod: id,
                         })
                       }
-                    >
-                      <option value="">—</option>
-                      {ADMIN_PAYMENT_METHODS.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.label}
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </td>
                 </tr>
               );

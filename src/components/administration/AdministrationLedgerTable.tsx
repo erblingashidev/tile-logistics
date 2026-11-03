@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
+import { AdminPaymentMethodPicker } from "@/components/administration/AdminPaymentMethodPicker";
 import {
   ADMIN_EXPENSE_CATEGORIES,
   ADMIN_PAYMENT_METHODS,
@@ -348,19 +349,14 @@ export function AdministrationLedgerTable({
               ))}
             </Select>
             {form.kind !== "expense" ? (
-              <Select
+              <AdminPaymentMethodPicker
                 label="Payment method"
                 value={form.paymentMethod}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, paymentMethod: e.target.value }))
+                onChange={(id) =>
+                  setForm((f) => ({ ...f, paymentMethod: id || "cash" }))
                 }
-              >
-                {ADMIN_PAYMENT_METHODS.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label}
-                  </option>
-                ))}
-              </Select>
+                allowClear={false}
+              />
             ) : null}
             <Input
               label="Amount (€)"

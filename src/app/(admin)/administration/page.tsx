@@ -7,6 +7,7 @@ import {
   ADMIN_PAYMENT_METHODS,
   ADMIN_TRANSACTION_KINDS,
 } from "@/lib/administration/constants";
+import { AdminPaymentMethodPicker } from "@/components/administration/AdminPaymentMethodPicker";
 import {
   AdministrationLedgerTable,
   formatAdminMoney,
@@ -479,17 +480,12 @@ export default function AdministrationPage() {
                 ))}
               </Select>
               {formKind !== "expense" ? (
-                <Select
+                <AdminPaymentMethodPicker
                   label="Payment method"
                   value={formPayment}
-                  onChange={(e) => setFormPayment(e.target.value)}
-                >
-                  {ADMIN_PAYMENT_METHODS.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.label}
-                    </option>
-                  ))}
-                </Select>
+                  onChange={(id) => setFormPayment(id || "cash")}
+                  allowClear={false}
+                />
               ) : null}
               <Input
                 label="Amount (€)"
