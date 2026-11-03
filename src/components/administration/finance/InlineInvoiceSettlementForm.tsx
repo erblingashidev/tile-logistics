@@ -107,7 +107,7 @@ export function InlineInvoiceSettlementForm({
       {error ? <p className="text-xs text-red-600">{error}</p> : null}
       <Button
         size="sm"
-        variant="secondary"
+        variant="success"
         disabled={busy}
         onClick={() => void save()}
       >

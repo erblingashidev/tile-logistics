@@ -31,7 +31,7 @@ export function Button({
   className = "",
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "primary" | "secondary" | "danger" | "ghost";
+  variant?: "primary" | "secondary" | "success" | "danger" | "ghost";
   size?: "sm" | "md";
 }) {
   const styles = {
@@ -39,6 +39,8 @@ export function Button({
       "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800 hover:shadow",
     secondary:
       "border border-zinc-300 bg-white text-zinc-800 shadow-sm hover:bg-zinc-50 hover:border-zinc-400",
+    success:
+      "bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 hover:shadow",
     danger: "bg-red-600 text-white shadow-sm hover:bg-red-700",
     ghost: "text-zinc-700 hover:bg-zinc-100",
   };
