@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useAppMessages } from "@/components/i18n/LocaleProvider";
 
 const LINKS = [
-  { href: "/administration/finance/reports", label: "Overall reports" },
-  { href: "/administration/finance/debts", label: "Open debts" },
-  { href: "/administration/finance/debts/by-agent", label: "Debts by agent" },
-  { href: "/administration/finance/debts/by-client", label: "Debts by client" },
-  { href: "/administration/finance", label: "Register & ledger" },
-  { href: "/administration/finance/imports", label: "Excel import" },
+  { href: "/administration/finance/reports", key: "reports" as const },
+  { href: "/administration/finance/debts", key: "openDebts" as const },
+  { href: "/administration/finance/debts/by-agent", key: "byAgent" as const },
+  { href: "/administration/finance/debts/by-client", key: "byClient" as const },
+  { href: "/administration/finance", key: "registerLedger" as const },
+  { href: "/administration/finance/imports", key: "excelImport" as const },
 ] as const;
 
 function isActive(pathname: string, href: string) {
@@ -24,6 +25,7 @@ function isActive(pathname: string, href: string) {
 
 export function AdministrationFinanceNav() {
   const pathname = usePathname();
+  const t = useAppMessages();
   return (
     <nav className="mb-6 flex flex-wrap gap-2 border-b border-zinc-200 pb-3">
       {LINKS.map((link) => {
@@ -38,7 +40,7 @@ export function AdministrationFinanceNav() {
                 : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
             }`}
           >
-            {link.label}
+            {t.finance.nav[link.key]}
           </Link>
         );
       })}

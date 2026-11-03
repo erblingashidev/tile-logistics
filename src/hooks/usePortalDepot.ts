@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { EmployeeRole } from "@/lib/constants";
 import { WAREHOUSE_REPORT_ROLES } from "@/lib/employee-categories";
 import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
-import { sq } from "@/lib/i18n/sq";
+import { usePortalLabels } from "@/lib/i18n/portal-labels";
 
 export interface PortalLocation {
   id: number;
@@ -23,6 +23,7 @@ export interface PortalZoneStatus {
 }
 
 export function usePortalDepot() {
+  const { p } = usePortalLabels();
   const router = useRouter();
   const [locations, setLocations] = useState<PortalLocation[]>([]);
   const [allLocations, setAllLocations] = useState<PortalLocation[]>([]);
@@ -77,7 +78,7 @@ export function usePortalDepot() {
       return;
     }
     if (wmsRes.status === 403) {
-      setError(sq.noWmsAccess);
+      setError(p.noWmsAccess);
       return;
     }
     const data = await wmsRes.json();
@@ -136,7 +137,7 @@ export function usePortalDepot() {
     });
     const data = await res.json();
     if (!res.ok) {
-      setError(data.error ?? sq.errors.generic);
+      setError(data.error ?? p.errors.generic);
       return;
     }
     setActiveSector({ id: data.sector.id, zone: data.sector.zone });
@@ -157,10 +158,10 @@ export function usePortalDepot() {
     });
     const data = await res.json();
     if (!res.ok) {
-      setError(data.error ?? sq.errors.generic);
+      setError(data.error ?? p.errors.generic);
       return;
     }
-    setSuccess(sq.inventorySectorClosed);
+    setSuccess(p.inventorySectorClosed);
     setActiveSector(null);
     setTimeout(() => setSuccess(""), 3000);
     await load();

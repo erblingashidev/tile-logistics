@@ -10,7 +10,7 @@ import {
   PortalTabs,
 } from "@/components/portal/PortalShell";
 import { Badge, Button, Input, Select, Textarea, Alert } from "@/components/ui";
-import { sq } from "@/lib/i18n/sq";
+import { usePortalLabels } from "@/lib/i18n/portal-labels";
 import { WAREHOUSE_INCIDENT_CATEGORIES } from "@/lib/constants";
 import type { EmployeeRole } from "@/lib/constants";
 import { employeeShowDepotNav } from "@/lib/portal-depot-nav";
@@ -54,11 +54,6 @@ interface PortalContext {
   recentReports: ReportItem[];
 }
 
-function reportTypeLabel(report: ReportItem) {
-  if (report.reportType === "weekly") return sq.reportsWeekly;
-  return sq.incidentCategories[report.category] ?? report.category;
-}
-
 function formatReportDate(value: string) {
   return new Date(value).toLocaleString("sq-AL", {
     day: "numeric",
@@ -69,8 +64,14 @@ function formatReportDate(value: string) {
 }
 
 export default function PortalReportsPage() {
+  const { p } = usePortalLabels();
   const router = useRouter();
   const { warehouseWms } = useFeatureFlags();
+
+  function reportTypeLabel(report: ReportItem) {
+    if (report.reportType === "weekly") return p.reportsWeekly;
+    return p.incidentCategories[report.category] ?? report.category;
+  }
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
   const [ctx, setCtx] = useState<PortalContext | null>(null);
@@ -94,7 +95,7 @@ export default function PortalReportsPage() {
       return;
     }
     if (res.status === 403) {
-      setError(sq.reportsNoAccess);
+      setError(p.reportsNoAccess);
       return;
     }
     const data = await res.json();
@@ -154,13 +155,13 @@ export default function PortalReportsPage() {
     );
     const data = await res.json();
     if (!res.ok) {
-      setError(data.error ?? sq.errors.generic);
+      setError(data.error ?? p.errors.generic);
       return;
     }
     setEditReportId(null);
     setProposedBody("");
     setEditReason("");
-    setSuccess(sq.reportsEditSuccess);
+    setSuccess(p.reportsEditSuccess);
     load();
   }
 
@@ -188,14 +189,14 @@ export default function PortalReportsPage() {
     });
     const data = await res.json();
     if (!res.ok) {
-      setError(data.error ?? sq.errors.generic);
+      setError(data.error ?? p.errors.generic);
       return;
     }
 
     setSuccess(
       data.photoWarning
-        ? `${sq.reportsSuccess} ${sq.reportsPhotoWarning}`
-        : sq.reportsSuccess
+        ? `${p.reportsSuccess} ${p.reportsPhotoWarning}`
+        : p.reportsSuccess
     );
     setBody("");
     setPhotos([]);
@@ -217,7 +218,7 @@ export default function PortalReportsPage() {
 
   return (
     <PortalShell
-      title={sq.reportsTitle}
+      title={p.reportsTitle}
       subtitle={ctx?.employee.name}
       activeNav="reports"
       showOrders
@@ -243,9 +244,9 @@ export default function PortalReportsPage() {
             value={tab}
             onChange={setTab}
             tabs={[
-              { id: "incident", label: sq.reportsIncident },
+              { id: "incident", label: p.reportsIncident },
               ...(ctx.canSubmitWeekly
-                ? [{ id: "weekly" as const, label: sq.reportsWeekly }]
+                ? [{ id: "weekly" as const, label: p.reportsWeekly }]
                 : []),
             ]}
           />
@@ -255,7 +256,7 @@ export default function PortalReportsPage() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-medium text-zinc-900">
-                    {sq.reportsWeeklyDue}
+                    {p.reportsWeeklyDue}
                   </p>
                   <p className="mt-1 text-lg font-semibold text-zinc-900">
                     {ctx.wednesdayLabel}
@@ -267,11 +268,11 @@ export default function PortalReportsPage() {
               </div>
               {!ctx.isWednesday && (
                 <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-100">
-                  {sq.reportsNotWednesday}
+                  {p.reportsNotWednesday}
                 </p>
               )}
               {ctx.canReportWholeWarehouse && (
-                <p className="text-sm text-zinc-600">{sq.reportsWholeWarehouse}</p>
+                <p className="text-sm text-zinc-600">{p.reportsWholeWarehouse}</p>
               )}
               {ctx.isGroupLeader && ctx.zones.length > 0 && (
                 <p className="text-sm text-zinc-600">
@@ -287,13 +288,13 @@ export default function PortalReportsPage() {
           <PortalCard className="space-y-4">
             {tab === "incident" && (
               <Select
-                label={sq.reportsCategory}
+                label={p.reportsCategory}
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
               >
                 {WAREHOUSE_INCIDENT_CATEGORIES.map((cat) => (
                   <option key={cat} value={cat}>
-                    {sq.incidentCategories[cat] ?? cat}
+                    {p.incidentCategories[cat] ?? cat}
                   </option>
                 ))}
               </Select>
@@ -306,14 +307,14 @@ export default function PortalReportsPage() {
                 !ctx.isGroupLeader
               ) && (
                 <Select
-                  label={sq.reportsZone}
+                  label={p.reportsZone}
                   value={zone}
                   onChange={(e) => setZone(e.target.value)}
                 >
                   <option value="">
                     {ctx.canReportWholeWarehouse && tab === "incident"
-                      ? sq.reportsWholeWarehouse
-                      : sq.reportsSelectZone}
+                      ? p.reportsWholeWarehouse
+                      : p.reportsSelectZone}
                   </option>
                   {zoneOptions.map((z) => (
                     <option key={z} value={z}>
@@ -326,7 +327,7 @@ export default function PortalReportsPage() {
             {tab === "weekly" && ctx.canReportWholeWarehouse && (
               <div>
                 <p className="mb-3 text-xs font-medium text-zinc-600">
-                  {sq.reportsTagLeaders}
+                  {p.reportsTagLeaders}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {ctx.groupLeaders.map((leader) => (
@@ -348,7 +349,7 @@ export default function PortalReportsPage() {
             )}
 
             <Textarea
-              label={sq.reportsBody}
+              label={p.reportsBody}
               value={body}
               onChange={(e) => setBody(e.target.value)}
               rows={5}
@@ -359,7 +360,7 @@ export default function PortalReportsPage() {
 
             <div>
               <p className="mb-3 text-xs font-medium text-zinc-600">
-                {sq.reportsPhotos}
+                {p.reportsPhotos}
               </p>
               <input
                 ref={cameraRef}
@@ -391,7 +392,7 @@ export default function PortalReportsPage() {
                     className="w-full sm:flex-1"
                     onClick={() => cameraRef.current?.click()}
                   >
-                    {sq.reportsTakePhoto}
+                    {p.reportsTakePhoto}
                   </Button>
                   <Button
                     type="button"
@@ -399,7 +400,7 @@ export default function PortalReportsPage() {
                     className="w-full sm:flex-1"
                     onClick={() => galleryRef.current?.click()}
                   >
-                    {sq.reportsFromGallery}
+                    {p.reportsFromGallery}
                   </Button>
                 </div>
                 {photos.length > 0 && (
@@ -416,7 +417,7 @@ export default function PortalReportsPage() {
                           className="absolute -right-1 -top-1 rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-medium text-white shadow-sm"
                           onClick={() => removePhoto(index)}
                         >
-                          {sq.reportsRemovePhoto}
+                          {p.reportsRemovePhoto}
                         </button>
                       </div>
                     ))}
@@ -430,13 +431,13 @@ export default function PortalReportsPage() {
               disabled={!body.trim()}
               onClick={submit}
             >
-              {sq.reportsSubmit}
+              {p.reportsSubmit}
             </Button>
           </PortalCard>
 
           {ctx.recentReports.length > 0 && (
             <section className="space-y-3">
-              <PortalSectionTitle>{sq.reportsRecent}</PortalSectionTitle>
+              <PortalSectionTitle>{p.reportsRecent}</PortalSectionTitle>
               <div className="space-y-3">
                 {ctx.recentReports.map((report) => (
                   <PortalCard key={report.id} className="space-y-3">
@@ -465,17 +466,17 @@ export default function PortalReportsPage() {
 
                     {report.editRequest?.status === "pending" && (
                       <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                        {sq.reportsEditPending}
+                        {p.reportsEditPending}
                       </p>
                     )}
                     {report.editRequest?.status === "approved" && (
                       <p className="rounded-xl bg-green-50 px-3 py-2 text-xs text-green-800">
-                        {sq.reportsEditApproved}
+                        {p.reportsEditApproved}
                       </p>
                     )}
                     {report.editRequest?.status === "rejected" && (
                       <p className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-800">
-                        {sq.reportsEditRejected}
+                        {p.reportsEditRejected}
                         {report.editRequest.adminNote
                           ? `: ${report.editRequest.adminNote}`
                           : ""}
@@ -484,7 +485,7 @@ export default function PortalReportsPage() {
 
                     {report.taggedLeaders.length > 0 && (
                       <p className="text-xs text-zinc-500">
-                        {sq.reportsTagLeaders}:{" "}
+                        {p.reportsTagLeaders}:{" "}
                         <span className="font-medium text-zinc-700">
                           {report.taggedLeaders.map((l) => l.name).join(", ")}
                         </span>
@@ -513,13 +514,13 @@ export default function PortalReportsPage() {
                     {editReportId === report.id ? (
                       <div className="space-y-3 border-t border-zinc-100 pt-3">
                         <Textarea
-                          label={sq.reportsProposedText}
+                          label={p.reportsProposedText}
                           value={proposedBody}
                           onChange={(e) => setProposedBody(e.target.value)}
                           rows={4}
                         />
                         <Input
-                          placeholder={sq.reportsEditReason}
+                          placeholder={p.reportsEditReason}
                           value={editReason}
                           onChange={(e) => setEditReason(e.target.value)}
                         />
@@ -529,14 +530,14 @@ export default function PortalReportsPage() {
                             onClick={() => submitEditRequest(report.id)}
                             disabled={!proposedBody.trim()}
                           >
-                            {sq.reportsEditSubmit}
+                            {p.reportsEditSubmit}
                           </Button>
                           <Button
                             variant="secondary"
                             className="w-full sm:w-auto"
                             onClick={() => setEditReportId(null)}
                           >
-                            {sq.reportsCancel}
+                            {p.reportsCancel}
                           </Button>
                         </div>
                       </div>
@@ -547,7 +548,7 @@ export default function PortalReportsPage() {
                           size="sm"
                           onClick={() => startEditRequest(report)}
                         >
-                          {sq.reportsRequestEdit}
+                          {p.reportsRequestEdit}
                         </Button>
                       )
                     )}

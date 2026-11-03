@@ -6,9 +6,10 @@ import { Alert, Button, Input } from "@/components/ui";
 import { usePortalDepot } from "@/hooks/usePortalDepot";
 import { employeeShowDepotNav } from "@/lib/portal-depot-nav";
 import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
-import { sq } from "@/lib/i18n/sq";
+import { usePortalLabels } from "@/lib/i18n/portal-labels";
 
 export default function PortalUnloadPage() {
+  const { p } = usePortalLabels();
   const depot = usePortalDepot();
   const { warehouseWms } = useFeatureFlags();
   const [ean, setEan] = useState("");
@@ -28,11 +29,11 @@ export default function PortalUnloadPage() {
     });
     const data = await res.json();
     if (!res.ok) {
-      depot.setError(data.error ?? sq.errors.generic);
+      depot.setError(data.error ?? p.errors.generic);
       return;
     }
     depot.setSuccess(
-      `${sq.receiveSuccess}${
+      `${p.receiveSuccess}${
         data.quantityM2 != null ? ` · ${data.quantityM2} m²` : ""
       }`
     );
@@ -43,7 +44,7 @@ export default function PortalUnloadPage() {
 
   return (
     <PortalShell
-      title={sq.unloadTitle}
+      title={p.unloadTitle}
       subtitle={depot.employeeName}
       activeNav="unload"
       showOrders
@@ -57,9 +58,9 @@ export default function PortalUnloadPage() {
       {depot.success && <Alert tone="info">{depot.success}</Alert>}
 
       <PortalCard className="space-y-4">
-        <p className="text-sm text-zinc-600">{sq.unloadHint}</p>
+        <p className="text-sm text-zinc-600">{p.unloadHint}</p>
         <Input
-          placeholder={sq.ean}
+          placeholder={p.ean}
           value={ean}
           onChange={(e) => setEan(e.target.value)}
           className="rounded-xl py-3 text-base"
@@ -67,7 +68,7 @@ export default function PortalUnloadPage() {
         <Input
           type="number"
           step="0.01"
-          placeholder={sq.quantityM2}
+          placeholder={p.quantityM2}
           value={quantityM2}
           onChange={(e) => setQuantityM2(e.target.value)}
           className="rounded-xl py-3 text-base"
@@ -77,7 +78,7 @@ export default function PortalUnloadPage() {
           disabled={!ean || !quantityM2}
           onClick={() => void submit()}
         >
-          {sq.unloadSave}
+          {p.unloadSave}
         </Button>
       </PortalCard>
     </PortalShell>

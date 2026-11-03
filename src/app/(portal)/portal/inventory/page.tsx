@@ -7,9 +7,10 @@ import { usePortalDepot } from "@/hooks/usePortalDepot";
 import { formatLocationOption } from "@/lib/warehouse-location-code";
 import { employeeShowDepotNav } from "@/lib/portal-depot-nav";
 import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
-import { sq } from "@/lib/i18n/sq";
+import { usePortalLabels } from "@/lib/i18n/portal-labels";
 
 export default function PortalInventoryPage() {
+  const { p } = usePortalLabels();
   const depot = usePortalDepot();
   const { warehouseWms } = useFeatureFlags();
   const [form, setForm] = useState({ ean: "", quantityM2: "", locationId: "" });
@@ -32,10 +33,10 @@ export default function PortalInventoryPage() {
     });
     const data = await res.json();
     if (!res.ok) {
-      depot.setError(data.error ?? sq.errors.generic);
+      depot.setError(data.error ?? p.errors.generic);
       return;
     }
-    depot.setSuccess(sq.inventoryLineSaved);
+    depot.setSuccess(p.inventoryLineSaved);
     setForm({ ean: "", quantityM2: "", locationId: form.locationId });
     setTimeout(() => depot.setSuccess(""), 3000);
     await depot.load();
@@ -43,7 +44,7 @@ export default function PortalInventoryPage() {
 
   return (
     <PortalShell
-      title={sq.inventoryTitle}
+      title={p.inventoryTitle}
       subtitle={depot.employeeName}
       activeNav="inventory"
       showOrders
@@ -59,21 +60,21 @@ export default function PortalInventoryPage() {
       <PortalCard className="space-y-4">
         {!depot.openSession ? (
           <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-100">
-            {sq.noOpenSession}
+            {p.noOpenSession}
           </p>
         ) : (
           <>
             <div className="flex items-center justify-between gap-3">
-              <p className="text-sm text-zinc-600">{sq.sessionOpen}</p>
+              <p className="text-sm text-zinc-600">{p.sessionOpen}</p>
               <Badge tone="green">{depot.openSession.name}</Badge>
             </div>
 
             {!depot.activeSector ? (
               <div className="space-y-3">
                 <p className="text-sm font-medium text-zinc-900">
-                  {sq.inventoryPickZone}
+                  {p.inventoryPickZone}
                 </p>
-                <p className="text-xs text-zinc-500">{sq.inventoryPickZoneHint}</p>
+                <p className="text-xs text-zinc-500">{p.inventoryPickZoneHint}</p>
                 <div className="grid gap-2">
                   {depot.zones.map((zone) => (
                     <button
@@ -93,10 +94,10 @@ export default function PortalInventoryPage() {
                         }
                       >
                         {zone.status === "closed"
-                          ? sq.inventoryZoneClosed
+                          ? p.inventoryZoneClosed
                           : zone.status === "counting"
-                            ? sq.inventoryZoneCounting
-                            : sq.inventoryZonePending}
+                            ? p.inventoryZoneCounting
+                            : p.inventoryZonePending}
                       </Badge>
                     </button>
                   ))}
@@ -107,17 +108,17 @@ export default function PortalInventoryPage() {
                 <div className="flex items-center justify-between gap-2">
                   <div>
                     <p className="text-xs uppercase tracking-wide text-zinc-400">
-                      {sq.inventoryActiveZone}
+                      {p.inventoryActiveZone}
                     </p>
                     <p className="text-lg font-semibold text-zinc-900">
                       {depot.activeSector.zone}
                     </p>
                   </div>
                   <Button variant="secondary" onClick={() => void depot.closeSector()}>
-                    {sq.inventoryCloseSector}
+                    {p.inventoryCloseSector}
                   </Button>
                 </div>
-                <p className="text-xs text-zinc-500">{sq.inventoryCloseSectorHint}</p>
+                <p className="text-xs text-zinc-500">{p.inventoryCloseSectorHint}</p>
               </div>
             )}
           </>
@@ -126,9 +127,9 @@ export default function PortalInventoryPage() {
 
       {depot.activeSector && (
         <PortalCard className="space-y-4">
-          <p className="text-sm text-zinc-500">{sq.scanHint}</p>
+          <p className="text-sm text-zinc-500">{p.scanHint}</p>
           <Input
-            placeholder={sq.ean}
+            placeholder={p.ean}
             value={form.ean}
             onChange={(e) => setForm({ ...form, ean: e.target.value })}
             className="rounded-xl py-3 text-base"
@@ -136,17 +137,17 @@ export default function PortalInventoryPage() {
           <Input
             type="number"
             step="0.01"
-            placeholder={sq.quantityM2}
+            placeholder={p.quantityM2}
             value={form.quantityM2}
             onChange={(e) => setForm({ ...form, quantityM2: e.target.value })}
             className="rounded-xl py-3 text-base"
           />
           <Select
-            label={sq.location}
+            label={p.location}
             value={form.locationId}
             onChange={(e) => setForm({ ...form, locationId: e.target.value })}
           >
-            <option value="">{sq.selectLocation}</option>
+            <option value="">{p.selectLocation}</option>
             {depot.locations.map((l) => (
               <option key={l.id} value={l.id}>
                 {formatLocationOption(l.code, l.zone)}
@@ -158,7 +159,7 @@ export default function PortalInventoryPage() {
             disabled={!form.ean || !form.locationId || !form.quantityM2}
             onClick={() => void submitLine()}
           >
-            {sq.save}
+            {p.save}
           </Button>
         </PortalCard>
       )}

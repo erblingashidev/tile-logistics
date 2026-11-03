@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { LanguageSettingsCard } from "@/components/i18n/LanguageSettingsCard";
+import { useAppMessages } from "@/components/i18n/LocaleProvider";
 import { AppShell } from "@/components/layout/AppShell";
 import { BRAND } from "@/lib/brand";
 import { ChangePasswordCard } from "@/components/portal/ChangePasswordCard";
@@ -50,6 +52,7 @@ function formatDate(value?: string | null) {
 }
 
 export default function SettingsPage() {
+  const t = useAppMessages();
   const router = useRouter();
   const [profile, setProfile] = useState<AdminProfile | null>(null);
   const [form, setForm] = useState({
@@ -223,12 +226,9 @@ export default function SettingsPage() {
   }
 
   return (
-    <AppShell
-      title="Settings"
-      description="Account, security, and how this system is used"
-    >
+    <AppShell title={t.settings.title} description={t.settings.title}>
       {loading ? (
-        <LoadingState title="Loading settings…" />
+        <LoadingState title={t.settings.loading} />
       ) : !profile ? (
         <Card className="p-5">
           <Alert tone="error">
@@ -238,6 +238,7 @@ export default function SettingsPage() {
         </Card>
       ) : (
         <div className="space-y-6">
+          <LanguageSettingsCard />
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <Card className="p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">

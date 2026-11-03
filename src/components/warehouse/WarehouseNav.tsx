@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
+import { useAppMessages } from "@/components/i18n/LocaleProvider";
 import { useOrgPath } from "@/components/organization/OrgPathProvider";
 
 const links = [
@@ -25,6 +26,7 @@ export function WarehouseNav() {
   const pathname = usePathname();
   const { orgPath } = useOrgPath();
   const { warehouseWms } = useFeatureFlags();
+  const t = useAppMessages();
 
   if (!warehouseWms) return null;
 
@@ -46,7 +48,7 @@ export function WarehouseNav() {
                   : "text-zinc-600 hover:text-zinc-900"
               }`}
             >
-              {item.label}
+              {t.nav.warehouse[item.href] ?? item.label}
             </Link>
           );
         })}

@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { BRAND } from "@/lib/brand";
-import { sq } from "@/lib/i18n/sq";
 import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
+import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
+import { usePortalLabels } from "@/lib/i18n/portal-labels";
 
 type PortalNav =
   | "orders"
@@ -55,32 +56,33 @@ export function PortalShell({
   children,
 }: PortalShellProps) {
   const { warehouseWms } = useFeatureFlags();
+  const { p } = usePortalLabels();
   const navItems = [
-    showOrders && { id: "orders" as const, href: "/portal", label: sq.ordersLink },
+    showOrders && { id: "orders" as const, href: "/portal", label: p.ordersLink },
     showDepotNav && {
       id: "unload" as const,
       href: "/portal/unload",
-      label: sq.unloadLink,
+      label: p.unloadLink,
     },
     showDepotNav && {
       id: "mapping" as const,
       href: "/portal/mapping",
-      label: sq.mappingLink,
+      label: p.mappingLink,
     },
     showDepotNav && {
       id: "inventory" as const,
       href: "/portal/inventory",
-      label: sq.inventoryLink,
+      label: p.inventoryLink,
     },
     showReports && warehouseWms && {
       id: "reports" as const,
       href: "/portal/reports",
-      label: sq.reportsLink,
+      label: p.reportsLink,
     },
     {
       id: "profile" as const,
       href: "/portal/profile",
-      label: sq.profileLink,
+      label: p.profileLink,
     },
   ].filter(Boolean) as Array<{ id: PortalNav; href: string; label: string }>;
 
@@ -102,13 +104,16 @@ export function PortalShell({
                 </p>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={onLogout}
-              className="shrink-0 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50"
-            >
-              {sq.logout}
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              <LanguageSwitcher compact />
+              <button
+                type="button"
+                onClick={onLogout}
+                className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50"
+              >
+                {p.logout}
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -140,7 +145,7 @@ export function PortalShell({
                 type="button"
                 onClick={() => void onRefresh()}
                 disabled={refreshing}
-                aria-label={sq.refresh}
+                aria-label={p.refresh}
                 className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-60 md:hidden"
               >
                 <svg
@@ -156,7 +161,7 @@ export function PortalShell({
                   <path d="M21 12a9 9 0 1 1-2.64-6.36" />
                   <path d="M21 3v6h-6" />
                 </svg>
-                {sq.refresh}
+                {p.refresh}
               </button>
             )}
           </div>

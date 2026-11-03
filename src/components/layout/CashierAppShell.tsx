@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { BRAND } from "@/lib/brand";
 import { Button } from "@/components/ui";
 import { useCompanyProfile } from "@/components/company/CompanyProfileProvider";
+import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
+import { useAppMessages } from "@/components/i18n/LocaleProvider";
 import { CashierNavLinks } from "@/components/layout/CashierNavLinks";
 import type { AdminShellSession } from "@/components/layout/AdminSessionProvider";
 
@@ -40,6 +42,7 @@ export function CashierAppShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const t = useAppMessages();
   const { organizationName: profileOrgName } = useCompanyProfile();
   const organizationName = session.organizationName ?? profileOrgName;
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -62,12 +65,15 @@ export function CashierAppShell({
             <p className="text-[15px] font-semibold tracking-tight text-white">
               {organizationName ?? BRAND.name}
             </p>
-            <p className="mt-1 text-xs text-zinc-400">Invoicing office</p>
+            <p className="mt-1 text-xs text-zinc-400">
+              {t.nav.groups.invoicingOffice}
+            </p>
           </div>
           <nav className="flex flex-1 flex-col overflow-y-auto p-3">
             <CashierNavLinks pathname={pathname} />
           </nav>
           <div className="border-t border-white/10 p-3">
+            <LanguageSwitcher compact className="mb-3 px-1" />
             <p className="mb-2 truncate rounded px-3 py-2 text-xs text-zinc-400">
               {session.name}
             </p>
@@ -76,7 +82,7 @@ export function CashierAppShell({
               onClick={() => void logout()}
               className="w-full rounded px-3 py-2 text-left text-sm text-zinc-400 hover:bg-white/5 hover:text-white"
             >
-              Log out
+              {t.common.logout}
             </button>
           </div>
         </aside>
@@ -87,7 +93,9 @@ export function CashierAppShell({
               <div className="flex min-w-0 items-center gap-3 lg:hidden">
                 <button
                   type="button"
-                  aria-label={mobileNavOpen ? "Close menu" : "Open menu"}
+                  aria-label={
+                    mobileNavOpen ? t.common.closeMenu : t.common.openMenu
+                  }
                   className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded border border-zinc-200 text-zinc-700"
                   onClick={() => setMobileNavOpen((open) => !open)}
                 >
@@ -97,7 +105,9 @@ export function CashierAppShell({
                   <p className="truncate text-sm font-semibold text-zinc-900">
                     {organizationName ?? BRAND.name}
                   </p>
-                  <p className="truncate text-xs text-zinc-500">Invoicing office</p>
+                  <p className="truncate text-xs text-zinc-500">
+                    {t.nav.groups.invoicingOffice}
+                  </p>
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
@@ -109,7 +119,7 @@ export function CashierAppShell({
                   className="text-xs lg:hidden"
                   onClick={() => void logout()}
                 >
-                  Log out
+                  {t.common.logout}
                 </Button>
               </div>
             </div>
@@ -119,7 +129,7 @@ export function CashierAppShell({
             <div className="fixed inset-0 z-50 lg:hidden">
               <button
                 type="button"
-                aria-label="Close menu backdrop"
+                aria-label={t.common.closeMenu}
                 className="absolute inset-0 bg-black/40"
                 onClick={() => setMobileNavOpen(false)}
               />
@@ -129,11 +139,13 @@ export function CashierAppShell({
                     <p className="text-sm font-semibold text-white">
                       {organizationName ?? BRAND.name}
                     </p>
-                    <p className="text-xs text-zinc-400">Invoicing office</p>
+                    <p className="text-xs text-zinc-400">
+                      {t.nav.groups.invoicingOffice}
+                    </p>
                   </div>
                   <button
                     type="button"
-                    aria-label="Close menu"
+                    aria-label={t.common.closeMenu}
                     className="rounded p-2 text-zinc-400 hover:bg-white/5"
                     onClick={() => setMobileNavOpen(false)}
                   >
@@ -147,9 +159,19 @@ export function CashierAppShell({
                     onNavigate={() => setMobileNavOpen(false)}
                   />
                 </nav>
-                <p className="border-t border-white/10 px-4 py-3 text-xs text-zinc-400">
-                  {session.name}
-                </p>
+                <div className="border-t border-white/10 p-3">
+                  <LanguageSwitcher compact className="mb-2 px-1" />
+                  <p className="truncate px-3 py-2 text-xs text-zinc-400">
+                    {session.name}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void logout()}
+                    className="w-full rounded px-3 py-2 text-left text-sm text-zinc-400 hover:bg-white/5 hover:text-white"
+                  >
+                    {t.common.logout}
+                  </button>
+                </div>
               </div>
             </div>
           ) : null}

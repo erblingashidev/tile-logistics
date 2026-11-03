@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react";
 import type { AdministrationSettings } from "@/lib/services/administration-settings";
+import { useAppMessages } from "@/components/i18n/LocaleProvider";
 import { Alert, Card, Switch } from "@/components/ui";
 
 export function AdministrationSettingsCard() {
+  const t = useAppMessages();
   const [settings, setSettings] = useState<AdministrationSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -17,7 +19,7 @@ export function AdministrationSettingsCard() {
       .then((data) => {
         setSettings(data.settings ?? { registerStrictTraceability: false });
       })
-      .catch(() => setError("Could not load administration settings."))
+      .catch(() => setError(t.settings.administration.loadFailed))
       .finally(() => setLoading(false));
   }, []);
 
@@ -37,14 +39,14 @@ export function AdministrationSettingsCard() {
     setSaving(false);
     if (!res.ok) {
       setSettings(previous);
-      setError(data.error ?? "Could not save.");
+      setError(data.error ?? t.settings.administration.saveFailed);
       return;
     }
     setSettings(data.settings);
     setSuccess(
       enabled
-        ? "Strict register rules enabled on the cash register page."
-        : "Cash register uses relaxed entry rules."
+        ? t.settings.administration.strictEnabled
+        : t.settings.administration.relaxedEnabled
     );
     setTimeout(() => setSuccess(""), 4000);
   }
@@ -52,15 +54,13 @@ export function AdministrationSettingsCard() {
   return (
     <Card className="p-5">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
-        Administration
+        {t.settings.administration.section}
       </p>
       <h2 className="mt-1 text-lg font-semibold text-zinc-900">
-        Cash register rules
+        {t.settings.administration.cashRegisterRules}
       </h2>
       <p className="mt-1 max-w-2xl text-sm text-zinc-600">
-        Finance and client follow-up always require invoice numbers and sales
-        agents on debts and call lists. This switch only controls whether the
-        cash register page enforces those fields on every new line.
+        {t.settings.administration.strictHelp}
       </p>
       {error ? (
         <div className="mt-3">
@@ -73,14 +73,16 @@ export function AdministrationSettingsCard() {
         </div>
       ) : null}
       {loading ? (
-        <p className="mt-4 text-sm text-zinc-500">Loading…</p>
+        <p className="mt-4 text-sm text-zinc-500">{t.common.loading}</p>
       ) : settings ? (
         <div className="mt-4">
           <Switch
-            label="Strict traceability on cash register"
-            description="Require invoice/receipt on every line; customer + sales agent on payments and refunds."
+            label={t.settings.administration.strictTraceability}
+            description={t.settings.administration.strictDesc}
             status={
-              settings.registerStrictTraceability ? "Strict" : "Relaxed"
+              settings.registerStrictTraceability
+                ? t.settings.administration.strictOn
+                : t.settings.administration.relaxed
             }
             checked={settings.registerStrictTraceability}
             disabled={saving}

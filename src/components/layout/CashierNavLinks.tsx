@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCompanyModules } from "@/components/company/CompanyProfileProvider";
 import { useOrgPath } from "@/components/organization/OrgPathProvider";
+import { useAppMessages } from "@/components/i18n/LocaleProvider";
 
 function isActive(
   pathname: string,
@@ -25,20 +26,23 @@ export function CashierNavLinks({
 }) {
   const modules = useCompanyModules();
   const { orgPath } = useOrgPath();
+  const t = useAppMessages();
 
   const items = [
-    { href: "/orders", label: "Orders & invoices" },
-    ...(modules.returns !== false ? [{ href: "/returns", label: "Returns" }] : []),
-    ...(modules.administration !== false
-      ? [{ href: "/administration", label: "Cash register" }]
+    { href: "/orders", label: t.nav.items.ordersInvoices },
+    ...(modules.returns !== false
+      ? [{ href: "/returns", label: t.nav.items.returns }]
       : []),
-    { href: "/logs", label: "Logs" },
+    ...(modules.administration !== false
+      ? [{ href: "/administration", label: t.nav.items.cashRegister }]
+      : []),
+    { href: "/logs", label: t.nav.items.logs },
   ];
 
   return (
     <div className={mobile ? "mb-4" : "mb-3 last:mb-0"}>
       <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-        Invoicing office
+        {t.nav.groups.invoicingOffice}
       </p>
       {items.map((item) => {
         const active = isActive(pathname, item.href, orgPath);

@@ -31,13 +31,7 @@ import {
 import { WAREHOUSE_REPORT_ROLES } from "@/lib/employee-categories";
 import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
 import { employeeShowDepotNav } from "@/lib/portal-depot-nav";
-import {
-  orderStatusLabelSq,
-  proofLabelSq,
-  sq,
-  statusLabelSq,
-  localizePortalError,
-} from "@/lib/i18n/sq";
+import { usePortalLabels } from "@/lib/i18n/portal-labels";
 import { formatDeliverySchedule } from "@/lib/delivery-schedule";
 import type { OrderDisplayStage } from "@/lib/order-display";
 
@@ -157,15 +151,17 @@ function hasProof(order: PortalOrder, phase: string) {
   return (order.proofs ?? []).some((p) => p.phase === phase);
 }
 
-function driverPhaseLabel(phase: DeliveryProofPhase): string {
-  if (phase === "arrived") return sq.driverArrived;
-  if (phase === "delivered") return sq.driverDeliveredPhoto;
-  return proofLabelSq(phase);
-}
-
 export default function PortalPage() {
+  const { p, statusLabel, orderStatusLabel, proofLabel, localizeError } =
+    usePortalLabels();
   const router = useRouter();
   const flags = useFeatureFlags();
+
+  function driverPhaseLabel(phase: DeliveryProofPhase): string {
+    if (phase === "arrived") return p.driverArrived;
+    if (phase === "delivered") return p.driverDeliveredPhoto;
+    return proofLabel(phase);
+  }
   const [employee, setEmployee] = useState<PortalEmployee | null>(null);
   const [myStatus, setMyStatus] = useState("available");
   const [orders, setOrders] = useState<PortalOrder[]>([]);
@@ -208,7 +204,7 @@ export default function PortalPage() {
         return;
       }
       if (!res.ok) {
-        setError(sq.errors.refresh);
+        setError(p.errors.refresh);
         return;
       }
       const data = await res.json();
@@ -219,7 +215,7 @@ export default function PortalPage() {
       setNotifications(data.notifications ?? []);
       setManualDispatchMode(Boolean(data.manualDispatchMode));
     } catch {
-      setError(sq.errors.refresh);
+      setError(p.errors.refresh);
     }
   }, [router]);
 
@@ -247,11 +243,11 @@ export default function PortalPage() {
     });
     if (!res.ok) {
       const data = await res.json();
-      setError(localizePortalError(data.error) || sq.errors.status);
+      setError(localizeError(data.error) || p.errors.status);
       return;
     }
     setMyStatus(status);
-    setSuccess(sq.statusUpdated);
+    setSuccess(p.statusUpdated);
     setTimeout(() => setSuccess(""), 2000);
   }
 
@@ -263,10 +259,10 @@ export default function PortalPage() {
     const data = await res.json();
     setBusyArriving(false);
     if (!res.ok) {
-      setError(localizePortalError(data.error) || sq.errors.status);
+      setError(localizeError(data.error) || p.errors.status);
       return;
     }
-    setSuccess(sq.truckArrivedSuccess);
+    setSuccess(p.truckArrivedSuccess);
     setTimeout(() => setSuccess(""), 4000);
     load();
   }
@@ -298,13 +294,13 @@ export default function PortalPage() {
     const file = input?.files?.[0];
 
     if (phaseDef?.photoRequired && !file) {
-      setError(sq.errors.photoRequired);
+      setError(p.errors.photoRequired);
       setBusyOrderId(null);
       return;
     }
 
     if (phaseDef?.notesRequired && !notes?.trim()) {
-      setError(sq.errors.notesRequired);
+      setError(p.errors.notesRequired);
       setBusyOrderId(null);
       return;
     }
@@ -314,7 +310,7 @@ export default function PortalPage() {
       if (lines.length === 0) {
         const pallets = extras?.sentPallets;
         if (pallets == null || !Number.isFinite(pallets) || pallets <= 0) {
-          setError(sq.errors.partialLines);
+          setError(p.errors.partialLines);
           setBusyOrderId(null);
           return;
         }
@@ -324,7 +320,7 @@ export default function PortalPage() {
     if (phase === "loaded" && extras?.sentPallets != null) {
       const pallets = extras.sentPallets;
       if (!Number.isFinite(pallets) || pallets <= 0) {
-        setError(sq.errors.partialLoadPallets);
+        setError(p.errors.partialLoadPallets);
         setBusyOrderId(null);
         return;
       }
@@ -369,36 +365,36 @@ export default function PortalPage() {
     setBusyOrderId(null);
 
     if (!res.ok) {
-      const msg = data.error ?? sq.errors.proofFailed;
+      const msg = data.error ?? p.errors.proofFailed;
       if (res.status === 401) {
-        setError(sq.errors.unauthorized);
+        setError(p.errors.unauthorized);
       } else if (res.status === 403) {
-        setError(sq.errors.forbidden);
+        setError(p.errors.forbidden);
       } else if (String(msg).toLowerCase().includes("not assigned")) {
-        setError(sq.errors.notAssigned);
+        setError(p.errors.notAssigned);
       } else {
-        setError(localizePortalError(msg));
+        setError(localizeError(msg));
       }
       return;
     }
 
     if (data.warning) {
-      setSuccess(`${proofLabelSq(phase)} — ${sq.successSaved} (${data.warning})`);
+      setSuccess(`${proofLabel(phase)} — ${p.successSaved} (${data.warning})`);
     } else if (phase === "partial_delivery") {
-      setSuccess(sq.successPartialDelivery);
+      setSuccess(p.successPartialDelivery);
     } else if (phase === "prepared") {
-      setSuccess(sq.successPrepared);
+      setSuccess(p.successPrepared);
     } else if (phase === "loaded") {
       setSuccess(
         extras?.sentPallets != null
-          ? sq.successPartialLoad
-          : sq.successLoaded
+          ? p.successPartialLoad
+          : p.successLoaded
       );
     } else {
       setSuccess(
         phase === "departed"
-          ? sq.successDeparted
-          : `${proofLabelSq(phase)} — ${sq.successSaved}`
+          ? p.successDeparted
+          : `${proofLabel(phase)} — ${p.successSaved}`
       );
     }
     if (input) input.value = "";
@@ -448,7 +444,7 @@ export default function PortalPage() {
 
   return (
     <PortalShell
-      title={sq.appName}
+      title={p.appName}
       subtitle={employee?.name}
       activeNav="orders"
       showOrders
@@ -463,8 +459,8 @@ export default function PortalPage() {
 
       {manualDispatchMode && (
         <Alert tone="info">
-          <p className="text-sm leading-relaxed">{sq.manualDispatchBanner}</p>
-          <p className="mt-2 text-sm text-zinc-600">{sq.manualDispatchOrdersHint}</p>
+          <p className="text-sm leading-relaxed">{p.manualDispatchBanner}</p>
+          <p className="mt-2 text-sm text-zinc-600">{p.manualDispatchOrdersHint}</p>
         </Alert>
       )}
 
@@ -478,7 +474,7 @@ export default function PortalPage() {
               className="shrink-0"
               onClick={() => dismissNotification(notification.id)}
             >
-              {sq.notificationDismiss}
+              {p.notificationDismiss}
             </Button>
           </div>
         </Alert>
@@ -486,13 +482,13 @@ export default function PortalPage() {
 
       {showEmployeeActions && isDriver && employee?.vehicleStatus === "returning" && (
         <PortalCard className="border-amber-200 bg-amber-50/80">
-          <p className="text-sm text-amber-950">{sq.allDeliveredReturn}</p>
+          <p className="text-sm text-amber-950">{p.allDeliveredReturn}</p>
           <Button
             className="mt-4 w-full"
             disabled={busyArriving}
             onClick={confirmTruckArrived}
           >
-            {sq.truckArrivedButton}
+            {p.truckArrivedButton}
           </Button>
         </PortalCard>
       )}
@@ -504,7 +500,7 @@ export default function PortalPage() {
           onClick={() => setStatusOpen((v) => !v)}
         >
           <span className="text-sm font-semibold text-zinc-700">
-            {sq.showStatus}: {statusLabelSq(myStatus)}
+            {p.showStatus}: {statusLabel(myStatus)}
           </span>
           <span className="text-xs text-zinc-400">{statusOpen ? "▴" : "▾"}</span>
         </button>
@@ -521,7 +517,7 @@ export default function PortalPage() {
                     : "border border-zinc-200 bg-zinc-50 text-zinc-700 hover:border-zinc-300"
                 }`}
               >
-                {statusLabelSq(s)}
+                {statusLabel(s)}
               </button>
             ))}
           </div>
@@ -541,15 +537,15 @@ export default function PortalPage() {
                 <p className="text-sm font-semibold text-zinc-900">
                   {truck.vehicleName} ({truck.plateNumber})
                   {flags.deliveryRounds
-                    ? ` · ${sq.roundLabel(truck.deliveryRound)}`
+                    ? ` · ${p.roundLabel(truck.deliveryRound)}`
                     : ""}
                 </p>
                 {!isActiveRound && (
-                  <Badge tone="slate">{sq.driverInfoOnly}</Badge>
+                  <Badge tone="slate">{p.driverInfoOnly}</Badge>
                 )}
               </div>
               <p className="mt-1 text-xs text-zinc-600">
-                {sq.loadingLine(
+                {p.loadingLine(
                   truck.resolvedCount,
                   truck.totalOrders,
                   truck.pendingCount
@@ -574,22 +570,22 @@ export default function PortalPage() {
                         : ""}
                       {o.loadStatus === "pending"
                         ? o.prepStatus === "prepared"
-                          ? ` — ${sq.waitingLoadOnTruck}`
-                          : ` — ${sq.waitingLoader}`
+                          ? ` — ${p.waitingLoadOnTruck}`
+                          : ` — ${p.waitingLoader}`
                         : ""}
-                      {o.awaitingDepart ? ` — ${sq.readyToLeave}` : ""}
+                      {o.awaitingDepart ? ` — ${p.readyToLeave}` : ""}
                     </span>
                   </li>
                 ))}
               </ul>
               {!isActiveRound && (
                 <p className="mt-3 text-sm text-zinc-600">
-                  {sq.driverWaitingLoad}
+                  {p.driverWaitingLoad}
                 </p>
               )}
               {isActiveRound && !truck.canDepart && truck.hasFullyDeparted && (
                 <p className="mt-3 text-sm font-medium text-green-700">
-                  {sq.allLeft}
+                  {p.allLeft}
                 </p>
               )}
               {isActiveRound && truck.canDepart && (
@@ -603,14 +599,14 @@ export default function PortalPage() {
                     }
                   }}
                 >
-                  {sq.leaveWarehouse(truck.awaitingDepartCount)}
+                  {p.leaveWarehouse(truck.awaitingDepartCount)}
                 </Button>
               )}
               {isActiveRound && !truck.canDepart && !truck.hasFullyDeparted && (
                 <p className="mt-3 text-sm text-amber-800">
                   {truck.allResolved
-                    ? sq.cannotDepartEmpty
-                    : sq.waitingAllLoaders}
+                    ? p.cannotDepartEmpty
+                    : p.waitingAllLoaders}
                 </p>
               )}
             </PortalCard>
@@ -618,10 +614,10 @@ export default function PortalPage() {
         })}
 
         <section>
-          <PortalSectionTitle className="mb-3">{sq.myOrders}</PortalSectionTitle>
+          <PortalSectionTitle className="mb-3">{p.myOrders}</PortalSectionTitle>
           {orders.length === 0 ? (
             <PortalCard>
-              <EmptyState title={sq.nothingToDo} />
+              <EmptyState title={p.nothingToDo} />
             </PortalCard>
           ) : (
             <div className="space-y-3">
@@ -632,7 +628,7 @@ export default function PortalPage() {
                 const showSkip = Boolean(skipOpen[order.id]);
                 const truckLine = order.assignment
                   ? flags.deliveryRounds
-                    ? sq.truckRound(
+                    ? p.truckRound(
                         order.assignment.vehicleName,
                         order.assignment.deliveryRound
                       )
@@ -656,11 +652,11 @@ export default function PortalPage() {
                         )}
                         <p className="mt-1 text-xs text-zinc-500">
                           {order.shipment?.hasPartialShipments
-                            ? sq.deliveryRemaining(
+                            ? p.deliveryRemaining(
                                 order.shipment.sent.pallets,
                                 order.shipment.remaining.pallets
                               )
-                            : sq.palletsShort(
+                            : p.palletsShort(
                                 order.shipment?.remaining.pallets ??
                                   order.totalPallets
                               )}
@@ -682,27 +678,27 @@ export default function PortalPage() {
                         }
                       >
                         {order.loadStatus === "loaded"
-                          ? sq.proof.loaded
+                          ? p.proof.loaded
                           : order.loadStatus === "load_skipped"
-                            ? sq.proof.load_skipped
+                            ? p.proof.load_skipped
                             : order.prepStatus === "prepared"
-                              ? sq.proof.prepared
+                              ? p.proof.prepared
                               : order.deliveryStageLabel ??
-                                orderStatusLabelSq(order.status)}
+                                orderStatusLabel(order.status)}
                       </Badge>
                     </div>
 
                     {(order.shipment?.hasPartialShipments ||
                       order.shipment?.isPartialLoad) && (
                       <p className="mt-3 rounded-lg bg-orange-50 px-3 py-2 text-sm text-orange-900">
-                        {sq.deliveryOrdered(order.shipment.ordered.pallets)}
+                        {p.deliveryOrdered(order.shipment.ordered.pallets)}
                         {" · "}
                         {order.shipment.onTruck
-                          ? sq.partialLoadOnTruck(
+                          ? p.partialLoadOnTruck(
                               order.shipment.onTruck.pallets,
                               order.shipment.remaining.pallets
                             )
-                          : sq.deliveryRemaining(
+                          : p.deliveryRemaining(
                               order.shipment.sent.pallets,
                               order.shipment.remaining.pallets
                             )}
@@ -711,13 +707,13 @@ export default function PortalPage() {
 
                     {order.loadStatus === "load_skipped" && (
                       <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
-                        {sq.notLoadedPrefix} {order.loadNotes ?? "—"}
+                        {p.notLoadedPrefix} {order.loadNotes ?? "—"}
                       </p>
                     )}
 
                     {order.loadStatus === "loaded" && isLoader && (
                       <p className="mt-3 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-800">
-                        {sq.loadedOnTruckPicker}
+                        {p.loadedOnTruckPicker}
                       </p>
                     )}
 
@@ -725,17 +721,17 @@ export default function PortalPage() {
                       order.prepStatus === "prepared" &&
                       order.loadStatus === "pending" && (
                       <p className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-900">
-                        {sq.preparedWaitingLoad}
+                        {p.preparedWaitingLoad}
                       </p>
                     )}
 
                     {driverOrderIsInfoOnly(order) && (
                       <p className="mt-3 rounded-lg bg-zinc-100 px-3 py-2 text-sm text-zinc-700">
                         {order.loadStatus === "load_skipped"
-                          ? sq.notOnTruck
+                          ? p.notOnTruck
                           : order.prepStatus === "prepared"
-                            ? sq.driverWaitingPrepared
-                            : sq.driverWaitingLoad}
+                            ? p.driverWaitingPrepared
+                            : p.driverWaitingLoad}
                       </p>
                     )}
 
@@ -743,7 +739,7 @@ export default function PortalPage() {
                       <div className="mt-4 space-y-2">
                         {order.loadBlockedReason && (
                           <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                            {localizePortalError(order.loadBlockedReason)}
+                            {localizeError(order.loadBlockedReason)}
                           </p>
                         )}
 
@@ -758,7 +754,7 @@ export default function PortalPage() {
                               })
                             }
                           >
-                            {sq.markPrepared}
+                            {p.markPrepared}
                           </Button>
                         ) : (
                           <>
@@ -770,7 +766,7 @@ export default function PortalPage() {
                               }
                               onClick={() => submitProof(order.id, "loaded")}
                             >
-                              {sq.markLoadedFull}
+                              {p.markLoadedFull}
                             </Button>
 
                             {!partialLoadOpen[order.id] ? (
@@ -784,24 +780,24 @@ export default function PortalPage() {
                                   })
                                 }
                               >
-                                {sq.markLoadedPartial}
+                                {p.markLoadedPartial}
                               </button>
                             ) : (
                               <div className="rounded-lg border border-orange-200 bg-orange-50/70 p-3">
                                 <p className="text-sm font-medium text-zinc-900">
-                                  {sq.partialLoadHint}
+                                  {p.partialLoadHint}
                                 </p>
                                 <p className="mt-1 text-xs text-zinc-600">
-                                  {sq.palletsShort(
+                                  {p.palletsShort(
                                     order.shipment?.remainingUndelivered
                                       ?.pallets ??
                                       order.shipment?.remaining.pallets ??
                                       order.totalPallets
                                   )}{" "}
-                                  {sq.partialLoadRemainingLabel}
+                                  {p.partialLoadRemainingLabel}
                                 </p>
                                 <label className="mt-2 block text-xs text-zinc-600">
-                                  {sq.partialLoadPallets}
+                                  {p.partialLoadPallets}
                                   <input
                                     type="number"
                                     min={0.1}
@@ -842,7 +838,7 @@ export default function PortalPage() {
                                     })
                                   }
                                 >
-                                  {sq.partialLoadConfirm}
+                                  {p.partialLoadConfirm}
                                 </Button>
                                 <button
                                   type="button"
@@ -854,7 +850,7 @@ export default function PortalPage() {
                                     })
                                   }
                                 >
-                                  {sq.hideDetails}
+                                  {p.hideDetails}
                                 </button>
                               </div>
                             )}
@@ -867,17 +863,17 @@ export default function PortalPage() {
                                   setSkipOpen({ ...skipOpen, [order.id]: true })
                                 }
                               >
-                                {sq.cannotLoadProblem}
+                                {p.cannotLoadProblem}
                               </button>
                             ) : (
                               <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3">
                                 <p className="text-sm font-medium text-zinc-900">
-                                  {sq.cannotLoadTitle}
+                                  {p.cannotLoadTitle}
                                 </p>
                                 <textarea
                                   className="mt-2 w-full rounded border border-zinc-200 p-2 text-sm"
                                   rows={2}
-                                  placeholder={sq.cannotLoadPlaceholder}
+                                  placeholder={p.cannotLoadPlaceholder}
                                   value={skipNotes[order.id] ?? ""}
                                   onChange={(e) =>
                                     setSkipNotes({
@@ -891,7 +887,7 @@ export default function PortalPage() {
                                   className="mt-2 w-full"
                                   disabled={busyOrderId === order.id}
                                   onClick={() => {
-                                    if (!confirm(sq.confirmCannotLoadAsk)) {
+                                    if (!confirm(p.confirmCannotLoadAsk)) {
                                       return;
                                     }
                                     void submitProof(
@@ -901,7 +897,7 @@ export default function PortalPage() {
                                     );
                                   }}
                                 >
-                                  {sq.confirmCannotLoad}
+                                  {p.confirmCannotLoad}
                                 </Button>
                                 <button
                                   type="button"
@@ -913,7 +909,7 @@ export default function PortalPage() {
                                     })
                                   }
                                 >
-                                  {sq.hideDetails}
+                                  {p.hideDetails}
                                 </button>
                               </div>
                             )}
@@ -939,20 +935,20 @@ export default function PortalPage() {
                                 className="rounded-lg border border-zinc-200 p-3"
                               >
                                 <p className="text-sm font-medium text-zinc-900">
-                                  {sq.driverDeliveredPhoto}
+                                  {p.driverDeliveredPhoto}
                                 </p>
                                 <p className="mt-1 text-xs text-zinc-500">
-                                  {sq.deliveryOrdered(
+                                  {p.deliveryOrdered(
                                     order.shipment?.ordered.pallets ??
                                       order.totalPallets
                                   )}
                                   {" · "}
                                   {onTruck
-                                    ? sq.partialLoadOnTruck(
+                                    ? p.partialLoadOnTruck(
                                         onTruck,
                                         order.shipment?.remaining.pallets ?? 0
                                       )
-                                    : `${sq.palletsShort(remainingUndelivered)} mbeten`}
+                                    : `${p.palletsShort(remainingUndelivered)} mbeten`}
                                 </p>
                                 <input
                                   ref={(el) => {
@@ -976,8 +972,8 @@ export default function PortalPage() {
                                   }
                                 >
                                   {onTruck
-                                    ? sq.deliveryTripLoad(tripQty)
-                                    : sq.deliveryFull}
+                                    ? p.deliveryTripLoad(tripQty)
+                                    : p.deliveryFull}
                                 </Button>
                                 {!showPartial ? (
                                   <button
@@ -1001,7 +997,7 @@ export default function PortalPage() {
                                       }
                                     }}
                                   >
-                                    {sq.deliveryPartial}
+                                    {p.deliveryPartial}
                                   </button>
                                 ) : (
                                   <div className="mt-3 rounded-lg border border-orange-200 bg-orange-50/70 p-3">
@@ -1021,24 +1017,24 @@ export default function PortalPage() {
                                           })
                                         }
                                         labels={{
-                                          title: sq.deliveryPartialProducts,
-                                          hint: sq.deliveryPartialHint,
-                                          full: sq.deliveryPartialFull,
-                                          qty: sq.deliveryPartialQty,
-                                          left: sq.deliveryPartialLeft,
-                                          ordered: sq.deliveryPartialOrdered,
-                                          remaining: sq.deliveryPartialRemaining,
+                                          title: p.deliveryPartialProducts,
+                                          hint: p.deliveryPartialHint,
+                                          full: p.deliveryPartialFull,
+                                          qty: p.deliveryPartialQty,
+                                          left: p.deliveryPartialLeft,
+                                          ordered: p.deliveryPartialOrdered,
+                                          remaining: p.deliveryPartialRemaining,
                                           alreadySent:
-                                            sq.deliveryPartialAlreadySent,
+                                            p.deliveryPartialAlreadySent,
                                         }}
                                       />
                                     ) : (
                                       <>
                                         <p className="text-sm font-medium text-zinc-900">
-                                          {sq.deliveryPartialHint}
+                                          {p.deliveryPartialHint}
                                         </p>
                                         <label className="mt-2 block text-xs text-zinc-600">
-                                          {sq.deliveryPartialPallets}
+                                          {p.deliveryPartialPallets}
                                           <input
                                             type="number"
                                             min={0.1}
@@ -1077,7 +1073,7 @@ export default function PortalPage() {
                                             0 &&
                                           lines.length === 0
                                         ) {
-                                          setError(sq.errors.partialLines);
+                                          setError(p.errors.partialLines);
                                           return;
                                         }
                                         submitProof(
@@ -1094,7 +1090,7 @@ export default function PortalPage() {
                                         );
                                       }}
                                     >
-                                      {sq.deliveryPartialConfirm}
+                                      {p.deliveryPartialConfirm}
                                     </Button>
                                     <button
                                       type="button"
@@ -1106,7 +1102,7 @@ export default function PortalPage() {
                                         })
                                       }
                                     >
-                                      {sq.hideDetails}
+                                      {p.hideDetails}
                                     </button>
                                   </div>
                                 )}
@@ -1140,8 +1136,8 @@ export default function PortalPage() {
                                 }
                               >
                                 {phase.photoRequired
-                                  ? sq.confirmWithPhoto
-                                  : sq.driverMarkDone}
+                                  ? p.confirmWithPhoto
+                                  : p.driverMarkDone}
                               </Button>
                             </div>
                           );
@@ -1161,13 +1157,13 @@ export default function PortalPage() {
                             })
                           }
                         >
-                          {showDetails ? sq.hideDetails : sq.showDetails}
+                          {showDetails ? p.hideDetails : p.showDetails}
                         </button>
                         {showDetails && (
                           <ul className="mt-2 space-y-1 text-xs text-zinc-600">
                             {order.proofs!.map((p, idx) => (
                               <li key={`${p.phase}-${p.capturedAt}-${idx}`}>
-                                ✓ {proofLabelSq(p.phase)}
+                                ✓ {proofLabel(p.phase)}
                                 {p.sentPallets != null
                                   ? ` — ${p.sentPallets} plt`
                                   : ""}
@@ -1192,7 +1188,7 @@ export default function PortalPage() {
           onClose={() => setPrepareOrder(null)}
           onSuccess={() => {
             setPrepareOrder(null);
-            setSuccess(sq.proof.prepared);
+            setSuccess(p.proof.prepared);
             setTimeout(() => setSuccess(""), 3000);
             load();
           }}

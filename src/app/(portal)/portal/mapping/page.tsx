@@ -6,9 +6,10 @@ import { OutdoorPutawayForm } from "@/components/wms/OutdoorPutawayForm";
 import { usePortalDepot } from "@/hooks/usePortalDepot";
 import { employeeShowDepotNav } from "@/lib/portal-depot-nav";
 import { useFeatureFlags } from "@/components/features/FeatureFlagsProvider";
-import { sq } from "@/lib/i18n/sq";
+import { usePortalLabels } from "@/lib/i18n/portal-labels";
 
 export default function PortalMappingPage() {
+  const { p } = usePortalLabels();
   const depot = usePortalDepot();
   const { warehouseWms } = useFeatureFlags();
   const sectorChoices =
@@ -18,7 +19,7 @@ export default function PortalMappingPage() {
 
   return (
     <PortalShell
-      title={sq.mappingTitle}
+      title={p.mappingTitle}
       subtitle={depot.employeeName}
       activeNav="mapping"
       showOrders
@@ -32,17 +33,17 @@ export default function PortalMappingPage() {
       {depot.success && <Alert tone="info">{depot.success}</Alert>}
 
       <PortalCard className="space-y-4">
-        <p className="text-sm text-zinc-600">{sq.mappingHint}</p>
+        <p className="text-sm text-zinc-600">{p.mappingHint}</p>
 
         {sectorChoices.length > 1 ? (
           <div className="space-y-2">
-            <p className="text-xs font-medium text-zinc-500">{sq.mappingPickSector}</p>
+            <p className="text-xs font-medium text-zinc-500">{p.mappingPickSector}</p>
             <div className="flex flex-wrap gap-2">
               <PortalChip
                 selected={depot.mappingZone === null}
                 onClick={() => depot.setMappingZone(null)}
               >
-                {sq.mappingAllSectors}
+                {p.mappingAllSectors}
               </PortalChip>
               {sectorChoices.map((zone) => (
                 <PortalChip
@@ -57,13 +58,13 @@ export default function PortalMappingPage() {
           </div>
         ) : depot.mappingZone ? (
           <p className="text-xs text-zinc-500">
-            {sq.mappingYourSector}: <strong>{depot.mappingZone}</strong>
+            {p.mappingYourSector}: <strong>{depot.mappingZone}</strong>
           </p>
         ) : null}
 
         <OutdoorPutawayForm
           locations={depot.mappingLocations}
-          submitLabel={sq.putawaySave}
+          submitLabel={p.putawaySave}
           onSubmit={async ({ productId, locationId, quantityM2 }) => {
             const res = await fetch("/api/wms", {
               method: "POST",
@@ -76,8 +77,8 @@ export default function PortalMappingPage() {
               }),
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error ?? sq.errors.generic);
-            depot.setSuccess(sq.putawaySuccess);
+            if (!res.ok) throw new Error(data.error ?? p.errors.generic);
+            depot.setSuccess(p.putawaySuccess);
             setTimeout(() => depot.setSuccess(""), 3000);
           }}
         />

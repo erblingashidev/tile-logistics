@@ -18,23 +18,39 @@ import { useOrgPath } from "@/components/organization/OrgPathProvider";
 import { GLOBAL_PATH_SEGMENTS } from "@/lib/organizations/paths";
 import { useAdminSession } from "@/components/layout/AdminSessionProvider";
 import { CashierPageFrame } from "@/components/layout/CashierPageFrame";
+import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
+import { useAppMessages } from "@/components/i18n/LocaleProvider";
+import type { AppMessages } from "@/lib/i18n/messages";
+
+function warehouseNavLabels(t: AppMessages) {
+  return WAREHOUSE_SIDEBAR_LINKS.map((item) => {
+    const key = item.href as keyof AppMessages["nav"]["warehouse"];
+    return {
+      href: item.href,
+      label: t.nav.warehouse[key] ?? item.label,
+    };
+  });
+}
 
 function buildNavGroups(
   flags: FeatureFlags,
   modules: CompanyModuleFlags,
-  isPlatformAdmin: boolean
+  isPlatformAdmin: boolean,
+  t: AppMessages
 ) {
   return [
     {
-      label: "Operations",
+      label: t.nav.groups.operations,
       items: [
-        { href: "/", label: "Dashboard" },
-        { href: "/orders", label: "Orders" },
-        ...(modules.returns ? [{ href: "/returns", label: "Returns" }] : []),
+        { href: "/", label: t.nav.items.dashboard },
+        { href: "/orders", label: t.nav.items.orders },
+        ...(modules.returns
+          ? [{ href: "/returns", label: t.nav.items.returns }]
+          : []),
         ...(flags.operationsSuite
           ? [
-              { href: "/dispatch", label: "Dispatch" },
-              { href: "/map", label: "Map" },
+              { href: "/dispatch", label: t.nav.items.dispatch },
+              { href: "/map", label: t.nav.items.map },
             ]
           : []),
       ],
@@ -42,67 +58,67 @@ function buildNavGroups(
     ...(modules.vehicles
       ? [
           {
-            label: "Fleet",
+            label: t.nav.groups.fleet,
             items: [
-              { href: "/vehicles", label: "Vehicles" },
-              { href: "/vehicles/maintenance", label: "Maintenance" },
+              { href: "/vehicles", label: t.nav.items.vehicles },
+              { href: "/vehicles/maintenance", label: t.nav.items.maintenance },
             ],
           },
         ]
       : []),
     {
-      label: "People",
+      label: t.nav.groups.people,
       items: [
-        { href: "/employees", label: "Employees" },
-        { href: "/admins", label: "Admins" },
+        { href: "/employees", label: t.nav.items.employees },
+        { href: "/admins", label: t.nav.items.admins },
       ],
     },
     ...(flags.warehouseWms
       ? [
           {
-            label: "Warehouse",
-            items: WAREHOUSE_SIDEBAR_LINKS,
+            label: t.nav.groups.warehouse,
+            items: warehouseNavLabels(t),
           },
         ]
       : []),
     ...(modules.administration !== false
       ? [
           {
-            label: "Administration",
+            label: t.nav.groups.administration,
             items: [
-              { href: "/administration", label: "Cash register" },
+              { href: "/administration", label: t.nav.items.cashRegister },
               {
                 href: "/administration/finance/reports",
-                label: "Finance reports",
+                label: t.nav.items.financeReports,
               },
-              { href: "/administration/finance/debts", label: "Open debts" },
+              { href: "/administration/finance/debts", label: t.nav.items.openDebts },
               {
                 href: "/administration/finance/debts/by-agent",
-                label: "Debts by agent",
+                label: t.nav.items.debtsByAgent,
               },
               {
                 href: "/administration/finance/debts/by-client",
-                label: "Debts by client",
+                label: t.nav.items.debtsByClient,
               },
-              { href: "/administration/finance", label: "Register & ledger" },
+              { href: "/administration/finance", label: t.nav.items.registerLedger },
               {
                 href: "/administration/finance/imports",
-                label: "Finance import",
+                label: t.nav.items.financeImport,
               },
             ],
           },
         ]
       : []),
     {
-      label: "System",
+      label: t.nav.groups.system,
       items: [
-        { href: "/reports", label: "Reports" },
-        { href: "/logs", label: "Logs" },
-        { href: "/settings", label: "Settings" },
+        { href: "/reports", label: t.nav.items.reports },
+        { href: "/logs", label: t.nav.items.logs },
+        { href: "/settings", label: t.nav.items.settings },
         ...(isPlatformAdmin
           ? [
-              { href: "/platform/companies", label: "Companies" },
-              { href: "/platform/applications", label: "Signup queue" },
+              { href: "/platform/companies", label: t.nav.items.companies },
+              { href: "/platform/applications", label: t.nav.items.signupQueue },
             ]
           : []),
       ],
@@ -153,6 +169,7 @@ function NavLinks({
   const { orgPath } = useOrgPath();
   const adminSession = useAdminSession();
   const isPlatformAdmin = adminSession?.isPlatformAdmin ?? false;
+  const t = useAppMessages();
 
   if (!adminSession) {
     return (
@@ -166,7 +183,7 @@ function NavLinks({
     );
   }
 
-  const navGroups = buildNavGroups(flags, modules, isPlatformAdmin);
+  const navGroups = buildNavGroups(flags, modules, isPlatformAdmin, t);
   return (
     <>
       {navGroups.map((group) => (
@@ -241,6 +258,7 @@ function AdminAppShell({
         : "max-w-7xl";
   const pathname = usePathname();
   const router = useRouter();
+  const t = useAppMessages();
   const { orgPath } = useOrgPath();
   const { organizationName } = useCompanyProfile();
   const adminSession = useAdminSession();
@@ -385,6 +403,7 @@ function AdminAppShell({
             <NavLinks pathname={pathname} />
           </nav>
           <div className="border-t border-white/10 p-3">
+            <LanguageSwitcher compact className="mb-3 px-1" />
             {userName && (
               <p className="mb-2 truncate rounded px-3 py-2 text-xs text-zinc-400">
                 {userName}
@@ -395,7 +414,7 @@ function AdminAppShell({
               onClick={logout}
               className="w-full rounded px-3 py-2 text-left text-sm text-zinc-400 hover:bg-white/5 hover:text-white"
             >
-              Log out
+              {t.common.logout}
             </button>
           </div>
         </aside>
@@ -407,7 +426,7 @@ function AdminAppShell({
             organizationName &&
             !isPlatformPickerPage && (
               <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-xs text-amber-950 lg:px-8">
-                Operator mode —{" "}
+                {t.common.operatorMode} —{" "}
                 <span className="font-semibold">{organizationName}</span>
               </div>
             )}
@@ -417,7 +436,9 @@ function AdminAppShell({
                 {showCompanyNav ? (
                   <button
                     type="button"
-                    aria-label={mobileNavOpen ? "Close menu" : "Open menu"}
+                    aria-label={
+                      mobileNavOpen ? t.common.closeMenu : t.common.openMenu
+                    }
                     className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded border border-zinc-200 text-zinc-700"
                     onClick={() => setMobileNavOpen((open) => !open)}
                   >
@@ -450,7 +471,7 @@ function AdminAppShell({
                     onClick={() => void openCompanyPicker()}
                     className="hidden text-xs text-zinc-500 hover:text-zinc-800 sm:inline"
                   >
-                    Switch company
+                    {t.common.switchCompany}
                   </button>
                 )}
                 {userName && (
@@ -463,7 +484,7 @@ function AdminAppShell({
                   className="text-xs lg:hidden"
                   onClick={logout}
                 >
-                  Log out
+                  {t.common.logout}
                 </Button>
               </div>
             </div>
@@ -473,7 +494,7 @@ function AdminAppShell({
             <div className="fixed inset-0 z-50 lg:hidden">
               <button
                 type="button"
-                aria-label="Close menu backdrop"
+                aria-label={t.common.closeMenu}
                 className="absolute inset-0 bg-black/40"
                 onClick={() => setMobileNavOpen(false)}
               />
@@ -489,7 +510,7 @@ function AdminAppShell({
                   </div>
                   <button
                     type="button"
-                    aria-label="Close menu"
+                    aria-label={t.common.closeMenu}
                     className="rounded p-2 text-zinc-400 hover:bg-white/5"
                     onClick={() => setMobileNavOpen(false)}
                   >
@@ -503,11 +524,21 @@ function AdminAppShell({
                     onNavigate={() => setMobileNavOpen(false)}
                   />
                 </nav>
-                {userName && (
-                  <p className="border-t border-white/10 px-4 py-3 text-xs text-zinc-400">
-                    {userName}
-                  </p>
-                )}
+                <div className="border-t border-white/10 p-3">
+                  <LanguageSwitcher compact className="mb-2 px-1" />
+                  {userName && (
+                    <p className="truncate px-3 py-2 text-xs text-zinc-400">
+                      {userName}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={logout}
+                    className="w-full rounded px-3 py-2 text-left text-sm text-zinc-400 hover:bg-white/5 hover:text-white"
+                  >
+                    {t.common.logout}
+                  </button>
+                </div>
               </div>
             </div>
           )}

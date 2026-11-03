@@ -9,7 +9,7 @@ import {
 } from "@/components/portal/PortalShell";
 import { ChangePasswordCard } from "@/components/portal/ChangePasswordCard";
 import { Alert, Badge, LoadingState } from "@/components/ui";
-import { sq } from "@/lib/i18n/sq";
+import { usePortalLabels } from "@/lib/i18n/portal-labels";
 import type { EmployeeRole } from "@/lib/constants";
 import { WAREHOUSE_REPORT_ROLES } from "@/lib/employee-categories";
 import { employeeShowDepotNav } from "@/lib/portal-depot-nav";
@@ -23,6 +23,7 @@ interface MeUser {
 }
 
 export default function PortalProfilePage() {
+  const { p } = usePortalLabels();
   const router = useRouter();
   const [user, setUser] = useState<MeUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -40,7 +41,7 @@ export default function PortalProfilePage() {
       const data = await res.json();
       setUser(data.user ?? null);
     } catch {
-      setError(sq.errors.generic);
+      setError(p.errors.generic);
     } finally {
       setLoading(false);
     }
@@ -63,7 +64,7 @@ export default function PortalProfilePage() {
 
   return (
     <PortalShell
-      title={sq.profileTitle}
+      title={p.profileTitle}
       subtitle={user?.name}
       activeNav="profile"
       showOrders
@@ -73,14 +74,14 @@ export default function PortalProfilePage() {
     >
       {loading ? (
         <PortalCard>
-          <LoadingState title={sq.profileLoading} />
+          <LoadingState title={p.profileLoading} />
         </PortalCard>
       ) : error || !user ? (
-        <Alert tone="error">{error || sq.errors.generic}</Alert>
+        <Alert tone="error">{error || p.errors.generic}</Alert>
       ) : (
         <>
           <PortalCard className="space-y-3">
-            <PortalSectionTitle>{sq.profileAccount}</PortalSectionTitle>
+            <PortalSectionTitle>{p.profileAccount}</PortalSectionTitle>
             <div>
               <p className="text-lg font-semibold text-zinc-900">
                 {user.name ?? "—"}
@@ -91,13 +92,13 @@ export default function PortalProfilePage() {
             </div>
             {user.status && (
               <div>
-                <p className="text-xs text-zinc-500">{sq.profileStatus}</p>
+                <p className="text-xs text-zinc-500">{p.profileStatus}</p>
                 <Badge tone="slate">{user.status}</Badge>
               </div>
             )}
             {roles.length > 0 && (
               <div>
-                <p className="mb-1.5 text-xs text-zinc-500">{sq.profileRoles}</p>
+                <p className="mb-1.5 text-xs text-zinc-500">{p.profileRoles}</p>
                 <div className="flex flex-wrap gap-1.5">
                   {roles.map((role) => (
                     <Badge key={role} tone="blue">
@@ -112,14 +113,14 @@ export default function PortalProfilePage() {
           <ChangePasswordCard
             defaultOpen
             labels={{
-              title: sq.changePasswordTitle,
-              currentPassword: sq.currentPassword,
-              newPassword: sq.newPassword,
-              confirmPassword: sq.confirmPassword,
-              save: sq.updatePassword,
-              success: sq.passwordUpdated,
-              toggleShow: sq.showPassword,
-              toggleHide: sq.hidePassword,
+              title: p.changePasswordTitle,
+              currentPassword: p.currentPassword,
+              newPassword: p.newPassword,
+              confirmPassword: p.confirmPassword,
+              save: p.updatePassword,
+              success: p.passwordUpdated,
+              toggleShow: p.showPassword,
+              toggleHide: p.hidePassword,
             }}
           />
         </>

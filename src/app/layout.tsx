@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ClientRecovery } from "@/components/ClientRecovery";
+import { Providers } from "@/components/i18n/Providers";
 import { BRAND } from "@/lib/brand";
 import "./globals.css";
 
@@ -38,7 +39,7 @@ export default function RootLayout({
     >
       <body suppressHydrationWarning className="min-h-full font-sans">
         <ClientRecovery />
-        {children}
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
