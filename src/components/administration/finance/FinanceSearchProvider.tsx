@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { todayBusinessDay } from "@/lib/administration/prodata-invoice-conflicts";
 import { useAppMessages } from "@/components/i18n/LocaleProvider";
 import { Input } from "@/components/ui";
 
@@ -19,9 +20,15 @@ type FinanceSearchContextValue = {
   clearQuery: () => void;
 };
 
+type FinanceDayContextValue = {
+  businessDay: string;
+  setBusinessDay: (day: string) => void;
+};
+
 const FinanceSearchContext = createContext<FinanceSearchContextValue | null>(
   null
 );
+const FinanceDayContext = createContext<FinanceDayContextValue | null>(null);
 
 export function useFinanceSearch() {
   const ctx = useContext(FinanceSearchContext);
@@ -31,37 +38,77 @@ export function useFinanceSearch() {
   return ctx;
 }
 
-/** Context only — render {@link FinanceSearchBar} inside the page shell. */
-export function FinanceSearchProvider({ children }: { children: ReactNode }) {
+export function useFinanceBusinessDay() {
+  const ctx = useContext(FinanceDayContext);
+  if (!ctx) {
+    throw new Error(
+      "useFinanceBusinessDay must be used within FinanceSearchProvider"
+    );
+  }
+  return ctx;
+}
+
+function useFinanceUrlParams() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const urlQuery = searchParams.get("q") ?? "";
 
-  const commitQuery = useCallback(
-    (next: string) => {
-      const trimmed = next.trim();
+  const replaceParams = useCallback(
+    (mutate: (params: URLSearchParams) => void) => {
       const params = new URLSearchParams(searchParams.toString());
-      if (trimmed) params.set("q", trimmed);
-      else params.delete("q");
+      mutate(params);
       const qs = params.toString();
       router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     },
     [pathname, router, searchParams]
   );
 
+  return { replaceParams, searchParams };
+}
+
+/** Context for finance search + business day (`day` URL param, default today). */
+export function FinanceSearchProvider({ children }: { children: ReactNode }) {
+  const { replaceParams, searchParams } = useFinanceUrlParams();
+  const urlQuery = searchParams.get("q") ?? "";
+  const urlDay = searchParams.get("day") ?? todayBusinessDay();
+
+  useEffect(() => {
+    if (!searchParams.get("day")) {
+      replaceParams((params) => {
+        params.set("day", todayBusinessDay());
+      });
+    }
+  }, [replaceParams, searchParams]);
+
   const setQuery = useCallback(
     (next: string) => {
-      commitQuery(next);
+      const trimmed = next.trim();
+      replaceParams((params) => {
+        if (trimmed) params.set("q", trimmed);
+        else params.delete("q");
+      });
     },
-    [commitQuery]
+    [replaceParams]
   );
 
   const clearQuery = useCallback(() => {
-    commitQuery("");
-  }, [commitQuery]);
+    replaceParams((params) => {
+      params.delete("q");
+    });
+  }, [replaceParams]);
 
-  const value = useMemo(
+  const setBusinessDay = useCallback(
+    (day: string) => {
+      const d = day.trim().slice(0, 10);
+      if (!d) return;
+      replaceParams((params) => {
+        params.set("day", d);
+      });
+    },
+    [replaceParams]
+  );
+
+  const searchValue = useMemo(
     () => ({
       query: urlQuery,
       setQuery,
@@ -70,9 +117,19 @@ export function FinanceSearchProvider({ children }: { children: ReactNode }) {
     [urlQuery, setQuery, clearQuery]
   );
 
+  const dayValue = useMemo(
+    () => ({
+      businessDay: urlDay,
+      setBusinessDay,
+    }),
+    [urlDay, setBusinessDay]
+  );
+
   return (
-    <FinanceSearchContext.Provider value={value}>
-      {children}
+    <FinanceSearchContext.Provider value={searchValue}>
+      <FinanceDayContext.Provider value={dayValue}>
+        {children}
+      </FinanceDayContext.Provider>
     </FinanceSearchContext.Provider>
   );
 }
@@ -80,66 +137,69 @@ export function FinanceSearchProvider({ children }: { children: ReactNode }) {
 export function FinanceSearchBar() {
   const t = useAppMessages();
   const { query, clearQuery } = useFinanceSearch();
-  const pathname = usePathname();
-  const router = useRouter();
-  const searchParams = useSearchParams();
+  const { businessDay, setBusinessDay } = useFinanceBusinessDay();
+  const { replaceParams } = useFinanceUrlParams();
   const [draft, setDraft] = useState(query);
+  const [dayDraft, setDayDraft] = useState(businessDay);
 
   useEffect(() => {
     setDraft(query);
   }, [query]);
 
+  useEffect(() => {
+    setDayDraft(businessDay);
+  }, [businessDay]);
+
   function commitQuery(next: string) {
     const trimmed = next.trim();
-    const params = new URLSearchParams(searchParams.toString());
-    if (trimmed) params.set("q", trimmed);
-    else params.delete("q");
-    const qs = params.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    replaceParams((params) => {
+      if (trimmed) params.set("q", trimmed);
+      else params.delete("q");
+    });
   }
 
   return (
-    <div className="mb-6 rounded-xl border border-zinc-200 bg-gradient-to-b from-white to-zinc-50/90 p-5 shadow-md">
-        <label className="block text-sm font-semibold uppercase tracking-wide text-zinc-600">
+    <div className="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-zinc-200 bg-white px-4 py-3">
+      <div>
+        <label className="text-xs font-medium text-zinc-600">
+          {t.finance.workday.label}
+        </label>
+        <Input
+          type="date"
+          className="mt-1 w-40"
+          value={dayDraft}
+          onChange={(e) => {
+            setDayDraft(e.target.value);
+            setBusinessDay(e.target.value);
+          }}
+        />
+      </div>
+      <div className="min-w-[min(100%,16rem)] flex-1">
+        <label className="text-xs font-medium text-zinc-600">
           {t.finance.search.label}
         </label>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <div className="min-w-[min(100%,20rem)] flex-1">
-          <Input
-            aria-label={t.finance.search.label}
-            placeholder={t.finance.search.placeholder}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                commitQuery(draft);
-              }
-              if (e.key === "Escape") {
-                e.preventDefault();
-                clearQuery();
-                setDraft("");
-              }
-            }}
-            onBlur={() => {
-              if (draft.trim() !== query.trim()) commitQuery(draft);
-            }}
-          />
-        </div>
-        {draft.trim() || query.trim() ? (
-          <button
-            type="button"
-              className="rounded-lg border border-zinc-300 bg-white px-4 py-2.5 text-base font-medium text-zinc-700 shadow-sm hover:bg-zinc-50"
-            onClick={() => {
+        <Input
+          className="mt-1"
+          aria-label={t.finance.search.label}
+          placeholder={t.finance.search.placeholder}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commitQuery(draft);
+            }
+            if (e.key === "Escape") {
+              e.preventDefault();
               clearQuery();
               setDraft("");
-            }}
-          >
-            {t.common.clear}
-          </button>
-        ) : null}
+            }
+          }}
+          onBlur={() => {
+            if (draft.trim() !== query.trim()) commitQuery(draft);
+          }}
+        />
       </div>
-        <p className="mt-2.5 text-sm leading-relaxed text-zinc-600">{t.finance.search.hint}</p>
     </div>
   );
 }

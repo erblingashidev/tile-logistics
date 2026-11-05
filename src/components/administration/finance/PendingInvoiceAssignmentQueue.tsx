@@ -16,7 +16,10 @@ import {
 import type { AdminPaymentMethod } from "@/lib/administration/constants";
 import { useAppMessages } from "@/components/i18n/LocaleProvider";
 import { InvoiceFinanceLink } from "@/components/administration/finance/InvoiceFinanceLink";
-import { useFinanceSearch } from "@/components/administration/finance/FinanceSearchProvider";
+import {
+  useFinanceBusinessDay,
+  useFinanceSearch,
+} from "@/components/administration/finance/FinanceSearchProvider";
 import { Alert, Button, Card, EmptyState, LoadingState } from "@/components/ui";
 
 type ApiInvoice = {
@@ -148,6 +151,7 @@ export function PendingInvoiceAssignmentQueue() {
   const t = useAppMessages();
   const q = t.finance.pages.assignmentQueue;
   const { query } = useFinanceSearch();
+  const { businessDay } = useFinanceBusinessDay();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [invoices, setInvoices] = useState<ProDataInvoiceAggregate[]>([]);
@@ -156,9 +160,10 @@ export function PendingInvoiceAssignmentQueue() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/administration/finance/pending-settlements", {
-        cache: "no-store",
-      });
+      const res = await fetch(
+        `/api/administration/finance/pending-settlements?day=${encodeURIComponent(businessDay)}`,
+        { cache: "no-store" }
+      );
       const data = (await res.json()) as {
         invoices?: ApiInvoice[];
         error?: string;
@@ -179,7 +184,7 @@ export function PendingInvoiceAssignmentQueue() {
     } finally {
       setLoading(false);
     }
-  }, [t.finance.common.loadFailed]);
+  }, [t.finance.common.loadFailed, businessDay]);
 
   useEffect(() => {
     void load();

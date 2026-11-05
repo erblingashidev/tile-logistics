@@ -69,7 +69,7 @@ export default function FinanceReportsPage() {
   }, [load]);
 
   return (
-    <FinancePageShell title={p.title} description={p.description}>
+    <FinancePageShell title={p.title}>
       {error ? <Alert tone="error">{error}</Alert> : null}
 
       <Card className="mb-6 grid gap-3 p-4 sm:grid-cols-3">

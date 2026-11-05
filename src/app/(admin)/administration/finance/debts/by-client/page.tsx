@@ -6,7 +6,11 @@ import {
 } from "@/components/administration/AdministrationClientFinance";
 import { formatAdminMoney } from "@/components/administration/AdministrationLedgerTable";
 import { FinanceDebtFilters } from "@/components/administration/finance/FinanceDebtFilters";
-import { useFinanceSearch } from "@/components/administration/finance/FinanceSearchProvider";
+import {
+  useFinanceBusinessDay,
+  useFinanceSearch,
+} from "@/components/administration/finance/FinanceSearchProvider";
+import { FinanceDuplicateReview } from "@/components/administration/finance/FinanceDuplicateReview";
 import { clientProfileMatchesSearch } from "@/lib/administration/finance-search";
 import { FinancePageShell } from "@/components/administration/finance/FinancePageShell";
 import { useFinanceDebts } from "@/components/administration/finance/useFinanceDebts";
@@ -52,8 +56,9 @@ function ClientDebtRow({
 export default function FinanceDebtsByClientPage() {
   const t = useAppMessages();
   const page = t.finance.pages.byClient;
+  const { businessDay } = useFinanceBusinessDay();
   const { loading, error, data, selected, setSelected, openClient } =
-    useFinanceDebts();
+    useFinanceDebts(14, businessDay);
   const { query } = useFinanceSearch();
   const [agent, setAgent] = useState("");
 
@@ -95,7 +100,7 @@ export default function FinanceDebtsByClientPage() {
   }, [data, query, clientKeysForAgent]);
 
   return (
-    <FinancePageShell title={page.title} description={page.description}>
+    <FinancePageShell title={page.title}>
       {error ? <Alert tone="error">{error}</Alert> : null}
 
       {loading ? (
@@ -153,7 +158,6 @@ export default function FinanceDebtsByClientPage() {
             <h2 className="mb-2 text-sm font-semibold text-zinc-900">
               {page.callListSection}
             </h2>
-            <p className="mb-3 text-sm text-zinc-600">{page.callListHint}</p>
             <Card className="overflow-x-auto">
               {filteredCallList.length === 0 ? (
                 <EmptyState title={page.noCallList} />
@@ -190,6 +194,8 @@ export default function FinanceDebtsByClientPage() {
       {selected ? (
         <ClientReportCard profile={selected} onClose={() => setSelected(null)} />
       ) : null}
+
+      <FinanceDuplicateReview />
     </FinancePageShell>
   );
 }

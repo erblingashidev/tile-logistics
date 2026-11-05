@@ -23,6 +23,12 @@ import {
 } from "@/lib/db/schema";
 import type { SessionUser } from "@/lib/auth/session";
 import { createRegisterTransaction } from "@/lib/services/administration-register";
+import {
+  detectStoredImportConflicts,
+  mergeInvoiceConflicts,
+  normalizeBusinessDay,
+  type InvoiceNumberConflict,
+} from "@/lib/administration/prodata-invoice-conflicts";
 
 export type ProDataFinanceInvoiceRow = {
   invoiceNumber: string;
@@ -83,12 +89,15 @@ export function analyzeProDataFinanceExport(
 }
 
 export async function listProDataInvoicesPendingAssignment(
-  organizationId: number
+  organizationId: number,
+  businessDay?: string | null
 ): Promise<ProDataFinanceInvoiceRow[]> {
+  const day = businessDay?.trim().slice(0, 10);
   const all = await listProDataFinanceInvoices(organizationId);
   return all.filter(
     (inv) =>
       inv.documentCategory !== "delivery_note" &&
+      (!day || inv.transactionDate.slice(0, 10) === day) &&
       !isInvoiceSettlementAssignmentComplete({
         settlementStatus: inv.settlementStatus,
         paidAmountCents: inv.paidAmountCents,
@@ -312,7 +321,11 @@ export async function commitProDataFinanceImport(
     syncRegisterPayments?: boolean;
     settlementOverrides?: ProDataInvoiceSettlementOverride[];
   }
-): Promise<{ analysis: ProDataImportAnalysis; result: CommitProDataImportResult }> {
+): Promise<{
+  analysis: ProDataImportAnalysis;
+  result: CommitProDataImportResult;
+  importConflicts: InvoiceNumberConflict[];
+}> {
   let analysis = parseProDataTransactionBook(buffer, fileName);
   if (options?.settlementOverrides?.length) {
     analysis = applySettlementOverrides(
@@ -323,6 +336,12 @@ export async function commitProDataFinanceImport(
   const syncRegister = options?.syncRegisterPayments !== false;
   const db = await getControlPlaneDb();
   const ts = new Date().toISOString();
+
+  const stored = await listProDataFinanceInvoices(organizationId);
+  const importConflicts = mergeInvoiceConflicts(
+    analysis.invoiceConflicts ?? [],
+    detectStoredImportConflicts(analysis.invoices, stored)
+  );
 
   const batchRows = await db
     .insert(financeProdataImportBatches)
@@ -338,6 +357,7 @@ export async function commitProDataFinanceImport(
         byCategory: analysis.byCategory,
         paymentsDetected: analysis.paymentsDetected,
         openSalesCount: analysis.openSalesCount,
+        invoiceConflicts: importConflicts,
       }),
       importedByAdminId:
         session.role === "admin" ? session.adminId : undefined,
@@ -386,5 +406,43 @@ export async function commitProDataFinanceImport(
     }
   }
 
-  return { analysis, result };
+  return { analysis, result, importConflicts };
+}
+
+export async function listInvoiceConflictsForBusinessDay(
+  organizationId: number,
+  businessDay: string
+): Promise<InvoiceNumberConflict[]> {
+  const day = normalizeBusinessDay(businessDay);
+  if (!day) return [];
+
+  const db = await getControlPlaneDb();
+  const batches = await db
+    .select()
+    .from(financeProdataImportBatches)
+    .where(eq(financeProdataImportBatches.organizationId, organizationId));
+
+  const fromBatches: InvoiceNumberConflict[] = [];
+  for (const batch of batches) {
+    const createdDay = batch.createdAt.slice(0, 10);
+    const spansDay =
+      createdDay === day ||
+      (batch.dateFrom &&
+        batch.dateTo &&
+        batch.dateFrom <= day &&
+        batch.dateTo >= day);
+    if (!spansDay || !batch.summaryJson) continue;
+    try {
+      const parsed = JSON.parse(batch.summaryJson) as {
+        invoiceConflicts?: InvoiceNumberConflict[];
+      };
+      if (parsed.invoiceConflicts?.length) {
+        fromBatches.push(...parsed.invoiceConflicts);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return mergeInvoiceConflicts(fromBatches);
 }

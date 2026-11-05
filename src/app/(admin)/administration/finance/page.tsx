@@ -34,7 +34,7 @@ export default function AdministrationFinancePage() {
 
   if (settingsLoading || !cashRegisterEnabled) {
     return (
-      <FinancePageShell title={p.title} description={p.description}>
+      <FinancePageShell title={p.title}>
         <LoadingState title={t.common.loading} />
       </FinancePageShell>
     );
@@ -100,7 +100,7 @@ export default function AdministrationFinancePage() {
   }
 
   return (
-    <FinancePageShell title={p.title} description={p.description}>
+    <FinancePageShell title={p.title}>
       {error ? <Alert tone="error">{error}</Alert> : null}
 
       <PageSection title={p.overviewTitle} className="mb-8">

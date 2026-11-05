@@ -117,7 +117,8 @@ export async function POST(request: NextRequest) {
 
     return runWithTenantOrganizationAsync(auth.organizationId, async () => {
       const adminSettings = await getAdministrationSettings(auth.organizationId);
-      const { analysis, result } = await commitProDataFinanceImport(
+      const { analysis, result, importConflicts } =
+        await commitProDataFinanceImport(
         auth.organizationId,
         auth.session,
         buffer,
@@ -139,6 +140,7 @@ export async function POST(request: NextRequest) {
           openSalesCount: analysis.openSalesCount,
         },
         result,
+        importConflicts,
         message: `Imported ${result.invoicesUpserted} invoice(s) from Pro-Data. Register: ${result.registerPaymentsCreated} payment(s), ${result.registerCreditsCreated} credit note(s).`,
       });
     });

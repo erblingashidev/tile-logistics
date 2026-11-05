@@ -37,7 +37,11 @@ export function AdministrationFinanceNav() {
   const t = useAppMessages();
   const { cashRegisterEnabled } = useAdministrationSettings();
   const q = searchParams.get("q");
-  const querySuffix = q ? `?q=${encodeURIComponent(q)}` : "";
+  const day = searchParams.get("day");
+  const params = new URLSearchParams();
+  if (day) params.set("day", day);
+  if (q) params.set("q", q);
+  const querySuffix = params.toString() ? `?${params.toString()}` : "";
   const links = LINKS.filter(
     (link) =>
       link.href !== "/administration/finance" || cashRegisterEnabled

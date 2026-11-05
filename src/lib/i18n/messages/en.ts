@@ -125,11 +125,26 @@ export const en = {
       paymentStatus: "MENYRA E PAGESES",
       assignmentQueue: "To assign",
     },
+    workday: {
+      label: "Business day",
+    },
     search: {
-      label: "Search finance",
-      placeholder:
-        "Client name, invoice # (e.g. 26-SHV01), sales agent, location…",
-      hint: "Press Enter to search by invoice # or client. The same ?q= filter follows you across finance tabs; click any invoice # to jump to that invoice.",
+      label: "Search",
+      placeholder: "Invoice # or client",
+      hint: "",
+    },
+    duplicates: {
+      title: "Invoice # conflicts to review",
+      subtitle:
+        "Same invoice number with different amounts, clients, dates, or payment method — resolve before closing the day.",
+      loading: "Checking conflicts…",
+      none: "No conflicting invoice numbers for this day.",
+      invoice: "Invoice",
+      source: "Source",
+      date: "Date",
+      client: "Client",
+      amount: "Amount",
+      menyra: "Menyra",
     },
     callReasons: {
       "No payment or update for 2+ days":
@@ -358,8 +373,8 @@ export const en = {
     receivables: {
       navClients: "Clients",
       title: "My clients & receivables",
-      readOnly:
-        "View only — check your clients, open debts, and call list match Pro-Data. Ask management to fix payment status or methods in Administration → Finance (Excel import & To assign).",
+      readOnly: "View only. Contact management to change payment data.",
+      workday: "Business day",
       askManagement: "Ask management to change",
       requestSent: "Request sent to the activity log for management.",
       requestFailed: "Could not send request.",

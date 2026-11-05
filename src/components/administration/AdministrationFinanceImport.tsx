@@ -10,8 +10,10 @@ import {
 } from "@/components/administration/ProDataImportSettlementEditor";
 import { useAppMessages } from "@/components/i18n/LocaleProvider";
 import { settlementLabel } from "@/lib/i18n/finance-labels";
+import { FinanceDuplicateReview } from "@/components/administration/finance/FinanceDuplicateReview";
 import { Alert, Button, Card, PageSection } from "@/components/ui";
 import { useAdministrationSettings } from "@/components/administration/AdministrationSettingsProvider";
+import type { InvoiceNumberConflict } from "@/lib/administration/prodata-invoice-conflicts";
 
 function formatEuros(n: number) {
   return new Intl.NumberFormat(undefined, {
@@ -36,6 +38,9 @@ export function AdministrationFinanceImport() {
   const [settlementRows, setSettlementRows] = useState<
     Record<string, SettlementRowState>
   >({});
+  const [previewConflicts, setPreviewConflicts] = useState<
+    InvoiceNumberConflict[]
+  >([]);
 
   async function runPreview() {
     if (!file) {
@@ -48,6 +53,7 @@ export function AdministrationFinanceImport() {
     setPreview(null);
     setLastImport("");
     setSettlementRows({});
+    setPreviewConflicts([]);
     try {
       const form = new FormData();
       form.append("file", file);
@@ -59,6 +65,7 @@ export function AdministrationFinanceImport() {
       if (!res.ok) throw new Error(data.error ?? "Preview failed");
       const nextPreview = data.preview as FinanceImportPreview;
       setPreview(nextPreview);
+      setPreviewConflicts(nextPreview.prodata?.invoiceConflicts ?? []);
       if (nextPreview.prodata?.invoices) {
         const init: Record<string, SettlementRowState> = {};
         for (const inv of nextPreview.prodata.invoices) {
@@ -113,6 +120,9 @@ export function AdministrationFinanceImport() {
       if (!res.ok) throw new Error(data.error ?? "Import failed");
       setLastImport(data.message ?? "Import complete.");
       setMessage(data.message ?? "");
+      if (Array.isArray(data.importConflicts)) {
+        setPreviewConflicts(data.importConflicts);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Import failed");
     } finally {
@@ -124,8 +134,6 @@ export function AdministrationFinanceImport() {
 
   return (
     <PageSection title={ip.sectionTitle}>
-      <p className="-mt-2 mb-4 text-sm text-zinc-600">{ip.intro}</p>
-
       {error ? <Alert tone="error">{error}</Alert> : null}
       {message ? <Alert tone="info">{message}</Alert> : null}
       {lastImport ? <Alert tone="info">{lastImport}</Alert> : null}
@@ -287,6 +295,8 @@ export function AdministrationFinanceImport() {
           </table>
         </Card>
       ) : null}
+
+      <FinanceDuplicateReview conflicts={previewConflicts} />
     </PageSection>
   );
 }

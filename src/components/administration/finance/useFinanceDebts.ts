@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { ClientFinanceProfile } from "@/components/administration/AdministrationClientFinance";
 import type { FinanceDebtsPayload } from "@/components/administration/finance/finance-debt-types";
 
-export function useFinanceDebts(overdueDays = 14) {
+export function useFinanceDebts(overdueDays = 14, businessDay?: string) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [data, setData] = useState<FinanceDebtsPayload | null>(null);
@@ -14,8 +14,12 @@ export function useFinanceDebts(overdueDays = 14) {
     setLoading(true);
     setError("");
     try {
+      const params = new URLSearchParams({
+        overdueDays: String(overdueDays),
+      });
+      if (businessDay?.trim()) params.set("day", businessDay.trim());
       const res = await fetch(
-        `/api/administration/clients?overdueDays=${overdueDays}`,
+        `/api/administration/clients?${params.toString()}`,
         { cache: "no-store" }
       );
       const json = await res.json();
@@ -26,7 +30,7 @@ export function useFinanceDebts(overdueDays = 14) {
     } finally {
       setLoading(false);
     }
-  }, [overdueDays]);
+  }, [overdueDays, businessDay]);
 
   const openClient = useCallback(async (clientKey: string) => {
     setError("");

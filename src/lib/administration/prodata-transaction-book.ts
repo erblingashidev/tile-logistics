@@ -6,6 +6,10 @@ import {
   mapProDataSettlementStatus,
   type InvoiceSettlementStatus,
 } from "@/lib/administration/invoice-settlement";
+import {
+  detectExcelLineConflicts,
+  type InvoiceNumberConflict,
+} from "@/lib/administration/prodata-invoice-conflicts";
 
 /** Pro-Data “Libri i transaksioneve” / Pro-Data Export sheet. */
 export const PRODATA_TRANSACTION_BOOK_HEADERS = [
@@ -81,6 +85,7 @@ export type ProDataImportAnalysis = {
   paymentsDetected: number;
   openSalesCount: number;
   needsSettlementCount: number;
+  invoiceConflicts: InvoiceNumberConflict[];
 };
 
 function normalizeHeader(cell: unknown): string {
@@ -391,5 +396,6 @@ export function parseProDataTransactionBook(
     paymentsDetected,
     openSalesCount,
     needsSettlementCount,
+    invoiceConflicts: detectExcelLineConflicts(lines),
   };
 }

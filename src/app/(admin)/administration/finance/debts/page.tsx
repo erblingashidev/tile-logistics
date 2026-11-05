@@ -1,7 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useFinanceSearch } from "@/components/administration/finance/FinanceSearchProvider";
+import {
+  useFinanceBusinessDay,
+  useFinanceSearch,
+} from "@/components/administration/finance/FinanceSearchProvider";
+import { FinanceDuplicateReview } from "@/components/administration/finance/FinanceDuplicateReview";
 import {
   ClientReportCard,
 } from "@/components/administration/AdministrationClientFinance";
@@ -19,8 +23,9 @@ import { Alert, Card, LoadingState } from "@/components/ui";
 export default function FinanceOpenDebtsPage() {
   const t = useAppMessages();
   const p = t.finance.pages.openDebts;
-  const { loading, error, data, selected, setSelected, openClient, reload } =
-    useFinanceDebts();
+  const { businessDay } = useFinanceBusinessDay();
+  const { loading, error, data, selected, setSelected, openClient } =
+    useFinanceDebts(14, businessDay);
   const { query } = useFinanceSearch();
   const [agent, setAgent] = useState("");
   const [minDays, setMinDays] = useState("0");
@@ -48,7 +53,7 @@ export default function FinanceOpenDebtsPage() {
   const filteredTotal = filtered.reduce((s, r) => s + r.balanceDueCents, 0);
 
   return (
-    <FinancePageShell title={p.title} description={p.description}>
+    <FinancePageShell title={p.title}>
       {error ? <Alert tone="error">{error}</Alert> : null}
 
       {loading ? (
@@ -96,6 +101,8 @@ export default function FinanceOpenDebtsPage() {
       {selected ? (
         <ClientReportCard profile={selected} onClose={() => setSelected(null)} />
       ) : null}
+
+      <FinanceDuplicateReview />
     </FinancePageShell>
   );
 }

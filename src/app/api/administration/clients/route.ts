@@ -7,12 +7,15 @@ import {
   getClientFinanceProfile,
   groupDebtInvoicesByAgent,
   groupOverdueDebtsByAgent,
+  filterDebtItemsForBusinessDay,
+  filterProfilesForBusinessDay,
   listCallQueue,
   listDebts,
   listOpenDebtInvoices,
   listOverdueDebts,
   normalizeClientKey,
 } from "@/lib/services/administration-clients";
+import { normalizeBusinessDay } from "@/lib/administration/prodata-invoice-conflicts";
 
 export const runtime = "nodejs";
 
@@ -36,20 +39,37 @@ export async function GET(request: NextRequest) {
     }
 
     const clients = await buildClientFinanceProfiles(auth.organizationId);
+    const businessDay = normalizeBusinessDay(
+      request.nextUrl.searchParams.get("day")
+    );
     const overdueDays = Number(
       request.nextUrl.searchParams.get("overdueDays") ?? "14"
     );
-    const overdueDebts = listOverdueDebts(
-      clients,
-      Number.isFinite(overdueDays) ? overdueDays : 14
+    const overdueDebts = filterDebtItemsForBusinessDay(
+      listOverdueDebts(
+        clients,
+        Number.isFinite(overdueDays) ? overdueDays : 14
+      ),
+      businessDay
     );
-    const openDebtInvoices = listOpenDebtInvoices(clients);
+    const openDebtInvoices = filterDebtItemsForBusinessDay(
+      listOpenDebtInvoices(clients),
+      businessDay
+    );
+    const dayProfiles = businessDay
+      ? filterProfilesForBusinessDay(clients, businessDay)
+      : clients;
+    const debts = listDebts(dayProfiles);
+    const callList = listCallQueue(dayProfiles).filter((p) =>
+      businessDay ? p.callReasons.length > 0 : true
+    );
     return NextResponse.json({
-      clients,
-      summary: computeReceivablesSummary(clients),
-      debts: listDebts(clients),
-      callList: listCallQueue(clients),
+      clients: dayProfiles,
+      summary: computeReceivablesSummary(dayProfiles),
+      debts,
+      callList,
       openDebtInvoices,
+      businessDay,
       debtsByAgent: groupDebtInvoicesByAgent(openDebtInvoices),
       overdueDebts,
       overdueByAgent: groupOverdueDebtsByAgent(overdueDebts),

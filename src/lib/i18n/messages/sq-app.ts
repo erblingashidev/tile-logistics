@@ -127,11 +127,26 @@ export const sqApp: AppMessages = {
       paymentStatus: "MENYRA E PAGESES",
       assignmentQueue: "Për caktim",
     },
+    workday: {
+      label: "Dita e punës",
+    },
     search: {
-      label: "Kërko financat",
-      placeholder:
-        "Emri i klientit, nr. faturës (p.sh. 26-SHV01), agjenti, lokacioni…",
-      hint: "Shtyp Enter për kërkim sipas nr. faturës ose klientit. Filtri ?q= ndjek skedat; kliko nr. faturës për ta ndjekur.",
+      label: "Kërko",
+      placeholder: "Nr. faturës ose klienti",
+      hint: "",
+    },
+    duplicates: {
+      title: "Konfliktet e nr. të faturës",
+      subtitle:
+        "I njëjti nr. fature me shuma, klientë, data ose mënyra të ndryshme — rishiko para mbylljes së ditës.",
+      loading: "Duke kontrolluar konfliktet…",
+      none: "Nuk ka konflikt për këtë ditë.",
+      invoice: "Fatura",
+      source: "Burimi",
+      date: "Data",
+      client: "Klienti",
+      amount: "Shuma",
+      menyra: "Menyra",
     },
     callReasons: {
       "No payment or update for 2+ days":
@@ -361,8 +376,8 @@ export const sqApp: AppMessages = {
     receivables: {
       navClients: "Klientët",
       title: "Klientët dhe të arkëtueshmet",
-      readOnly:
-        "Vetëm lexim — kontrollo klientët, borxhet dhe listën e thirrjeve me Pro-Data. Kërko nga menaxhmenti ndryshime te Financat (import Excel & Për caktim).",
+      readOnly: "Vetëm lexim. Kontakto menaxhmentin për ndryshime.",
+      workday: "Dita e punës",
       askManagement: "Kërko ndryshim nga menaxhmenti",
       requestSent: "Kërkesa u regjistrua në log për menaxhmentin.",
       requestFailed: "Kërkesa nuk u dërgua.",

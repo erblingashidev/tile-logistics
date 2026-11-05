@@ -3,12 +3,15 @@ import { isSalesAdmin } from "@/lib/employee-categories";
 import { invoiceRowHasSalesAgent } from "@/lib/administration/validation";
 import {
   buildClientFinanceProfiles,
+  filterDebtItemsForBusinessDay,
+  filterProfilesForBusinessDay,
   listCallQueue,
   listDebts,
   listOpenDebtInvoices,
   type ClientFinanceProfile,
   type OverdueDebtItem,
 } from "@/lib/services/administration-clients";
+import { normalizeBusinessDay } from "@/lib/administration/prodata-invoice-conflicts";
 import {
   normalizePersonName,
   type SalesPortalOrderFilters,
@@ -86,13 +89,19 @@ export function filterDebtItemsForSalesAgent(
 export async function listReceivablesForSalesPortal(
   session: Extract<SessionUser, { role: "employee" }>,
   organizationId: number,
-  filters: Pick<SalesPortalOrderFilters, "salesAgentId"> = {}
+  filters: Pick<SalesPortalOrderFilters, "salesAgentId"> & {
+    businessDay?: string | null;
+  } = {}
 ) {
   const ctx = agentContextFromSession(session, filters);
+  const businessDay = normalizeBusinessDay(filters.businessDay);
   const all = await buildClientFinanceProfiles(organizationId);
-  const clients = filterProfilesForSalesAgent(all, ctx);
+  const scoped = businessDay
+    ? filterProfilesForBusinessDay(all, businessDay)
+    : all;
+  const clients = filterProfilesForSalesAgent(scoped, ctx);
   const openDebts = filterDebtItemsForSalesAgent(
-    listOpenDebtInvoices(all),
+    filterDebtItemsForBusinessDay(listOpenDebtInvoices(all), businessDay),
     ctx
   );
   const debts = listDebts(clients);

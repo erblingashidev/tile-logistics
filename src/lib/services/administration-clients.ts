@@ -12,6 +12,7 @@ import {
   type InvoiceSettlementStatus,
 } from "@/lib/administration/invoice-settlement";
 import { buildClientCallReasons } from "@/lib/administration/call-list";
+import { invoiceMatchesBusinessDay } from "@/lib/administration/prodata-invoice-conflicts";
 import {
   listProDataFinanceInvoices,
   type ProDataFinanceInvoiceRow,
@@ -49,6 +50,7 @@ export type ClientInvoiceRow = {
   paymentMethodRaw: string | null;
   paymentMethod: string | null;
   settlementPaidAmountCents: number | null;
+  prodataTransactionDate: string | null;
 };
 
 export type OverdueDebtItem = {
@@ -67,6 +69,7 @@ export type OverdueDebtItem = {
   paymentMethodRaw: string | null;
   paymentMethod: string | null;
   settlementPaidAmountCents: number | null;
+  prodataTransactionDate: string | null;
 };
 
 export type AgentDebtGroup = {
@@ -285,6 +288,7 @@ export async function buildClientFinanceProfiles(
         existing.paymentMethodRaw = settlementApply.paymentMethodRaw;
         existing.paymentMethod = ext.paymentMethod;
         existing.settlementPaidAmountCents = ext.paidAmountCents;
+        existing.prodataTransactionDate = orderDate;
       }
       if (agentName && !existing.salesAgentName) {
         existing.salesAgentName = agentName;
@@ -318,6 +322,7 @@ export async function buildClientFinanceProfiles(
         paymentMethodRaw: settlementApply?.paymentMethodRaw ?? ext.paymentMethodRaw,
         paymentMethod: ext.paymentMethod,
         settlementPaidAmountCents: ext.paidAmountCents,
+        prodataTransactionDate: orderDate,
       });
     }
     touchActivity(profile, orderDate);
@@ -351,6 +356,7 @@ export async function buildClientFinanceProfiles(
       paymentMethodRaw: existing?.paymentMethodRaw ?? null,
       paymentMethod: existing?.paymentMethod ?? null,
       settlementPaidAmountCents: existing?.settlementPaidAmountCents ?? null,
+      prodataTransactionDate: existing?.prodataTransactionDate ?? null,
     };
     if (!existing) {
       row.balanceDueCents = row.invoicedCents;
@@ -421,6 +427,7 @@ export async function buildClientFinanceProfiles(
         paymentMethodRaw: null,
         paymentMethod: null,
         settlementPaidAmountCents: null,
+        prodataTransactionDate: null,
       });
     }
   }
@@ -527,10 +534,44 @@ function debtInvoiceItems(
         paymentMethodRaw: inv.paymentMethodRaw,
         paymentMethod: inv.paymentMethod,
         settlementPaidAmountCents: inv.settlementPaidAmountCents,
+        prodataTransactionDate: inv.prodataTransactionDate,
       });
     }
   }
   return items.sort((a, b) => b.balanceDueCents - a.balanceDueCents);
+}
+
+export function filterDebtItemsForBusinessDay<
+  T extends {
+    prodataTransactionDate: string | null;
+    orderDate: string;
+  },
+>(items: T[], businessDay: string | null): T[] {
+  const day = businessDay?.trim().slice(0, 10);
+  if (!day) return items;
+  return items.filter((row) =>
+    invoiceMatchesBusinessDay(row.prodataTransactionDate, row.orderDate, day)
+  );
+}
+
+export function filterProfilesForBusinessDay(
+  profiles: ClientFinanceProfile[],
+  businessDay: string | null
+): ClientFinanceProfile[] {
+  const day = businessDay?.trim().slice(0, 10);
+  if (!day) return profiles;
+  return profiles
+    .map((p) => ({
+      ...p,
+      invoices: p.invoices.filter((inv) =>
+        invoiceMatchesBusinessDay(
+          inv.prodataTransactionDate,
+          inv.orderDate,
+          day
+        )
+      ),
+    }))
+    .filter((p) => p.invoices.some((inv) => inv.invoiceNumber.trim()));
 }
 
 /** Every open invoice with balance due (traceable invoice + agent). */

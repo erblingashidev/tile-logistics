@@ -9,6 +9,7 @@ import {
 } from "@/components/portal/PortalShell";
 import { useAppMessages } from "@/components/i18n/LocaleProvider";
 import { callReasonLabel } from "@/lib/i18n/finance-labels";
+import { todayBusinessDay } from "@/lib/administration/prodata-invoice-conflicts";
 import { Alert, Button, EmptyState, Input, LoadingState } from "@/components/ui";
 
 type Tab = "all" | "debts" | "call";
@@ -53,12 +54,16 @@ export default function SalesClientsPage() {
   const [requestText, setRequestText] = useState("");
   const [requestBusy, setRequestBusy] = useState(false);
   const [requestOk, setRequestOk] = useState(false);
+  const [businessDay, setBusinessDay] = useState(() => todayBusinessDay());
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/sales/receivables", { cache: "no-store" });
+      const res = await fetch(
+        `/api/sales/receivables?day=${encodeURIComponent(businessDay)}`,
+        { cache: "no-store" }
+      );
       const json = (await res.json()) as ReceivablesPayload & { error?: string };
       if (!res.ok) throw new Error(json.error ?? r.loading);
       setData(json);
@@ -67,7 +72,7 @@ export default function SalesClientsPage() {
     } finally {
       setLoading(false);
     }
-  }, [r.loading]);
+  }, [r.loading, businessDay]);
 
   useEffect(() => {
     void load();
@@ -107,6 +112,19 @@ export default function SalesClientsPage() {
   return (
     <div className="space-y-4">
       <PortalSectionTitle>{r.title}</PortalSectionTitle>
+      <div className="flex flex-wrap items-end gap-3">
+        <div>
+          <label className="text-xs font-medium text-zinc-600">
+            {r.workday}
+          </label>
+          <Input
+            type="date"
+            className="mt-1 w-40"
+            value={businessDay}
+            onChange={(e) => setBusinessDay(e.target.value)}
+          />
+        </div>
+      </div>
       <Alert tone="info">{r.readOnly}</Alert>
 
       <PortalCard className="space-y-3 p-4">

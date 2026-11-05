@@ -16,6 +16,7 @@ export type DebtInvoiceLine = {
   paymentMethodRaw: string | null;
   paymentMethod: string | null;
   settlementPaidAmountCents: number | null;
+  prodataTransactionDate: string | null;
 };
 
 export type AgentDebtGroup = {

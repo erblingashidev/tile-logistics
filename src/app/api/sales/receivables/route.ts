@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
       async () =>
         listReceivablesForSalesPortal(auth.session, organizationId, {
           salesAgentId: salesAgentIdRaw ? Number(salesAgentIdRaw) : undefined,
+          businessDay: sp.get("day"),
         })
     );
     return NextResponse.json(payload, {

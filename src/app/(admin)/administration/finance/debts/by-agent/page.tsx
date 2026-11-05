@@ -3,9 +3,13 @@
 import { useMemo, useState } from "react";
 import { ClientReportCard } from "@/components/administration/AdministrationClientFinance";
 import { formatAdminMoney } from "@/components/administration/AdministrationLedgerTable";
+import { FinanceDuplicateReview } from "@/components/administration/finance/FinanceDuplicateReview";
 import { FinancePageShell } from "@/components/administration/finance/FinancePageShell";
 import { OpenDebtsTable } from "@/components/administration/finance/OpenDebtsTable";
-import { useFinanceSearch } from "@/components/administration/finance/FinanceSearchProvider";
+import {
+  useFinanceBusinessDay,
+  useFinanceSearch,
+} from "@/components/administration/finance/FinanceSearchProvider";
 import { useFinanceDebts } from "@/components/administration/finance/useFinanceDebts";
 import {
   debtInvoiceMatchesSearch,
@@ -17,8 +21,9 @@ import { Alert, Button, Card, EmptyState, LoadingState, Select } from "@/compone
 export default function FinanceDebtsByAgentPage() {
   const t = useAppMessages();
   const p = t.finance.pages.byAgent;
-  const { loading, error, data, selected, setSelected, openClient, reload } =
-    useFinanceDebts();
+  const { businessDay } = useFinanceBusinessDay();
+  const { loading, error, data, selected, setSelected, openClient } =
+    useFinanceDebts(14, businessDay);
   const { query } = useFinanceSearch();
   const [agentFilter, setAgentFilter] = useState("");
 
@@ -45,7 +50,7 @@ export default function FinanceDebtsByAgentPage() {
   }, [activeGroup, query]);
 
   return (
-    <FinancePageShell title={p.title} description={p.description}>
+    <FinancePageShell title={p.title}>
       {error ? <Alert tone="error">{error}</Alert> : null}
 
       {loading ? (
@@ -122,6 +127,8 @@ export default function FinanceDebtsByAgentPage() {
       {selected ? (
         <ClientReportCard profile={selected} onClose={() => setSelected(null)} />
       ) : null}
+
+      <FinanceDuplicateReview />
     </FinancePageShell>
   );
 }
