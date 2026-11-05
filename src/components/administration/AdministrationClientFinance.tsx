@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { formatAdminMoney } from "@/components/administration/AdministrationLedgerTable";
 import { InvoiceFinanceLink } from "@/components/administration/finance/InvoiceFinanceLink";
+import type { ClientFinanceActivityEntry } from "@/lib/services/client-finance-activity";
+import { settlementStatusLabel } from "@/lib/administration/invoice-settlement";
+import { useAppMessages } from "@/components/i18n/LocaleProvider";
 import { Button, Card, EmptyState, LoadingState } from "@/components/ui";
 import { format } from "date-fns";
 
@@ -29,7 +32,12 @@ export type ClientFinanceProfile = {
     salesEmployeeId: number | null;
     salesAgentName: string | null;
     daysOutstanding: number;
+    settlementStatus?: string | null;
+    paymentMethodRaw?: string | null;
+    paymentMethod?: string | null;
+    prodataTransactionDate?: string | null;
   }>;
+  activityLog?: ClientFinanceActivityEntry[];
   registerLines: Array<{
     id: number;
     recordedAt: string;
@@ -51,6 +59,42 @@ function methodLabel(id: string | null) {
   return id.replace(/_/g, " ");
 }
 
+function buildFallbackActivity(
+  profile: ClientFinanceProfile
+): ClientFinanceActivityEntry[] {
+  return [
+    ...profile.invoices.map((inv) => ({
+      id: `inv-${inv.invoiceNumber}`,
+      occurredAt: inv.orderDate
+        ? `${inv.orderDate.slice(0, 10)}T12:00:00.000Z`
+        : "",
+      kind: "order" as const,
+      invoiceNumber: inv.invoiceNumber,
+      title: `Invoice ${inv.invoiceNumber}`,
+      detail: `${inv.orderStatus ?? "—"} · ${inv.location ?? "—"}`,
+      amountCents: inv.invoicedCents,
+      actorLabel: inv.salesAgentName,
+    })),
+    ...profile.registerLines.map((line) => ({
+      id: `reg-${line.id}`,
+      occurredAt: line.recordedAt,
+      kind:
+        line.kind === "payment"
+          ? ("register_payment" as const)
+          : ("register_other" as const),
+      invoiceNumber: line.invoiceReference,
+      title: line.kind.replace(/_/g, " "),
+      detail: [methodLabel(line.paymentMethod), line.purpose]
+        .filter(Boolean)
+        .join(" · "),
+      amountCents: line.amountCents,
+      actorLabel: null,
+    })),
+  ]
+    .filter((e) => e.occurredAt)
+    .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
+}
+
 export function ClientReportCard({
   profile,
   onClose,
@@ -58,24 +102,11 @@ export function ClientReportCard({
   profile: ClientFinanceProfile;
   onClose: () => void;
 }) {
-  const timeline = [
-    ...profile.invoices.map((inv) => ({
-      sortAt: inv.orderDate ?? "",
-      type: "order" as const,
-      label: `Order ${inv.invoiceNumber}`,
-      detail: `${inv.orderStatus ?? "—"} · ${inv.location ?? "—"}`,
-      amountCents: inv.invoicedCents,
-      extra: inv.balanceDueCents > 0 ? `Due ${formatAdminMoney(inv.balanceDueCents)}` : "Paid",
-    })),
-    ...profile.registerLines.map((line) => ({
-      sortAt: line.recordedAt,
-      type: "register" as const,
-      label: `${line.kind.replace(/_/g, " ")}${line.invoiceReference ? ` · ${line.invoiceReference}` : ""}`,
-      detail: [methodLabel(line.paymentMethod), line.purpose].filter(Boolean).join(" · "),
-      amountCents: line.amountCents,
-      extra: "",
-    })),
-  ].sort((a, b) => b.sortAt.localeCompare(a.sortAt));
+  const t = useAppMessages();
+  const log = t.finance.clientCard;
+  const activity =
+    profile.activityLog ??
+    buildFallbackActivity(profile);
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 print:relative print:inset-auto print:bg-white print:p-0">
@@ -83,7 +114,7 @@ export function ClientReportCard({
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3 print:hidden">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-              Client report
+              {log.title}
             </p>
             <h3 className="text-xl font-semibold text-zinc-900">
               {profile.displayName}
@@ -101,25 +132,25 @@ export function ClientReportCard({
 
         <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-lg border border-zinc-200 p-3">
-            <p className="text-xs text-zinc-500">Invoiced</p>
+            <p className="text-xs text-zinc-500">{log.invoiced}</p>
             <p className="text-lg font-semibold">
               {formatAdminMoney(profile.totalInvoicedCents)}
             </p>
           </div>
           <div className="rounded-lg border border-zinc-200 p-3">
-            <p className="text-xs text-zinc-500">Paid (register)</p>
+            <p className="text-xs text-zinc-500">{log.paidRegister}</p>
             <p className="text-lg font-semibold text-emerald-700">
               {formatAdminMoney(profile.totalPaidCents)}
             </p>
           </div>
           <div className="rounded-lg border border-zinc-200 p-3">
-            <p className="text-xs text-zinc-500">Balance due</p>
+            <p className="text-xs text-zinc-500">{log.balanceDue}</p>
             <p className="text-lg font-semibold text-red-700">
               {formatAdminMoney(profile.balanceDueCents)}
             </p>
           </div>
           <div className="rounded-lg border border-zinc-200 p-3">
-            <p className="text-xs text-zinc-500">On account (unpaid)</p>
+            <p className="text-xs text-zinc-500">{log.onAccount}</p>
             <p className="text-lg font-semibold">
               {formatAdminMoney(profile.unpaidOnAccountCents)}
             </p>
@@ -129,7 +160,7 @@ export function ClientReportCard({
         {profile.paymentMethodTotals.length > 0 ? (
           <div className="mb-6">
             <p className="mb-2 text-sm font-medium text-zinc-900">
-              Payments by method
+              {log.paymentsByMethod}
             </p>
             <ul className="flex flex-wrap gap-3 text-sm text-zinc-600">
               {profile.paymentMethodTotals.map((row) => (
@@ -145,7 +176,7 @@ export function ClientReportCard({
           </div>
         ) : null}
 
-        <p className="mb-2 text-sm font-medium text-zinc-900">Invoices</p>
+        <p className="mb-2 text-sm font-medium text-zinc-900">{log.invoices}</p>
         <div className="mb-6 overflow-x-auto rounded-lg border border-zinc-200">
           <table className="min-w-full text-left text-sm">
             <thead className="bg-zinc-50 text-xs uppercase text-zinc-500">
@@ -153,8 +184,10 @@ export function ClientReportCard({
                 <th className="px-3 py-2">Invoice</th>
                 <th className="px-3 py-2">Date</th>
                 <th className="px-3 py-2">Agent</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Age</th>
+                <th className="px-3 py-2">{log.orderStatus}</th>
+                <th className="px-3 py-2">{log.settlement}</th>
+                <th className="px-3 py-2">{log.menyra}</th>
+                <th className="px-3 py-2">{log.age}</th>
                 <th className="px-3 py-2">Invoiced</th>
                 <th className="px-3 py-2">Paid</th>
                 <th className="px-3 py-2">Due</th>
@@ -171,6 +204,13 @@ export function ClientReportCard({
                   </td>
                   <td className="px-3 py-2">{inv.salesAgentName ?? "—"}</td>
                   <td className="px-3 py-2">{inv.orderStatus ?? "—"}</td>
+                  <td className="px-3 py-2 text-xs">
+                    {settlementStatusLabel(inv.settlementStatus)}
+                  </td>
+                  <td className="px-3 py-2 text-xs">
+                    {inv.paymentMethodRaw?.trim() ||
+                      methodLabel(inv.paymentMethod ?? null)}
+                  </td>
                   <td className="px-3 py-2">{inv.daysOutstanding}d</td>
                   <td className="px-3 py-2">{formatAdminMoney(inv.invoicedCents)}</td>
                   <td className="px-3 py-2">{formatAdminMoney(inv.paidCents)}</td>
@@ -183,26 +223,37 @@ export function ClientReportCard({
           </table>
         </div>
 
-        <p className="mb-2 text-sm font-medium text-zinc-900">Activity timeline</p>
-        <ul className="max-h-64 space-y-2 overflow-y-auto text-sm">
-          {timeline.map((item, i) => (
-            <li
-              key={`${item.type}-${i}`}
-              className="flex flex-wrap items-baseline justify-between gap-2 rounded border border-zinc-100 px-3 py-2"
-            >
-              <div>
-                <p className="font-medium text-zinc-800">{item.label}</p>
-                <p className="text-xs text-zinc-500">{item.detail}</p>
-              </div>
-              <div className="text-right">
-                <p className="font-medium">{formatAdminMoney(item.amountCents)}</p>
-                {item.extra ? (
-                  <p className="text-xs text-red-600">{item.extra}</p>
-                ) : null}
-              </div>
-            </li>
-          ))}
-        </ul>
+        <p className="mb-2 text-sm font-medium text-zinc-900">{log.activity}</p>
+        {activity.length === 0 ? (
+          <EmptyState title={log.noActivity} />
+        ) : (
+          <ul className="max-h-96 space-y-2 overflow-y-auto text-sm">
+            {activity.map((item) => (
+              <li
+                key={item.id}
+                className="flex flex-wrap items-baseline justify-between gap-2 rounded border border-zinc-100 px-3 py-2"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-zinc-800">{item.title}</p>
+                  <p className="text-xs text-zinc-500">{item.detail}</p>
+                  <p className="text-xs text-zinc-400">
+                    {item.occurredAt
+                      ? format(new Date(item.occurredAt), "d MMM yyyy · HH:mm")
+                      : "—"}
+                    {item.actorLabel ? ` · ${item.actorLabel}` : ""}
+                  </p>
+                </div>
+                <div className="text-right shrink-0">
+                  {item.amountCents != null ? (
+                    <p className="font-medium">
+                      {formatAdminMoney(item.amountCents)}
+                    </p>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </Card>
     </div>
   );

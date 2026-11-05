@@ -22,7 +22,10 @@ import {
   adminRegisterTransactions,
 } from "@/lib/db/schema";
 import type { SessionUser } from "@/lib/auth/session";
-import { createRegisterTransaction } from "@/lib/services/administration-register";
+import {
+  appendRegisterAudit,
+  createRegisterTransaction,
+} from "@/lib/services/administration-register";
 import {
   detectStoredImportConflicts,
   mergeInvoiceConflicts,
@@ -134,7 +137,8 @@ export async function listProDataFinanceInvoices(
 export async function updateProDataInvoiceSettlement(
   organizationId: number,
   invoiceNumber: string,
-  patch: ProDataInvoiceSettlementOverride
+  patch: ProDataInvoiceSettlementOverride,
+  session?: SessionUser
 ) {
   const db = await getControlPlaneDb();
   if (!isInvoiceSettlementStatus(patch.settlementStatus)) {
@@ -146,6 +150,21 @@ export async function updateProDataInvoiceSettlement(
   ) {
     throw new Error("Enter the amount paid or prepaid for partial status.");
   }
+  const trimmed = invoiceNumber.trim();
+  const existing = await db
+    .select()
+    .from(financeProdataInvoices)
+    .where(
+      and(
+        eq(financeProdataInvoices.organizationId, organizationId),
+        eq(financeProdataInvoices.invoiceNumber, trimmed)
+      )
+    )
+    .limit(1);
+  const row = existing[0];
+  if (!row) {
+    throw new Error("Invoice not found in Pro-Data import data.");
+  }
   const ts = new Date().toISOString();
   const set: Record<string, unknown> = {
     settlementStatus: patch.settlementStatus,
@@ -155,17 +174,37 @@ export async function updateProDataInvoiceSettlement(
   if (patch.paymentMethod !== undefined) {
     set.paymentMethod = patch.paymentMethod;
   }
-  const updated = await db
+  await db
     .update(financeProdataInvoices)
     .set(set)
-    .where(
-      and(
-        eq(financeProdataInvoices.organizationId, organizationId),
-        eq(financeProdataInvoices.invoiceNumber, invoiceNumber.trim())
-      )
+    .where(eq(financeProdataInvoices.id, row.id));
+
+  if (session) {
+    await appendRegisterAudit(
+      organizationId,
+      "settlement_updated",
+      "finance_invoice",
+      row.id,
+      {
+        invoiceNumber: trimmed,
+        before: {
+          settlementStatus: row.settlementStatus,
+          paidAmountCents: row.paidAmountCents,
+          paymentMethod: row.paymentMethod,
+          paymentMethodRaw: row.paymentMethodRaw,
+        },
+        after: {
+          settlementStatus: patch.settlementStatus,
+          paidAmountCents: patch.paidAmountCents ?? null,
+          paymentMethod:
+            patch.paymentMethod !== undefined
+              ? patch.paymentMethod
+              : row.paymentMethod,
+          paymentMethodRaw: row.paymentMethodRaw,
+        },
+      },
+      session
     );
-  if ((updated.rowsAffected ?? 0) === 0) {
-    throw new Error("Invoice not found in Pro-Data import data.");
   }
 }
 
@@ -185,7 +224,9 @@ async function upsertProDataInvoice(
   organizationId: number,
   batchId: number,
   inv: ProDataInvoiceAggregate,
-  ts: string
+  ts: string,
+  session?: SessionUser,
+  importFileName?: string
 ) {
   const db = await getControlPlaneDb();
   const existing = await db
@@ -217,13 +258,39 @@ async function upsertProDataInvoice(
     updatedAt: ts,
   };
 
+  let invoiceRowId = existing[0]?.id;
   if (existing[0]) {
     await db
       .update(financeProdataInvoices)
       .set(values)
       .where(eq(financeProdataInvoices.id, existing[0].id));
   } else {
-    await db.insert(financeProdataInvoices).values(values);
+    const inserted = await db
+      .insert(financeProdataInvoices)
+      .values(values)
+      .returning({ id: financeProdataInvoices.id });
+    invoiceRowId = inserted[0]?.id;
+  }
+
+  if (session && invoiceRowId != null) {
+    await appendRegisterAudit(
+      organizationId,
+      "finance_invoice_import",
+      "finance_invoice",
+      invoiceRowId,
+      {
+        invoiceNumber: inv.invoiceNumber,
+        fileName: importFileName ?? null,
+        batchId,
+        netValueCents: inv.netValueCents,
+        settlementStatus: inv.settlementStatus,
+        paidAmountCents: inv.paidAmountCents,
+        paymentMethod: inv.paymentMethod,
+        paymentMethodRaw: inv.paymentMethodRaw,
+        transactionDate: inv.transactionDate,
+      },
+      session
+    );
   }
 }
 
@@ -385,7 +452,14 @@ export async function commitProDataFinanceImport(
         `Invoice ${inv.invoiceNumber}: enter paid amount for partial settlement.`
       );
     }
-    await upsertProDataInvoice(organizationId, batchId, inv, ts);
+    await upsertProDataInvoice(
+      organizationId,
+      batchId,
+      inv,
+      ts,
+      session,
+      fileName
+    );
     result.invoicesUpserted += 1;
     if (syncRegister) {
       try {

@@ -136,6 +136,7 @@ export function FinanceSearchProvider({ children }: { children: ReactNode }) {
 
 export function FinanceSearchBar() {
   const t = useAppMessages();
+  const pathname = usePathname();
   const { query, clearQuery } = useFinanceSearch();
   const { businessDay, setBusinessDay } = useFinanceBusinessDay();
   const { replaceParams } = useFinanceUrlParams();
@@ -158,8 +159,14 @@ export function FinanceSearchBar() {
     });
   }
 
+  const onDebtsRoute = pathname.includes("/administration/finance/debts");
+
   return (
-    <div className="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-zinc-200 bg-white px-4 py-3">
+    <div className="mb-4 rounded-lg border border-zinc-200 bg-white px-4 py-3">
+      {onDebtsRoute && t.finance.workday.scopeNote ? (
+        <p className="mb-3 text-xs text-zinc-500">{t.finance.workday.scopeNote}</p>
+      ) : null}
+      <div className="flex flex-wrap items-end gap-3">
       <div>
         <label className="text-xs font-medium text-zinc-600">
           {t.finance.workday.label}
@@ -199,6 +206,7 @@ export function FinanceSearchBar() {
             if (draft.trim() !== query.trim()) commitQuery(draft);
           }}
         />
+      </div>
       </div>
     </div>
   );

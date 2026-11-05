@@ -129,6 +129,23 @@ export const sqApp: AppMessages = {
     },
     workday: {
       label: "Dita e punës",
+      scopeNote:
+        "Dita vlen për import Excel dhe Për caktim. Borxhet e hapura mbajnë çdo faturë të papaguar derisa të mbyllet.",
+    },
+    clientCard: {
+      title: "Raporti i klientit",
+      invoiced: "Faturuar",
+      paidRegister: "Paguar (arka)",
+      balanceDue: "Borxh i mbetur",
+      onAccount: "Në llogari (papaguar)",
+      paymentsByMethod: "Pagesat sipas mënyrës",
+      invoices: "Faturat",
+      orderStatus: "Porosia",
+      settlement: "Statusi",
+      menyra: "Menyra",
+      age: "Kohë",
+      activity: "Regjistri i aktivitetit",
+      noActivity: "Ende pa aktivitet të regjistruar për këtë klient.",
     },
     search: {
       label: "Kërko",

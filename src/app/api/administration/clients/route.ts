@@ -7,7 +7,6 @@ import {
   getClientFinanceProfile,
   groupDebtInvoicesByAgent,
   groupOverdueDebtsByAgent,
-  filterProfilesForBusinessDay,
   listCallQueue,
   listDebts,
   listOpenDebtInvoices,
@@ -15,6 +14,7 @@ import {
   normalizeClientKey,
 } from "@/lib/services/administration-clients";
 import { normalizeBusinessDay } from "@/lib/administration/prodata-invoice-conflicts";
+import { buildClientFinanceActivityLog } from "@/lib/services/client-finance-activity";
 
 export const runtime = "nodejs";
 
@@ -34,7 +34,11 @@ export async function GET(request: NextRequest) {
       if (!profile) {
         return NextResponse.json({ error: "Client not found" }, { status: 404 });
       }
-      return NextResponse.json({ profile });
+      const activityLog = await buildClientFinanceActivityLog(
+        auth.organizationId,
+        profile
+      );
+      return NextResponse.json({ profile: { ...profile, activityLog } });
     }
 
     const clients = await buildClientFinanceProfiles(auth.organizationId);
@@ -44,21 +48,16 @@ export async function GET(request: NextRequest) {
     const overdueDays = Number(
       request.nextUrl.searchParams.get("overdueDays") ?? "14"
     );
-    const dayProfiles = businessDay
-      ? filterProfilesForBusinessDay(clients, businessDay)
-      : clients;
     const overdueDebts = listOverdueDebts(
-      dayProfiles,
+      clients,
       Number.isFinite(overdueDays) ? overdueDays : 14
     );
-    const openDebtInvoices = listOpenDebtInvoices(dayProfiles);
-    const debts = listDebts(dayProfiles);
-    const callList = listCallQueue(dayProfiles).filter((p) =>
-      businessDay ? p.callReasons.length > 0 : true
-    );
+    const openDebtInvoices = listOpenDebtInvoices(clients);
+    const debts = listDebts(clients);
+    const callList = listCallQueue(clients);
     return NextResponse.json({
-      clients: dayProfiles,
-      summary: computeReceivablesSummary(dayProfiles),
+      clients,
+      summary: computeReceivablesSummary(clients),
       debts,
       callList,
       openDebtInvoices,

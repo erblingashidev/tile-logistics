@@ -52,20 +52,25 @@ export async function PATCH(request: NextRequest) {
 
   try {
     return runWithTenantOrganizationAsync(auth.organizationId, async () => {
-      await updateProDataInvoiceSettlement(auth.organizationId, invoiceNumber, {
+      await updateProDataInvoiceSettlement(
+        auth.organizationId,
         invoiceNumber,
-        settlementStatus,
-        paidAmountCents:
-          paidAmountCents != null && Number.isFinite(paidAmountCents)
-            ? Math.round(paidAmountCents)
-            : null,
-        paymentMethod:
-          paymentMethod === undefined
-            ? undefined
-            : paymentMethod
-              ? (paymentMethod as AdminPaymentMethod)
+        {
+          invoiceNumber,
+          settlementStatus,
+          paidAmountCents:
+            paidAmountCents != null && Number.isFinite(paidAmountCents)
+              ? Math.round(paidAmountCents)
               : null,
-      });
+          paymentMethod:
+            paymentMethod === undefined
+              ? undefined
+              : paymentMethod
+                ? (paymentMethod as AdminPaymentMethod)
+                : null,
+        },
+        auth.session
+      );
       return NextResponse.json({ ok: true });
     });
   } catch (err) {

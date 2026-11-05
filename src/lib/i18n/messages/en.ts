@@ -127,6 +127,23 @@ export const en = {
     },
     workday: {
       label: "Business day",
+      scopeNote:
+        "Day filter applies to Excel import and To assign. Open debts list every unpaid invoice until it is settled.",
+    },
+    clientCard: {
+      title: "Client report",
+      invoiced: "Invoiced",
+      paidRegister: "Paid (register)",
+      balanceDue: "Balance due",
+      onAccount: "On account (unpaid)",
+      paymentsByMethod: "Payments by method",
+      invoices: "Invoices",
+      orderStatus: "Order",
+      settlement: "Settlement",
+      menyra: "Menyra",
+      age: "Age",
+      activity: "Activity log",
+      noActivity: "No recorded activity for this client yet.",
     },
     search: {
       label: "Search",
