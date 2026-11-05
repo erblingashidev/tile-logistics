@@ -5,20 +5,16 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useAppMessages } from "@/components/i18n/LocaleProvider";
 
 const LINKS = [
+  { href: "/administration/finance/imports", key: "excelImport" as const },
   {
     href: "/administration/finance/assignments",
     key: "assignmentQueue" as const,
   },
-  { href: "/administration/finance/reports", key: "reports" as const },
   { href: "/administration/finance/debts", key: "openDebts" as const },
   { href: "/administration/finance/debts/by-agent", key: "byAgent" as const },
   { href: "/administration/finance/debts/by-client", key: "byClient" as const },
   { href: "/administration/finance", key: "registerLedger" as const },
-  { href: "/administration/finance/imports", key: "excelImport" as const },
-  {
-    href: "/administration/finance/settlements",
-    key: "paymentStatus" as const,
-  },
+  { href: "/administration/finance/reports", key: "reports" as const },
 ] as const;
 
 function isActive(pathname: string, href: string) {

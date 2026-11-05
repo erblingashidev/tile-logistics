@@ -14,6 +14,8 @@ export type DebtInvoiceLine = {
   location: string | null;
   settlementStatus: string | null;
   paymentMethodRaw: string | null;
+  paymentMethod: string | null;
+  settlementPaidAmountCents: number | null;
 };
 
 export type AgentDebtGroup = {

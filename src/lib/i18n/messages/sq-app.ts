@@ -122,7 +122,29 @@ export const sqApp: AppMessages = {
       label: "Kërko financat",
       placeholder:
         "Emri i klientit, nr. faturës (p.sh. 26-SHV01), agjenti, lokacioni…",
-      hint: "Shtyp Enter për kërkim. Përputhet me klientin, faturën, agjentin, lokacionin dhe shënimet e arkës. Filtri mbetet në URL kur ndërron skedat e financave.",
+      hint: "Shtyp Enter për kërkim sipas nr. faturës ose klientit. Filtri ?q= ndjek skedat; kliko nr. faturës për ta ndjekur.",
+    },
+    workflow: {
+      invoiceKey:
+        "Numri i faturës është çelësi unik në import, caktim, borxhe të hapura dhe rreshtat e arkës.",
+      activeInvoice: "Ndjekja e faturës {invoice}:",
+      jump: {
+        debts: "Borxhet e hapura",
+        assign: "Për caktim",
+        register: "Arka & libri",
+      },
+      pages: {
+        import:
+          "Hapi 1 — Ngarko Excel Pro-Data dhe vendos MENYRA E PAGESES para importit. Çdo bosh shkon te Për caktim.",
+        assignments:
+          "Hapi 2 — Vendi i vetëm për status pagese dhe mënyrë në arkë (një rresht për faturë).",
+        openDebts:
+          "Bilancet e mbetura sipas nr. faturës. Statusin e ndryshon te Për caktim; pagesat e arkës përditësohen këtu.",
+        byAgent: "Borxhet e hapura të grupuara sipas agjentit.",
+        byClient: "Totalet për klient dhe lista e thirrjeve; detajet e faturës te Borxhet e hapura.",
+        register: "KPI arkë, mbyllje turni dhe libër i lidhur me nr. faturës.",
+        reports: "Totalet e periudhës për arkën dhe të arkëtueshmet.",
+      },
     },
     common: {
       from: "Nga",
@@ -135,7 +157,7 @@ export const sqApp: AppMessages = {
       openDebts: {
         title: "Borxhet e hapura",
         description:
-          "Çdo faturë me bilanc të mbetur (lidhur me porositë dhe pagesat në arkë). Përdor filtrat ose hap Borxhet sipas agjentit / klientit.",
+          "Pamje vetëm leximi për çdo nr. faturë me bilanc (porosi + Pro-Data + arkë). Kliko faturën ose kërko; statusin e caktosh te Për caktim.",
         loading: "Duke ngarkuar borxhet…",
         allOpenDebt: "Borxhi total i hapur",
         openInvoices: "Fatura të hapura",
@@ -211,22 +233,18 @@ export const sqApp: AppMessages = {
       assignmentQueue: {
         title: "Cakto mënyrën dhe statusin e pagesës",
         description:
-          "Punoni faturat e importuara që ende nuk kanë status pagese dhe mënyrë në arkë. Rreshti zhduket pasi ruani të dyja.",
+          "Vendi i vetëm për MENYRA E PAGESES: çdo nr. faturë duhet status dhe mënyrë në arkë një herë. Rreshti largohet kur përfundon.",
         loading: "Duke ngarkuar listën e caktimit…",
         allDone: "Gjithçka u caktua — nuk ka më rreshta.",
         allDoneHint:
           "Rreshta të rinj shfaqen kur importoni Excel Pro-Data me MENYRA E PAGESES bosh ose pa status/mënyrë.",
+        noSearchMatch: "Asnjë faturë në pritje nuk përputhet me kërkimin.",
+        noSearchMatchHint:
+          "Provo nr. të plotë të faturës, ose pastro kërkimin për listën e plotë.",
         banner:
           "{count} fatura duhen status pagese dhe mënyrë në arkë para se të largohen nga lista.",
         action: "Ruaj",
         needPaymentMethod: "Zgjidh mënyrën në arkë (Arkë, Kartë, etj.).",
-      },
-      settlements: {
-        title: "MENYRA E PAGESES — statusi i pagesës",
-        description:
-          "Vendos paguar plotësisht, pjesërisht (me shumën €), parapaguar, i papaguar ose me afat për çdo faturë Pro-Data. Kjo ndan borxhet nga të paguarat plotë.",
-        alsoHint:
-          "Mund t’i vendosësh edhe gjatë importit Excel (pas Parashikimit), ose te Borxhet e hapura për fatura me bilanc.",
       },
     },
     filters: {
@@ -251,6 +269,7 @@ export const sqApp: AppMessages = {
       clientCard: "Karta e klientit",
       open: "Hap",
       noOpenDebts: "Asnjë borxh i hapur nuk përputhet me filtrat.",
+      assignPaymentStatus: "Cakto status & mënyrë →",
       excelMenyra: "Menyra Excel:",
     },
     settlement: {

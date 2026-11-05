@@ -120,7 +120,30 @@ export const en = {
       label: "Search finance",
       placeholder:
         "Client name, invoice # (e.g. 26-SHV01), sales agent, location…",
-      hint: "Press Enter to search. Matches client, invoice number, agent, order location, and register notes. Filter applies on this page and stays in the URL when you switch finance tabs.",
+      hint: "Press Enter to search by invoice # or client. The same ?q= filter follows you across finance tabs; click any invoice # to jump to that invoice.",
+    },
+    workflow: {
+      invoiceKey:
+        "Invoice number is the unique key across import, assignment, open debts, and register ledger lines.",
+      activeInvoice: "Tracking invoice {invoice}:",
+      jump: {
+        debts: "Open debts",
+        assign: "To assign",
+        register: "Register & ledger",
+      },
+      pages: {
+        import:
+          "Step 1 — Load Pro-Data Excel and set MENYRA E PAGESES on new rows before commit. Anything still empty goes to To assign.",
+        assignments:
+          "Step 2 — Only place to set settlement status and register payment method for imported invoices (one row per invoice #).",
+        openDebts:
+          "Monitor balances due per invoice #. Edit payment status on To assign; register payments appear here automatically.",
+        byAgent: "Same open debts grouped by sales agent for follow-up.",
+        byClient: "Client totals and call list; drill into invoice # on Open debts.",
+        register:
+          "Cash register KPIs, shift close, and ledger lines linked by invoice #.",
+        reports: "Period totals for register activity and receivables.",
+      },
     },
     common: {
       from: "From",
@@ -133,7 +156,7 @@ export const en = {
       openDebts: {
         title: "Open debts",
         description:
-          "Every invoice with a remaining balance (matched to orders and register payments). Use filters or open Debts by agent / by client for grouped views.",
+          "Read-only view of every invoice # with a remaining balance (orders + Pro-Data + register). Click an invoice # or search to track it; assign status on To assign.",
         loading: "Loading open debts…",
         allOpenDebt: "All open debt",
         openInvoices: "Open invoices",
@@ -209,22 +232,18 @@ export const en = {
       assignmentQueue: {
         title: "Assign payment method & status",
         description:
-          "Work through imported invoices that still need a settlement status and register payment method. Each row disappears after you save both.",
+          "Single workspace for MENYRA E PAGESES: each imported invoice # needs settlement status and register method once. Rows drop off when complete.",
         loading: "Loading assignment queue…",
         allDone: "All caught up — nothing left to assign.",
         allDoneHint:
           "New rows appear when you import Pro-Data Excel with empty MENYRA E PAGESES or unset status/method.",
+        noSearchMatch: "No pending invoices match this search.",
+        noSearchMatchHint:
+          "Try the full invoice number, or clear search to see the full queue.",
         banner:
           "{count} invoice(s) need payment status and register method before they leave this list.",
         action: "Save",
         needPaymentMethod: "Choose a register payment method (Cash, Card, etc.).",
-      },
-      settlements: {
-        title: "MENYRA E PAGESES — payment status",
-        description:
-          "Set paid entirely, paid partially (with € amount), prepaid, unpaid, or on terms for every imported Pro-Data invoice. This drives open debts vs fully paid.",
-        alsoHint:
-          "You can also set these values when importing Excel (after Preview), or on Open debts for invoices that still have a balance.",
       },
     },
     filters: {
@@ -250,6 +269,7 @@ export const en = {
       open: "Open",
       noOpenDebts: "No open debts match these filters.",
       excelMenyra: "Excel Menyra:",
+      assignPaymentStatus: "Assign status & method →",
     },
     settlement: {
       editorTitle: "MENYRA E PAGESES → payment status in our system",

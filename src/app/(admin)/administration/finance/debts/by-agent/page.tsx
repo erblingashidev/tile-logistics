@@ -113,7 +113,6 @@ export default function FinanceDebtsByAgentPage() {
               <OpenDebtsTable
                 rows={tableRows}
                 onOpenClient={(k) => void openClient(k)}
-                onSettlementSaved={() => void reload()}
               />
             </div>
           ) : null}

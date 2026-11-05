@@ -15,6 +15,8 @@ import {
 } from "@/lib/administration/invoice-settlement";
 import type { AdminPaymentMethod } from "@/lib/administration/constants";
 import { useAppMessages } from "@/components/i18n/LocaleProvider";
+import { InvoiceFinanceLink } from "@/components/administration/finance/InvoiceFinanceLink";
+import { useFinanceSearch } from "@/components/administration/finance/FinanceSearchProvider";
 import { Alert, Button, Card, EmptyState, LoadingState } from "@/components/ui";
 
 type ApiInvoice = {
@@ -79,7 +81,9 @@ function AssignmentRow({
 
   return (
     <tr className="border-t align-top">
-      <td className="px-4 py-3 font-mono text-sm">{inv.invoiceNumber}</td>
+      <td className="px-4 py-3">
+        <InvoiceFinanceLink invoiceNumber={inv.invoiceNumber} target="debts" />
+      </td>
       <td className="max-w-[12rem] px-4 py-3 font-medium">{inv.buyerName}</td>
       <td className="whitespace-nowrap px-4 py-3 text-sm text-zinc-600">
         {inv.transactionDate
@@ -123,9 +127,27 @@ function AssignmentRow({
   );
 }
 
+function matchesInvoiceQuery(
+  inv: ProDataInvoiceAggregate,
+  query: string
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const hay = [
+    inv.invoiceNumber,
+    inv.buyerName,
+    inv.salesAgentName ?? "",
+    inv.paymentMethodRaw,
+  ]
+    .join(" ")
+    .toLowerCase();
+  return hay.includes(q);
+}
+
 export function PendingInvoiceAssignmentQueue() {
   const t = useAppMessages();
   const q = t.finance.pages.assignmentQueue;
+  const { query } = useFinanceSearch();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [invoices, setInvoices] = useState<ProDataInvoiceAggregate[]>([]);
@@ -171,11 +193,22 @@ export function PendingInvoiceAssignmentQueue() {
     return <Alert tone="error">{error}</Alert>;
   }
 
+  const visible = invoices.filter((inv) => matchesInvoiceQuery(inv, query));
+
   if (invoices.length === 0) {
     return (
       <Card className="p-8">
         <EmptyState title={q.allDone} />
         <p className="mt-2 text-center text-base text-zinc-600">{q.allDoneHint}</p>
+      </Card>
+    );
+  }
+
+  if (visible.length === 0) {
+    return (
+      <Card className="p-8">
+        <EmptyState title={q.noSearchMatch} />
+        <p className="mt-2 text-center text-base text-zinc-600">{q.noSearchMatchHint}</p>
       </Card>
     );
   }
@@ -186,7 +219,7 @@ export function PendingInvoiceAssignmentQueue() {
   return (
     <div className="space-y-4">
       <Alert tone="info">
-        {q.banner.replace("{count}", String(invoices.length))}
+        {q.banner.replace("{count}", String(visible.length))}
       </Alert>
       <Card className="overflow-x-auto p-0">
         <table className="min-w-full text-left text-base">
@@ -204,7 +237,7 @@ export function PendingInvoiceAssignmentQueue() {
             </tr>
           </thead>
           <tbody>
-            {invoices.map((inv) => (
+            {visible.map((inv) => (
               <AssignmentRow
                 key={inv.invoiceNumber}
                 inv={inv}

@@ -46,6 +46,8 @@ export type ClientInvoiceRow = {
   daysOutstanding: number;
   settlementStatus: InvoiceSettlementStatus | null;
   paymentMethodRaw: string | null;
+  paymentMethod: string | null;
+  settlementPaidAmountCents: number | null;
 };
 
 export type OverdueDebtItem = {
@@ -62,6 +64,8 @@ export type OverdueDebtItem = {
   location: string | null;
   settlementStatus: InvoiceSettlementStatus | null;
   paymentMethodRaw: string | null;
+  paymentMethod: string | null;
+  settlementPaidAmountCents: number | null;
 };
 
 export type AgentDebtGroup = {
@@ -300,6 +304,8 @@ export async function buildClientFinanceProfiles(
         existing.balanceDueCents = settlementApply.balanceDueCents;
         existing.settlementStatus = settlementApply.settlementStatus;
         existing.paymentMethodRaw = settlementApply.paymentMethodRaw;
+        existing.paymentMethod = ext.paymentMethod;
+        existing.settlementPaidAmountCents = ext.paidAmountCents;
       }
       if (agentName && !existing.salesAgentName) {
         existing.salesAgentName = agentName;
@@ -331,6 +337,8 @@ export async function buildClientFinanceProfiles(
         daysOutstanding: daysSinceDate(orderDate),
         settlementStatus: settlementApply?.settlementStatus ?? null,
         paymentMethodRaw: settlementApply?.paymentMethodRaw ?? ext.paymentMethodRaw,
+        paymentMethod: ext.paymentMethod,
+        settlementPaidAmountCents: ext.paidAmountCents,
       });
     }
     touchActivity(profile, orderDate);
@@ -362,6 +370,8 @@ export async function buildClientFinanceProfiles(
       daysOutstanding: daysSinceDate(order.orderDate),
       settlementStatus: existing?.settlementStatus ?? null,
       paymentMethodRaw: existing?.paymentMethodRaw ?? null,
+      paymentMethod: existing?.paymentMethod ?? null,
+      settlementPaidAmountCents: existing?.settlementPaidAmountCents ?? null,
     };
     if (!existing) {
       row.balanceDueCents = row.invoicedCents;
@@ -430,6 +440,8 @@ export async function buildClientFinanceProfiles(
         daysOutstanding: daysSinceDate(tx.recordedAt),
         settlementStatus: null,
         paymentMethodRaw: null,
+        paymentMethod: null,
+        settlementPaidAmountCents: null,
       });
     }
   }
@@ -534,6 +546,8 @@ function debtInvoiceItems(
         location: inv.location,
         settlementStatus: inv.settlementStatus,
         paymentMethodRaw: inv.paymentMethodRaw,
+        paymentMethod: inv.paymentMethod,
+        settlementPaidAmountCents: inv.settlementPaidAmountCents,
       });
     }
   }

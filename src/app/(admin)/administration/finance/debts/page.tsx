@@ -89,7 +89,6 @@ export default function FinanceOpenDebtsPage() {
           <OpenDebtsTable
             rows={filtered}
             onOpenClient={(k) => void openClient(k)}
-            onSettlementSaved={() => void reload()}
           />
         </>
       ) : null}

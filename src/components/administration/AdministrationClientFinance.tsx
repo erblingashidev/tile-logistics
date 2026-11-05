@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { formatAdminMoney } from "@/components/administration/AdministrationLedgerTable";
+import { InvoiceFinanceLink } from "@/components/administration/finance/InvoiceFinanceLink";
 import { Button, Card, EmptyState, LoadingState } from "@/components/ui";
 import { format } from "date-fns";
 
@@ -162,7 +163,9 @@ export function ClientReportCard({
             <tbody>
               {profile.invoices.map((inv) => (
                 <tr key={inv.invoiceNumber} className="border-t">
-                  <td className="px-3 py-2 font-mono text-xs">{inv.invoiceNumber}</td>
+                  <td className="px-3 py-2">
+                    <InvoiceFinanceLink invoiceNumber={inv.invoiceNumber} />
+                  </td>
                   <td className="px-3 py-2 whitespace-nowrap">
                     {inv.orderDate ? format(new Date(inv.orderDate), "d MMM yyyy") : "—"}
                   </td>
@@ -391,7 +394,9 @@ export function AdministrationClientFinance() {
                     <tr key={`${row.invoiceNumber}-${row.clientKey}`} className="border-t">
                       <td className="px-3 py-2">{row.salesAgentName}</td>
                       <td className="px-3 py-2 font-medium">{row.displayName}</td>
-                      <td className="px-3 py-2 font-mono text-xs">{row.invoiceNumber}</td>
+                      <td className="px-3 py-2">
+                        <InvoiceFinanceLink invoiceNumber={row.invoiceNumber} />
+                      </td>
                       <td className="px-3 py-2 whitespace-nowrap">
                         {format(new Date(row.orderDate), "d MMM yyyy")}
                       </td>

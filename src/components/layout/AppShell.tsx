@@ -88,12 +88,12 @@ function buildNavGroups(
             items: [
               { href: "/administration", label: t.nav.items.cashRegister },
               {
-                href: "/administration/finance/assignments",
-                label: t.nav.items.assignmentQueue,
+                href: "/administration/finance/imports",
+                label: t.nav.items.financeImport,
               },
               {
-                href: "/administration/finance/reports",
-                label: t.nav.items.financeReports,
+                href: "/administration/finance/assignments",
+                label: t.nav.items.assignmentQueue,
               },
               { href: "/administration/finance/debts", label: t.nav.items.openDebts },
               {
@@ -106,12 +106,8 @@ function buildNavGroups(
               },
               { href: "/administration/finance", label: t.nav.items.registerLedger },
               {
-                href: "/administration/finance/imports",
-                label: t.nav.items.financeImport,
-              },
-              {
-                href: "/administration/finance/settlements",
-                label: t.nav.items.paymentStatus,
+                href: "/administration/finance/reports",
+                label: t.nav.items.financeReports,
               },
             ],
           },

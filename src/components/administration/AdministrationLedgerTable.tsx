@@ -8,6 +8,7 @@ import {
   ADMIN_PAYMENT_METHODS,
   ADMIN_TRANSACTION_KINDS,
 } from "@/lib/administration/constants";
+import { InvoiceFinanceLink } from "@/components/administration/finance/InvoiceFinanceLink";
 import { Button, Card, EmptyState, Input, Select } from "@/components/ui";
 
 export type AdministrationTransaction = {
@@ -269,8 +270,15 @@ export function AdministrationLedgerTable({
                     {formatAdminMoney(t.amountCents)}
                   </td>
                   <td className="px-3 py-2">{t.counterpartyName ?? "—"}</td>
-                  <td className="px-3 py-2 whitespace-nowrap font-mono text-xs">
-                    {t.invoiceReference ?? "—"}
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    {t.invoiceReference?.trim() ? (
+                      <InvoiceFinanceLink
+                        invoiceNumber={t.invoiceReference}
+                        target="debts"
+                      />
+                    ) : (
+                      "—"
+                    )}
                   </td>
                   <td className="px-3 py-2 text-xs">{t.salesAgentName ?? "—"}</td>
                   <td className="px-3 py-2 max-w-xs truncate">

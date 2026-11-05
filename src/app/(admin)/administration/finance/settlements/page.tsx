@@ -1,20 +1,17 @@
 "use client";
 
-import { ManagedProDataSettlements } from "@/components/administration/finance/ManagedProDataSettlements";
-import { FinancePageShell } from "@/components/administration/finance/FinancePageShell";
-import { useAppMessages } from "@/components/i18n/LocaleProvider";
-import { Alert } from "@/components/ui";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useOrgPath } from "@/components/organization/OrgPathProvider";
 
-export default function FinanceInvoiceSettlementsPage() {
-  const t = useAppMessages();
-  const p = t.finance.pages.settlements;
+/** Legacy URL — payment status editing lives on the assignment queue only. */
+export default function FinanceInvoiceSettlementsRedirectPage() {
+  const router = useRouter();
+  const { orgPath } = useOrgPath();
 
-  return (
-    <FinancePageShell title={p.title} description={p.description}>
-      <div className="mb-4">
-        <Alert tone="info">{p.alsoHint}</Alert>
-      </div>
-      <ManagedProDataSettlements />
-    </FinancePageShell>
-  );
+  useEffect(() => {
+    router.replace(orgPath("/administration/finance/assignments"));
+  }, [router, orgPath]);
+
+  return null;
 }

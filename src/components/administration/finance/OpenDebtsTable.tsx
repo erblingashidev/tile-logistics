@@ -2,7 +2,8 @@
 
 import { format } from "date-fns";
 import { formatAdminMoney } from "@/components/administration/AdministrationLedgerTable";
-import { InlineInvoiceSettlementForm } from "@/components/administration/finance/InlineInvoiceSettlementForm";
+import { DebtSettlementSummary } from "@/components/administration/finance/DebtSettlementSummary";
+import { InvoiceFinanceLink } from "@/components/administration/finance/InvoiceFinanceLink";
 import type { DebtInvoiceLine } from "@/components/administration/finance/finance-debt-types";
 import { useAppMessages } from "@/components/i18n/LocaleProvider";
 import { Button, Card, EmptyState } from "@/components/ui";
@@ -10,11 +11,9 @@ import { Button, Card, EmptyState } from "@/components/ui";
 export function OpenDebtsTable({
   rows,
   onOpenClient,
-  onSettlementSaved,
 }: {
   rows: DebtInvoiceLine[];
   onOpenClient: (clientKey: string) => void;
-  onSettlementSaved?: () => void;
 }) {
   const t = useAppMessages();
   const tbl = t.finance.table;
@@ -48,7 +47,9 @@ export function OpenDebtsTable({
             <tr key={`${row.invoiceNumber}-${row.clientKey}`} className="border-t">
               <td className="px-3 py-2">{row.salesAgentName}</td>
               <td className="px-3 py-2 font-medium">{row.displayName}</td>
-              <td className="px-3 py-2 font-mono text-xs">{row.invoiceNumber}</td>
+              <td className="px-3 py-2">
+                <InvoiceFinanceLink invoiceNumber={row.invoiceNumber} />
+              </td>
               <td className="px-3 py-2 whitespace-nowrap">
                 {row.orderDate
                   ? format(new Date(row.orderDate), "d MMM yyyy")
@@ -60,12 +61,12 @@ export function OpenDebtsTable({
                 {formatAdminMoney(row.balanceDueCents)}
               </td>
               <td className="min-w-[11rem] px-3 py-2">
-                <InlineInvoiceSettlementForm
+                <DebtSettlementSummary
                   invoiceNumber={row.invoiceNumber}
                   settlementStatus={row.settlementStatus}
+                  paymentMethod={row.paymentMethod}
                   paymentMethodRaw={row.paymentMethodRaw}
-                  onSaved={onSettlementSaved}
-                  compact
+                  settlementPaidAmountCents={row.settlementPaidAmountCents}
                 />
               </td>
               <td className="px-3 py-2 text-right">
