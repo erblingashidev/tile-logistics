@@ -66,6 +66,7 @@ export const en = {
       registerLedger: "Register & ledger",
       financeImport: "Finance import",
       paymentStatus: "MENYRA E PAGESES",
+      assignmentQueue: "To assign",
       reports: "Reports",
       logs: "Logs",
       settings: "Settings",
@@ -113,6 +114,7 @@ export const en = {
       registerLedger: "Register & ledger",
       excelImport: "Excel import",
       paymentStatus: "MENYRA E PAGESES",
+      assignmentQueue: "To assign",
     },
     search: {
       label: "Search finance",
@@ -203,6 +205,19 @@ export const en = {
         description:
           "Import Pro-Data Libri i transaksioneve — sales, credit notes, agents, and debts stay aligned with your finance system.",
         backToReports: "← Overall reports",
+      },
+      assignmentQueue: {
+        title: "Assign payment method & status",
+        description:
+          "Work through imported invoices that still need a settlement status and register payment method. Each row disappears after you save both.",
+        loading: "Loading assignment queue…",
+        allDone: "All caught up — nothing left to assign.",
+        allDoneHint:
+          "New rows appear when you import Pro-Data Excel with empty MENYRA E PAGESES or unset status/method.",
+        banner:
+          "{count} invoice(s) need payment status and register method before they leave this list.",
+        action: "Save",
+        needPaymentMethod: "Choose a register payment method (Cash, Card, etc.).",
       },
       settlements: {
         title: "MENYRA E PAGESES — payment status",

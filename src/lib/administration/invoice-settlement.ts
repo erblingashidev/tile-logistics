@@ -36,6 +36,24 @@ export function settlementStatusRequiresAmount(
   return status === "paid_partial" || status === "prepaid_partial";
 }
 
+/** Both settlement status and register payment method are set (queue can drop the row). */
+export function isInvoiceSettlementAssignmentComplete(input: {
+  settlementStatus: InvoiceSettlementStatus | string | null;
+  paidAmountCents: number | null;
+  paymentMethod: string | null;
+}): boolean {
+  const status = input.settlementStatus;
+  if (!status || status === "unknown") return false;
+  if (!input.paymentMethod?.trim()) return false;
+  if (
+    settlementStatusRequiresAmount(status as InvoiceSettlementStatus) &&
+    (input.paidAmountCents == null || input.paidAmountCents <= 0)
+  ) {
+    return false;
+  }
+  return isInvoiceSettlementStatus(String(status));
+}
+
 /** True when invoice should not appear in open-debt lists (fully settled). */
 export function settlementIsFullySettled(
   status: InvoiceSettlementStatus | null | undefined

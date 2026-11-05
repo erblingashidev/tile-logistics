@@ -5,6 +5,10 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useAppMessages } from "@/components/i18n/LocaleProvider";
 
 const LINKS = [
+  {
+    href: "/administration/finance/assignments",
+    key: "assignmentQueue" as const,
+  },
   { href: "/administration/finance/reports", key: "reports" as const },
   { href: "/administration/finance/debts", key: "openDebts" as const },
   { href: "/administration/finance/debts/by-agent", key: "byAgent" as const },
@@ -23,6 +27,9 @@ function isActive(pathname: string, href: string) {
   }
   if (href === "/administration/finance/debts") {
     return pathname === "/administration/finance/debts";
+  }
+  if (href === "/administration/finance/assignments") {
+    return pathname === "/administration/finance/assignments";
   }
   return pathname === href || pathname.startsWith(`${href}/`);
 }

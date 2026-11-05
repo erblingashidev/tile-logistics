@@ -67,6 +67,7 @@ export const sqApp: AppMessages = {
       registerLedger: "Arka & libri",
       financeImport: "Import Excel",
       paymentStatus: "MENYRA E PAGESES",
+      assignmentQueue: "Për caktim",
       reports: "Raportet",
       logs: "Regjistrat",
       settings: "Cilësimet",
@@ -115,6 +116,7 @@ export const sqApp: AppMessages = {
       registerLedger: "Arka & libri",
       excelImport: "Import Excel",
       paymentStatus: "MENYRA E PAGESES",
+      assignmentQueue: "Për caktim",
     },
     search: {
       label: "Kërko financat",
@@ -205,6 +207,19 @@ export const sqApp: AppMessages = {
         description:
           "Importo Libri i transaksioneve nga Pro-Data — shitjet, notat krediti, agjentët dhe borxhet mbeten në linjë.",
         backToReports: "← Raportet e përgjithshme",
+      },
+      assignmentQueue: {
+        title: "Cakto mënyrën dhe statusin e pagesës",
+        description:
+          "Punoni faturat e importuara që ende nuk kanë status pagese dhe mënyrë në arkë. Rreshti zhduket pasi ruani të dyja.",
+        loading: "Duke ngarkuar listën e caktimit…",
+        allDone: "Gjithçka u caktua — nuk ka më rreshta.",
+        allDoneHint:
+          "Rreshta të rinj shfaqen kur importoni Excel Pro-Data me MENYRA E PAGESES bosh ose pa status/mënyrë.",
+        banner:
+          "{count} fatura duhen status pagese dhe mënyrë në arkë para se të largohen nga lista.",
+        action: "Ruaj",
+        needPaymentMethod: "Zgjidh mënyrën në arkë (Arkë, Kartë, etj.).",
       },
       settlements: {
         title: "MENYRA E PAGESES — statusi i pagesës",

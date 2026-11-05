@@ -5,6 +5,7 @@ import {
   financeProdataInvoices,
 } from "@/lib/db/schema";
 import {
+  isInvoiceSettlementAssignmentComplete,
   isInvoiceSettlementStatus,
   settlementPaidCentsFromStatus,
   settlementStatusRequiresAmount,
@@ -79,6 +80,21 @@ export function analyzeProDataFinanceExport(
   fileName: string
 ): ProDataImportAnalysis {
   return parseProDataTransactionBook(buffer, fileName);
+}
+
+export async function listProDataInvoicesPendingAssignment(
+  organizationId: number
+): Promise<ProDataFinanceInvoiceRow[]> {
+  const all = await listProDataFinanceInvoices(organizationId);
+  return all.filter(
+    (inv) =>
+      inv.documentCategory !== "delivery_note" &&
+      !isInvoiceSettlementAssignmentComplete({
+        settlementStatus: inv.settlementStatus,
+        paidAmountCents: inv.paidAmountCents,
+        paymentMethod: inv.paymentMethod,
+      })
+  );
 }
 
 export async function listProDataFinanceInvoices(

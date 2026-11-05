@@ -88,6 +88,10 @@ function buildNavGroups(
             items: [
               { href: "/administration", label: t.nav.items.cashRegister },
               {
+                href: "/administration/finance/assignments",
+                label: t.nav.items.assignmentQueue,
+              },
+              {
                 href: "/administration/finance/reports",
                 label: t.nav.items.financeReports,
               },
