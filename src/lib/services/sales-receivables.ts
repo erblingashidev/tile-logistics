@@ -3,7 +3,6 @@ import { isSalesAdmin } from "@/lib/employee-categories";
 import { invoiceRowHasSalesAgent } from "@/lib/administration/validation";
 import {
   buildClientFinanceProfiles,
-  filterDebtItemsForBusinessDay,
   filterProfilesForBusinessDay,
   listCallQueue,
   listDebts,
@@ -101,7 +100,7 @@ export async function listReceivablesForSalesPortal(
     : all;
   const clients = filterProfilesForSalesAgent(scoped, ctx);
   const openDebts = filterDebtItemsForSalesAgent(
-    filterDebtItemsForBusinessDay(listOpenDebtInvoices(all), businessDay),
+    listOpenDebtInvoices(scoped),
     ctx
   );
   const debts = listDebts(clients);

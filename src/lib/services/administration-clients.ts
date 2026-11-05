@@ -554,6 +554,36 @@ export function filterDebtItemsForBusinessDay<
   );
 }
 
+/** Re-sum client totals and call reasons from the current invoice list. */
+export function recomputeProfileTotals(
+  profile: ClientFinanceProfile
+): ClientFinanceProfile {
+  let invoiced = 0;
+  let paid = 0;
+  let balance = 0;
+  for (const inv of profile.invoices) {
+    invoiced += inv.invoicedCents;
+    paid += inv.paidCents;
+    balance += inv.balanceDueCents;
+  }
+  const callReasons = buildClientCallReasons({
+    balanceDueCents: balance,
+    lastActivityAt: profile.lastActivityAt,
+    registerLines: profile.registerLines,
+    invoices: profile.invoices,
+  });
+  return {
+    ...profile,
+    invoiceCount: profile.invoices.filter((inv) =>
+      inv.invoiceNumber.trim()
+    ).length,
+    totalInvoicedCents: invoiced,
+    totalPaidCents: paid,
+    balanceDueCents: balance,
+    callReasons,
+  };
+}
+
 export function filterProfilesForBusinessDay(
   profiles: ClientFinanceProfile[],
   businessDay: string | null
@@ -561,16 +591,18 @@ export function filterProfilesForBusinessDay(
   const day = businessDay?.trim().slice(0, 10);
   if (!day) return profiles;
   return profiles
-    .map((p) => ({
-      ...p,
-      invoices: p.invoices.filter((inv) =>
-        invoiceMatchesBusinessDay(
-          inv.prodataTransactionDate,
-          inv.orderDate,
-          day
-        )
-      ),
-    }))
+    .map((p) =>
+      recomputeProfileTotals({
+        ...p,
+        invoices: p.invoices.filter((inv) =>
+          invoiceMatchesBusinessDay(
+            inv.prodataTransactionDate,
+            inv.orderDate,
+            day
+          )
+        ),
+      })
+    )
     .filter((p) => p.invoices.some((inv) => inv.invoiceNumber.trim()));
 }
 

@@ -7,7 +7,6 @@ import {
   getClientFinanceProfile,
   groupDebtInvoicesByAgent,
   groupOverdueDebtsByAgent,
-  filterDebtItemsForBusinessDay,
   filterProfilesForBusinessDay,
   listCallQueue,
   listDebts,
@@ -45,20 +44,14 @@ export async function GET(request: NextRequest) {
     const overdueDays = Number(
       request.nextUrl.searchParams.get("overdueDays") ?? "14"
     );
-    const overdueDebts = filterDebtItemsForBusinessDay(
-      listOverdueDebts(
-        clients,
-        Number.isFinite(overdueDays) ? overdueDays : 14
-      ),
-      businessDay
-    );
-    const openDebtInvoices = filterDebtItemsForBusinessDay(
-      listOpenDebtInvoices(clients),
-      businessDay
-    );
     const dayProfiles = businessDay
       ? filterProfilesForBusinessDay(clients, businessDay)
       : clients;
+    const overdueDebts = listOverdueDebts(
+      dayProfiles,
+      Number.isFinite(overdueDays) ? overdueDays : 14
+    );
+    const openDebtInvoices = listOpenDebtInvoices(dayProfiles);
     const debts = listDebts(dayProfiles);
     const callList = listCallQueue(dayProfiles).filter((p) =>
       businessDay ? p.callReasons.length > 0 : true
