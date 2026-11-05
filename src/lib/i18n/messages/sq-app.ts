@@ -124,7 +124,21 @@ export const sqApp: AppMessages = {
         "Emri i klientit, nr. faturës (p.sh. 26-SHV01), agjenti, lokacioni…",
       hint: "Shtyp Enter për kërkim sipas nr. faturës ose klientit. Filtri ?q= ndjek skedat; kliko nr. faturës për ta ndjekur.",
     },
+    callReasons: {
+      "No payment or update for 2+ days":
+        "Pa pagesë ose përditësim për 2+ ditë",
+      "Unpaid / on account recorded in register":
+        "Në llogari / i papaguar në arkë",
+      "Delivered order not fully paid":
+        "Porosi e dorëzuar, jo paguar plotë",
+    },
     workflow: {
+      steps: [
+        "Importo Excel Pro-Data (libri i transaksioneve)",
+        "Cakto status pagese dhe mënyrë në arkë",
+        "Borxhet e hapura (sipas nr. faturës, automatik)",
+        "Lista e thirrjeve pas 2+ ditësh pa pagesë/përditësim",
+      ],
       invoiceKey:
         "Numri i faturës është çelësi unik në import, caktim, borxhe të hapura dhe rreshtat e arkës.",
       activeInvoice: "Ndjekja e faturës {invoice}:",
@@ -185,7 +199,7 @@ export const sqApp: AppMessages = {
         clientsSection: "Klientë me bilanc të hapur",
         callListSection: "Lista për telefonatë",
         callListHint:
-          "Klientë për ndjekje (bilanc i papaguar, rreshta në llogari me faturë, dorëzuar por i papaguar, ose 14+ ditë vonë).",
+          "Klientë për telefonatë kur borxhi është ende i hapur dhe nuk ka pagesë në arkë ose përditësim financiar për të paktën 2 ditë.",
         noClients: "Asnjë klient nuk përputhet me filtrat.",
         noCallList: "Askush në listën e thirrjeve për këto filtra.",
         client: "Klienti",
@@ -330,6 +344,36 @@ export const sqApp: AppMessages = {
       needsSettlement:
         "fatura duhen caktuar për status pagese para importit (ose përdor aplikimin masiv).",
       topAgents: "Agjentët kryesorë të shitjes",
+    },
+  },
+  sales: {
+    receivables: {
+      navClients: "Klientët",
+      title: "Klientët dhe të arkëtueshmet",
+      readOnly:
+        "Vetëm lexim. Statusi i pagesës, arka dhe importet i menaxhon administrata te Financat.",
+      askManagement: "Kërko ndryshim nga menaxhmenti",
+      requestSent: "Kërkesa u regjistrua në log për menaxhmentin.",
+      requestFailed: "Kërkesa nuk u dërgua.",
+      requestPlaceholder:
+        "Çfarë duhet përditësuar? (nr. faturës, klienti, pagesa…)",
+      tabs: {
+        all: "Klientët e mi",
+        debts: "Borxhet e hapura",
+        call: "Lista e thirrjeve",
+      },
+      loading: "Duke ngarkuar të arkëtueshmet…",
+      noClients: "Ende nuk ka klientë të lidhur me agjentin tënd.",
+      noDebts: "Nuk ka borxhe të hapura për klientët e tu.",
+      noCallList: "Askush në listën tënde të thirrjeve tani.",
+      totalDue: "Klientët e tu — totali për pagesë",
+      openInvoices: "Fatura të hapura",
+      toCall: "Për telefonatë",
+      invoice: "Fatura",
+      client: "Klienti",
+      due: "Për pagesë",
+      whyCall: "Pse telefonatë",
+      lastActivity: "Aktiviteti i fundit",
     },
   },
 };

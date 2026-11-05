@@ -9,3 +9,8 @@ export function settlementLabel(
   const labels = t.finance.settlement.statuses;
   return labels[id as InvoiceSettlementStatus] ?? id.replace(/_/g, " ");
 }
+
+export function callReasonLabel(t: AppMessages, reason: string): string {
+  const labels = t.finance.callReasons;
+  return labels[reason as keyof typeof labels] ?? reason;
+}

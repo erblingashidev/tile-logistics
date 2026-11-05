@@ -4,6 +4,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { AdministrationFinanceNav } from "@/components/administration/finance/AdministrationFinanceNav";
 import { FinanceSearchBar } from "@/components/administration/finance/FinanceSearchProvider";
 import { FinanceWorkflowGuide } from "@/components/administration/finance/FinanceWorkflowGuide";
+import { FinanceProcessSteps } from "@/components/administration/finance/FinanceProcessSteps";
 
 export function FinancePageShell({
   title,
@@ -17,6 +18,7 @@ export function FinancePageShell({
   return (
     <AppShell title={title} description={description} contentMaxWidth="wide">
       <AdministrationFinanceNav />
+      <FinanceProcessSteps />
       <FinanceSearchBar />
       <FinanceWorkflowGuide />
       {children}

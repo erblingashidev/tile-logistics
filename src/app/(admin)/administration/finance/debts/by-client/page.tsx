@@ -11,6 +11,7 @@ import { clientProfileMatchesSearch } from "@/lib/administration/finance-search"
 import { FinancePageShell } from "@/components/administration/finance/FinancePageShell";
 import { useFinanceDebts } from "@/components/administration/finance/useFinanceDebts";
 import { useAppMessages } from "@/components/i18n/LocaleProvider";
+import { callReasonLabel } from "@/lib/i18n/finance-labels";
 import { Alert, Button, Card, EmptyState, LoadingState } from "@/components/ui";
 
 function ClientDebtRow({
@@ -28,13 +29,16 @@ function ClientDebtRow({
 }) {
   const t = useAppMessages();
   const p = t.finance.pages.byClient;
+  const reasons = callReasons
+    .map((reason) => callReasonLabel(t, reason))
+    .join(" · ");
   return (
     <tr className="border-t border-zinc-100 hover:bg-zinc-50/80">
       <td className="px-3 py-2 font-medium text-zinc-900">{displayName}</td>
       <td className="px-3 py-2">{formatAdminMoney(balanceDueCents)}</td>
       <td className="px-3 py-2">{invoiceCount}</td>
       <td className="px-3 py-2 max-w-xs text-xs text-zinc-600">
-        {callReasons.join(" · ") || "—"}
+        {reasons || "—"}
       </td>
       <td className="px-3 py-2 text-right">
         <Button size="sm" variant="secondary" onClick={onOpen}>

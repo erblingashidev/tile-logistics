@@ -122,7 +122,20 @@ export const en = {
         "Client name, invoice # (e.g. 26-SHV01), sales agent, location…",
       hint: "Press Enter to search by invoice # or client. The same ?q= filter follows you across finance tabs; click any invoice # to jump to that invoice.",
     },
+    callReasons: {
+      "No payment or update for 2+ days":
+        "No payment or update for 2+ days",
+      "Unpaid / on account recorded in register":
+        "Unpaid / on account recorded in register",
+      "Delivered order not fully paid": "Delivered order not fully paid",
+    },
     workflow: {
+      steps: [
+        "Import Pro-Data Excel (transaction book)",
+        "Assign payment status & register method",
+        "Open debts (by invoice #, auto from import + register)",
+        "Call list after 2+ days with no payment or update",
+      ],
       invoiceKey:
         "Invoice number is the unique key across import, assignment, open debts, and register ledger lines.",
       activeInvoice: "Tracking invoice {invoice}:",
@@ -184,7 +197,7 @@ export const en = {
         clientsSection: "Clients with open balance",
         callListSection: "To call list",
         callListHint:
-          "Clients flagged for follow-up (unpaid balance, on-account lines with invoice, delivered-but-unpaid, or 14+ days overdue).",
+          "Clients to phone when debt is still open and there has been no register payment or finance update for at least 2 days.",
         noClients: "No clients match these filters.",
         noCallList: "Nobody on the call list for these filters.",
         client: "Client",
@@ -328,6 +341,36 @@ export const en = {
       needsSettlement:
         "invoice(s) need payment status assigned before import (or use bulk apply).",
       topAgents: "Top sales agents",
+    },
+  },
+  sales: {
+    receivables: {
+      navClients: "Clients",
+      title: "My clients & receivables",
+      readOnly:
+        "View only. Payment status, register entries, and imports are updated by management in Administration → Finance.",
+      askManagement: "Ask management to change",
+      requestSent: "Request sent to the activity log for management.",
+      requestFailed: "Could not send request.",
+      requestPlaceholder:
+        "What should management update? (invoice #, client, payment…)",
+      tabs: {
+        all: "My clients",
+        debts: "Open debts",
+        call: "Call list",
+      },
+      loading: "Loading receivables…",
+      noClients: "No clients linked to your sales agent yet.",
+      noDebts: "No open debts for your clients.",
+      noCallList: "Nobody on your call list right now.",
+      totalDue: "Your clients — total due",
+      openInvoices: "Open invoices",
+      toCall: "To call",
+      invoice: "Invoice",
+      client: "Client",
+      due: "Due",
+      whyCall: "Why call",
+      lastActivity: "Last activity",
     },
   },
 };

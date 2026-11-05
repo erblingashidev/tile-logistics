@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BRAND } from "@/lib/brand";
 
-type SalesNav = "orders" | "stock" | "profile";
+type SalesNav = "orders" | "clients" | "stock" | "profile";
 
 export function SalesShell({
   userName,
@@ -22,18 +22,22 @@ export function SalesShell({
     ? "profile"
     : pathname.startsWith("/sales/stock")
       ? "stock"
-      : "orders";
+      : pathname.startsWith("/sales/clients")
+        ? "clients"
+        : "orders";
 
   const title =
     activeNav === "profile"
       ? "Profile"
-      : activeNav === "stock"
-        ? isAdmin
-          ? "Warehouse stock"
-          : "Stock levels"
-        : isAdmin
-          ? "All orders"
-          : "My orders";
+      : activeNav === "clients"
+        ? "Clients & receivables"
+        : activeNav === "stock"
+          ? isAdmin
+            ? "Warehouse stock"
+            : "Stock levels"
+          : isAdmin
+            ? "All orders"
+            : "My orders";
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-100 via-slate-50 to-zinc-100">
@@ -75,6 +79,16 @@ export function SalesShell({
             }`}
           >
             Orders
+          </Link>
+          <Link
+            href="/sales/clients"
+            className={`flex-1 rounded-xl px-2 py-2.5 text-center text-xs font-semibold transition ${
+              activeNav === "clients"
+                ? "bg-zinc-900 text-white shadow-sm"
+                : "text-zinc-600 hover:bg-zinc-50"
+            }`}
+          >
+            Clients
           </Link>
           <Link
             href="/sales/stock"

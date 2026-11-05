@@ -11,6 +11,7 @@ import {
   settlementPaidCentsFromStatus,
   type InvoiceSettlementStatus,
 } from "@/lib/administration/invoice-settlement";
+import { buildClientCallReasons } from "@/lib/administration/call-list";
 import {
   listProDataFinanceInvoices,
   type ProDataFinanceInvoiceRow,
@@ -208,34 +209,12 @@ function finalizeProfile(profile: ProfileMutable): ClientFinanceProfile {
     (l) => l.kind === "payment"
   ).length;
 
-  const reasons = new Set<string>();
-  if (profile.balanceDueCents > 0) {
-    reasons.add("Outstanding balance on invoice(s)");
-  }
-  const unpaidWithInvoice = profile.registerLines.some(
-    (line) =>
-      line.kind === "payment" &&
-      line.paymentMethod === "unpaid" &&
-      Boolean(line.invoiceReference?.trim())
-  );
-  if (unpaidWithInvoice) {
-    reasons.add("Unpaid / on account recorded in register");
-  }
-  const deliveredUnpaid = profile.invoices.some(
-    (inv) =>
-      inv.balanceDueCents > 0 &&
-      (inv.orderStatus === "delivered" || inv.orderStatus === "completed")
-  );
-  if (deliveredUnpaid) {
-    reasons.add("Delivered order not fully paid");
-  }
-  const overdue = profile.invoices.some(
-    (inv) => inv.balanceDueCents > 0 && inv.daysOutstanding >= 14
-  );
-  if (overdue) {
-    reasons.add("Unpaid over 14 days");
-  }
-  profile.callReasons = [...reasons];
+  profile.callReasons = buildClientCallReasons({
+    balanceDueCents: profile.balanceDueCents,
+    lastActivityAt: profile.lastActivityAt,
+    registerLines: profile.registerLines,
+    invoices: profile.invoices,
+  });
 
   const { invoiceByNorm: _omit, ...rest } = profile;
   return rest;
