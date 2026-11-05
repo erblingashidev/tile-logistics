@@ -91,6 +91,14 @@ export const en = {
     languageHint: "Applies to admin, cashier, login, and warehouse portal.",
     administration: {
       section: "Administration",
+      financeModeTitle: "Finance & cash register",
+      financeModeDesc:
+        "For this stage you can run finance-only: end-of-day Pro-Data Excel import, assign payment methods and status, then review debts and call lists. Enable the cash register later for shift open/close and manual ledger lines.",
+      cashRegisterEnabled: "Enable cash register (shift + manual ledger)",
+      cashRegisterEnabledDesc:
+        "When off, payments are tracked only via Pro-Data import and To assign — no shift or manual register entries.",
+      registerOn: "Register on",
+      registerOff: "Finance-only (register off)",
       cashRegisterRules: "Cash register rules",
       strictTraceability: "Strict traceability on cash register",
       strictDesc:
@@ -98,9 +106,10 @@ export const en = {
       strictOn: "Strict",
       relaxed: "Relaxed",
       strictHelp:
-        "Finance debts and call lists always require invoice numbers and sales agents. This switch only controls the cash register page.",
+        "Finance debts and call lists always require invoice numbers and sales agents. This switch only applies when the cash register is enabled.",
       loadFailed: "Could not load administration settings.",
       saveFailed: "Could not save.",
+      saved: "Administration settings saved.",
       strictEnabled: "Strict register rules enabled on the cash register page.",
       relaxedEnabled: "Cash register uses relaxed entry rules.",
     },
@@ -136,8 +145,10 @@ export const en = {
         "Open debts (by invoice #, auto from import + register)",
         "Call list after 2+ days with no payment or update",
       ],
+      financeOnlyMode:
+        "Cash register is off — daily workflow: import Pro-Data Excel → To assign → verify open debts & call list. Register can be enabled in Settings when you need shift reconciliation.",
       invoiceKey:
-        "Invoice number is the unique key across import, assignment, open debts, and register ledger lines.",
+        "Invoice number is the unique key across import, assignment, open debts, and (when enabled) register ledger lines.",
       activeInvoice: "Tracking invoice {invoice}:",
       jump: {
         debts: "Open debts",
@@ -348,7 +359,7 @@ export const en = {
       navClients: "Clients",
       title: "My clients & receivables",
       readOnly:
-        "View only. Payment status, register entries, and imports are updated by management in Administration → Finance.",
+        "View only — check your clients, open debts, and call list match Pro-Data. Ask management to fix payment status or methods in Administration → Finance (Excel import & To assign).",
       askManagement: "Ask management to change",
       requestSent: "Request sent to the activity log for management.",
       requestFailed: "Could not send request.",

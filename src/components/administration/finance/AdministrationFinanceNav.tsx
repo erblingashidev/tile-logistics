@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useAppMessages } from "@/components/i18n/LocaleProvider";
+import { useAdministrationSettings } from "@/components/administration/AdministrationSettingsProvider";
 
 const LINKS = [
   { href: "/administration/finance/imports", key: "excelImport" as const },
@@ -34,11 +35,16 @@ export function AdministrationFinanceNav() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const t = useAppMessages();
+  const { cashRegisterEnabled } = useAdministrationSettings();
   const q = searchParams.get("q");
   const querySuffix = q ? `?q=${encodeURIComponent(q)}` : "";
+  const links = LINKS.filter(
+    (link) =>
+      link.href !== "/administration/finance" || cashRegisterEnabled
+  );
   return (
     <nav className="mb-6 flex flex-wrap gap-2 border-b border-zinc-200 pb-4">
-      {LINKS.map((link) => {
+      {links.map((link) => {
         const active = isActive(pathname, link.href);
         return (
           <Link

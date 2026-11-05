@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { AdministrationSettings } from "@/lib/services/administration-settings";
+import type { AdministrationSettings } from "@/lib/administration/administration-settings-shared";
+import { useAdministrationSettings } from "@/components/administration/AdministrationSettingsProvider";
 import { useAppMessages } from "@/components/i18n/LocaleProvider";
 import { Alert, Card, Switch } from "@/components/ui";
 
 export function AdministrationSettingsCard() {
   const t = useAppMessages();
+  const { settings: contextSettings, refresh } = useAdministrationSettings();
   const [settings, setSettings] = useState<AdministrationSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -14,26 +16,21 @@ export function AdministrationSettingsCard() {
   const [success, setSuccess] = useState("");
 
   useEffect(() => {
-    fetch("/api/administration/settings", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((data) => {
-        setSettings(data.settings ?? { registerStrictTraceability: false });
-      })
-      .catch(() => setError(t.settings.administration.loadFailed))
-      .finally(() => setLoading(false));
-  }, []);
+    setSettings(contextSettings);
+    setLoading(false);
+  }, [contextSettings]);
 
-  async function toggleStrict(enabled: boolean) {
+  async function patchSettings(patch: Partial<AdministrationSettings>) {
     if (!settings) return;
     setSaving(true);
     setError("");
     setSuccess("");
     const previous = settings;
-    setSettings({ ...settings, registerStrictTraceability: enabled });
+    setSettings({ ...settings, ...patch });
     const res = await fetch("/api/administration/settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ registerStrictTraceability: enabled }),
+      body: JSON.stringify(patch),
     });
     const data = await res.json().catch(() => ({}));
     setSaving(false);
@@ -43,52 +40,73 @@ export function AdministrationSettingsCard() {
       return;
     }
     setSettings(data.settings);
-    setSuccess(
-      enabled
-        ? t.settings.administration.strictEnabled
-        : t.settings.administration.relaxedEnabled
-    );
+    await refresh();
+    setSuccess(t.settings.administration.saved);
     setTimeout(() => setSuccess(""), 4000);
   }
 
   return (
-    <Card className="p-5">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
-        {t.settings.administration.section}
-      </p>
-      <h2 className="mt-1 text-lg font-semibold text-zinc-900">
-        {t.settings.administration.cashRegisterRules}
-      </h2>
-      <p className="mt-1 max-w-2xl text-sm text-zinc-600">
-        {t.settings.administration.strictHelp}
-      </p>
+    <Card className="space-y-6 p-5">
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+          {t.settings.administration.section}
+        </p>
+        <h2 className="mt-1 text-lg font-semibold text-zinc-900">
+          {t.settings.administration.financeModeTitle}
+        </h2>
+        <p className="mt-1 max-w-2xl text-sm text-zinc-600">
+          {t.settings.administration.financeModeDesc}
+        </p>
+      </div>
       {error ? (
-        <div className="mt-3">
-          <Alert tone="error">{error}</Alert>
-        </div>
+        <Alert tone="error">{error}</Alert>
       ) : null}
       {success ? (
-        <div className="mt-3">
-          <Alert tone="info">{success}</Alert>
-        </div>
+        <Alert tone="info">{success}</Alert>
       ) : null}
       {loading ? (
-        <p className="mt-4 text-sm text-zinc-500">{t.common.loading}</p>
+        <p className="text-sm text-zinc-500">{t.common.loading}</p>
       ) : settings ? (
-        <div className="mt-4">
+        <>
           <Switch
-            label={t.settings.administration.strictTraceability}
-            description={t.settings.administration.strictDesc}
+            label={t.settings.administration.cashRegisterEnabled}
+            description={t.settings.administration.cashRegisterEnabledDesc}
             status={
-              settings.registerStrictTraceability
-                ? t.settings.administration.strictOn
-                : t.settings.administration.relaxed
+              settings.cashRegisterEnabled
+                ? t.settings.administration.registerOn
+                : t.settings.administration.registerOff
             }
-            checked={settings.registerStrictTraceability}
+            checked={settings.cashRegisterEnabled}
             disabled={saving}
-            onCheckedChange={(v) => void toggleStrict(v)}
+            onCheckedChange={(v) => void patchSettings({ cashRegisterEnabled: v })}
           />
-        </div>
+          {settings.cashRegisterEnabled ? (
+            <div className="border-t border-zinc-100 pt-5">
+              <h3 className="text-base font-semibold text-zinc-900">
+                {t.settings.administration.cashRegisterRules}
+              </h3>
+              <p className="mt-1 max-w-2xl text-sm text-zinc-600">
+                {t.settings.administration.strictHelp}
+              </p>
+              <div className="mt-4">
+                <Switch
+                  label={t.settings.administration.strictTraceability}
+                  description={t.settings.administration.strictDesc}
+                  status={
+                    settings.registerStrictTraceability
+                      ? t.settings.administration.strictOn
+                      : t.settings.administration.relaxed
+                  }
+                  checked={settings.registerStrictTraceability}
+                  disabled={saving}
+                  onCheckedChange={(v) =>
+                    void patchSettings({ registerStrictTraceability: v })
+                  }
+                />
+              </div>
+            </div>
+          ) : null}
+        </>
       ) : null}
     </Card>
   );

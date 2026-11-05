@@ -13,11 +13,32 @@ import {
   type ClosedRegisterSession,
 } from "@/components/administration/RegisterShiftReconciliation";
 import { useAppMessages } from "@/components/i18n/LocaleProvider";
-import { Alert, Button, Card, Input, PageSection } from "@/components/ui";
+import { Alert, Button, Card, Input, LoadingState, PageSection } from "@/components/ui";
+import { useRouter } from "next/navigation";
+import { useOrgPath } from "@/components/organization/OrgPathProvider";
+import { useAdministrationSettings } from "@/components/administration/AdministrationSettingsProvider";
 
 export default function AdministrationFinancePage() {
+  const router = useRouter();
+  const { orgPath } = useOrgPath();
+  const { cashRegisterEnabled, loading: settingsLoading } =
+    useAdministrationSettings();
   const t = useAppMessages();
   const p = t.finance.pages.register;
+
+  useEffect(() => {
+    if (!settingsLoading && !cashRegisterEnabled) {
+      router.replace(orgPath("/administration/finance/imports"));
+    }
+  }, [settingsLoading, cashRegisterEnabled, router, orgPath]);
+
+  if (settingsLoading || !cashRegisterEnabled) {
+    return (
+      <FinancePageShell title={p.title} description={p.description}>
+        <LoadingState title={t.common.loading} />
+      </FinancePageShell>
+    );
+  }
   const c = t.finance.common;
   const [filterFrom, setFilterFrom] = useState(() =>
     format(new Date(), "yyyy-MM-dd")

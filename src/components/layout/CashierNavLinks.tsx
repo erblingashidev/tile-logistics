@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCompanyModules } from "@/components/company/CompanyProfileProvider";
 import { useOrgPath } from "@/components/organization/OrgPathProvider";
 import { useAppMessages } from "@/components/i18n/LocaleProvider";
+import { useAdministrationSettings } from "@/components/administration/AdministrationSettingsProvider";
 
 function isActive(
   pathname: string,
@@ -27,6 +28,7 @@ export function CashierNavLinks({
   const modules = useCompanyModules();
   const { orgPath } = useOrgPath();
   const t = useAppMessages();
+  const { cashRegisterEnabled } = useAdministrationSettings();
 
   const items = [
     { href: "/orders", label: t.nav.items.ordersInvoices },
@@ -34,7 +36,14 @@ export function CashierNavLinks({
       ? [{ href: "/returns", label: t.nav.items.returns }]
       : []),
     ...(modules.administration !== false
-      ? [{ href: "/administration", label: t.nav.items.cashRegister }]
+      ? cashRegisterEnabled
+        ? [{ href: "/administration", label: t.nav.items.cashRegister }]
+        : [
+            {
+              href: "/administration/finance/imports",
+              label: t.nav.items.financeImport,
+            },
+          ]
       : []),
     { href: "/logs", label: t.nav.items.logs },
   ];

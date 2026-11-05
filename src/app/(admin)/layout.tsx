@@ -10,6 +10,7 @@ import { CompanyProfileProvider } from "@/components/company/CompanyProfileProvi
 import { OrgPathProvider } from "@/components/organization/OrgPathProvider";
 import { AdminSessionProvider } from "@/components/layout/AdminSessionProvider";
 import { CashierChrome } from "@/components/layout/CashierChrome";
+import { AdministrationSettingsProvider } from "@/components/administration/AdministrationSettingsProvider";
 import { resolveSessionTenantSlug } from "@/lib/organizations/paths";
 import type { EmployeeRole } from "@/lib/constants";
 
@@ -65,7 +66,9 @@ export default async function AdminLayout({
       <OrgPathProvider organizationSlug={organizationSlug}>
         <FeatureFlagsProvider>
           <CompanyProfileProvider>
-            <CashierChrome>{children}</CashierChrome>
+            <AdministrationSettingsProvider>
+              <CashierChrome>{children}</CashierChrome>
+            </AdministrationSettingsProvider>
           </CompanyProfileProvider>
         </FeatureFlagsProvider>
       </OrgPathProvider>

@@ -20,6 +20,7 @@ import { useAdminSession } from "@/components/layout/AdminSessionProvider";
 import { CashierPageFrame } from "@/components/layout/CashierPageFrame";
 import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
 import { useAppMessages } from "@/components/i18n/LocaleProvider";
+import { useAdministrationSettings } from "@/components/administration/AdministrationSettingsProvider";
 import type { AppMessages } from "@/lib/i18n/messages";
 
 function warehouseNavLabels(t: AppMessages) {
@@ -36,7 +37,8 @@ function buildNavGroups(
   flags: FeatureFlags,
   modules: CompanyModuleFlags,
   isPlatformAdmin: boolean,
-  t: AppMessages
+  t: AppMessages,
+  cashRegisterEnabled: boolean
 ) {
   return [
     {
@@ -86,7 +88,9 @@ function buildNavGroups(
           {
             label: t.nav.groups.administration,
             items: [
-              { href: "/administration", label: t.nav.items.cashRegister },
+              ...(cashRegisterEnabled
+                ? [{ href: "/administration", label: t.nav.items.cashRegister }]
+                : []),
               {
                 href: "/administration/finance/imports",
                 label: t.nav.items.financeImport,
@@ -104,7 +108,14 @@ function buildNavGroups(
                 href: "/administration/finance/debts/by-client",
                 label: t.nav.items.debtsByClient,
               },
-              { href: "/administration/finance", label: t.nav.items.registerLedger },
+              ...(cashRegisterEnabled
+                ? [
+                    {
+                      href: "/administration/finance",
+                      label: t.nav.items.registerLedger,
+                    },
+                  ]
+                : []),
               {
                 href: "/administration/finance/reports",
                 label: t.nav.items.financeReports,
@@ -174,6 +185,7 @@ function NavLinks({
   const adminSession = useAdminSession();
   const isPlatformAdmin = adminSession?.isPlatformAdmin ?? false;
   const t = useAppMessages();
+  const { cashRegisterEnabled } = useAdministrationSettings();
 
   if (!adminSession) {
     return (
@@ -187,7 +199,13 @@ function NavLinks({
     );
   }
 
-  const navGroups = buildNavGroups(flags, modules, isPlatformAdmin, t);
+  const navGroups = buildNavGroups(
+    flags,
+    modules,
+    isPlatformAdmin,
+    t,
+    cashRegisterEnabled
+  );
   return (
     <>
       {navGroups.map((group) => (

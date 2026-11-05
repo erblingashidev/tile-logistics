@@ -11,6 +11,7 @@ import {
   openRegisterSession,
 } from "@/lib/services/administration-register";
 import { sessionHasPermission, PERMISSIONS } from "@/lib/auth/permissions";
+import { assertCashRegisterEnabled } from "@/lib/services/administration-settings";
 
 export const runtime = "nodejs";
 
@@ -46,6 +47,7 @@ export async function POST(request: NextRequest) {
 
   return runWithTenantOrganizationAsync(auth.organizationId, async () => {
     try {
+      await assertCashRegisterEnabled(auth.organizationId);
       if (body.action !== "open" && body.action !== "close") {
         return NextResponse.json(
           { error: "Invalid action. Use open or close." },

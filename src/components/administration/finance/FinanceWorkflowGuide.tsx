@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useFinanceSearch } from "@/components/administration/finance/FinanceSearchProvider";
 import { useOrgPath } from "@/components/organization/OrgPathProvider";
 import { useAppMessages } from "@/components/i18n/LocaleProvider";
+import { useAdministrationSettings } from "@/components/administration/AdministrationSettingsProvider";
 import type { AppMessages } from "@/lib/i18n/messages/en";
 
 function pageGuideKey(
@@ -28,6 +29,7 @@ export function FinanceWorkflowGuide() {
   const { orgPath } = useOrgPath();
   const key = pageGuideKey(pathname);
   const w = t.finance.workflow;
+  const { cashRegisterEnabled } = useAdministrationSettings();
 
   const q = query.trim();
   const qEnc = q ? encodeURIComponent(q) : "";
@@ -35,6 +37,9 @@ export function FinanceWorkflowGuide() {
   return (
     <div className="mb-6 space-y-3 rounded-lg border border-zinc-200 bg-zinc-50/80 px-4 py-3 text-sm text-zinc-700">
       <p>{w.invoiceKey}</p>
+      {!cashRegisterEnabled ? (
+        <p className="font-medium text-emerald-900">{w.financeOnlyMode}</p>
+      ) : null}
       {key ? <p className="font-medium text-zinc-900">{w.pages[key]}</p> : null}
       {q ? (
         <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
@@ -53,12 +58,14 @@ export function FinanceWorkflowGuide() {
           >
             {w.jump.assign}
           </Link>
-          <Link
-            href={orgPath(`/administration/finance?q=${qEnc}`)}
-            className="font-medium text-blue-700 hover:underline"
-          >
-            {w.jump.register}
-          </Link>
+          {cashRegisterEnabled ? (
+            <Link
+              href={orgPath(`/administration/finance?q=${qEnc}`)}
+              className="font-medium text-blue-700 hover:underline"
+            >
+              {w.jump.register}
+            </Link>
+          ) : null}
         </p>
       ) : null}
     </div>

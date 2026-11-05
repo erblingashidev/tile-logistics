@@ -28,6 +28,12 @@ export async function PATCH(request: NextRequest) {
   const body = (await request.json()) as Record<string, unknown>;
   return runWithTenantOrganizationAsync(auth.organizationId, async () => {
     const settings = await updateAdministrationSettings(auth.organizationId, {
+      cashRegisterEnabled:
+        body.cashRegisterEnabled === true
+          ? true
+          : body.cashRegisterEnabled === false
+            ? false
+            : undefined,
       registerStrictTraceability:
         body.registerStrictTraceability === true
           ? true

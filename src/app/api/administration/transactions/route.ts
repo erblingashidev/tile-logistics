@@ -12,6 +12,7 @@ import {
   isAdminPaymentMethod,
   isAdminTransactionKind,
 } from "@/lib/administration/constants";
+import { assertCashRegisterEnabled } from "@/lib/services/administration-settings";
 
 export const runtime = "nodejs";
 
@@ -57,6 +58,7 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+      await assertCashRegisterEnabled(auth.organizationId);
       const tx = await createRegisterTransaction(
         auth.organizationId,
         auth.session,

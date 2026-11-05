@@ -11,6 +11,7 @@ import {
 import { useAppMessages } from "@/components/i18n/LocaleProvider";
 import { settlementLabel } from "@/lib/i18n/finance-labels";
 import { Alert, Button, Card, PageSection } from "@/components/ui";
+import { useAdministrationSettings } from "@/components/administration/AdministrationSettingsProvider";
 
 function formatEuros(n: number) {
   return new Intl.NumberFormat(undefined, {
@@ -29,7 +30,8 @@ export function AdministrationFinanceImport() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [syncRegister, setSyncRegister] = useState(true);
+  const { cashRegisterEnabled } = useAdministrationSettings();
+  const [syncRegister, setSyncRegister] = useState(false);
   const [lastImport, setLastImport] = useState<string>("");
   const [settlementRows, setSettlementRows] = useState<
     Record<string, SettlementRowState>
@@ -145,14 +147,16 @@ export function AdministrationFinanceImport() {
           <Button disabled={busy || !file} onClick={() => void runPreview()}>
             {busy ? ip.reading : ip.preview}
           </Button>
-          <label className="flex items-center gap-2 text-sm text-zinc-600">
-            <input
-              type="checkbox"
-              checked={syncRegister}
-              onChange={(e) => setSyncRegister(e.target.checked)}
-            />
-            {ip.syncRegister}
-          </label>
+          {cashRegisterEnabled ? (
+            <label className="flex items-center gap-2 text-sm text-zinc-600">
+              <input
+                type="checkbox"
+                checked={syncRegister}
+                onChange={(e) => setSyncRegister(e.target.checked)}
+              />
+              {ip.syncRegister}
+            </label>
+          ) : null}
           <Button
             variant="primary"
             disabled={importing || !file || preview?.format !== "prodata_transaction_book"}

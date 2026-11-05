@@ -93,6 +93,14 @@ export const sqApp: AppMessages = {
       "Vlen për admin, arkë, hyrje dhe portalin e depoës.",
     administration: {
       section: "Administrata",
+      financeModeTitle: "Financat & arka",
+      financeModeDesc:
+        "Për këtë fazë mund të punoni vetëm me financat: import Excel Pro-Data në fund të ditës, caktim mënyrash dhe statusesh, pastaj borxhe dhe lista thirrjeje. Aktivizoni arkën më vonë për turne dhe libër manual.",
+      cashRegisterEnabled: "Aktivizo arkën (turne + libër manual)",
+      cashRegisterEnabledDesc:
+        "Kur është fikur, pagesat ndiqen vetëm nga importi Pro-Data dhe Për caktim — pa turne apo rreshta manualë në arkë.",
+      registerOn: "Arka aktive",
+      registerOff: "Vetëm financat (arka fikur)",
       cashRegisterRules: "Rregullat e arkës",
       strictTraceability: "Gjurmim i detyrueshëm në arkë",
       strictDesc:
@@ -100,9 +108,10 @@ export const sqApp: AppMessages = {
       strictOn: "I detyrueshëm",
       relaxed: "I lehtë",
       strictHelp:
-        "Borxhet dhe listat e thirrjeve kërkojnë gjithmonë faturë dhe agjent. Ky çelës vlen vetëm për faqen e arkës.",
+        "Borxhet dhe listat e thirrjeve kërkojnë gjithmonë faturë dhe agjent. Ky çelës vlen vetëm kur arka është e aktivizuar.",
       loadFailed: "Nuk u ngarkuan cilësimet e administratës.",
       saveFailed: "Nuk u ruajt.",
+      saved: "Cilësimet e administratës u ruajtën.",
       strictEnabled: "Rregullat e rrepta të arkës u aktivizuan.",
       relaxedEnabled: "Arka përdor rregulla të lejuara.",
     },
@@ -139,8 +148,10 @@ export const sqApp: AppMessages = {
         "Borxhet e hapura (sipas nr. faturës, automatik)",
         "Lista e thirrjeve pas 2+ ditësh pa pagesë/përditësim",
       ],
+      financeOnlyMode:
+        "Arka është fikur — rrjedha ditore: import Pro-Data → Për caktim → verifiko borxhet dhe listën e thirrjeve. Aktivizoni arkën te Cilësimet kur të duhet mbyllja e turnit.",
       invoiceKey:
-        "Numri i faturës është çelësi unik në import, caktim, borxhe të hapura dhe rreshtat e arkës.",
+        "Numri i faturës është çelësi unik në import, caktim, borxhe të hapura dhe (kur arka është aktive) libër arkë.",
       activeInvoice: "Ndjekja e faturës {invoice}:",
       jump: {
         debts: "Borxhet e hapura",
@@ -351,7 +362,7 @@ export const sqApp: AppMessages = {
       navClients: "Klientët",
       title: "Klientët dhe të arkëtueshmet",
       readOnly:
-        "Vetëm lexim. Statusi i pagesës, arka dhe importet i menaxhon administrata te Financat.",
+        "Vetëm lexim — kontrollo klientët, borxhet dhe listën e thirrjeve me Pro-Data. Kërko nga menaxhmenti ndryshime te Financat (import Excel & Për caktim).",
       askManagement: "Kërko ndryshim nga menaxhmenti",
       requestSent: "Kërkesa u regjistrua në log për menaxhmentin.",
       requestFailed: "Kërkesa nuk u dërgua.",

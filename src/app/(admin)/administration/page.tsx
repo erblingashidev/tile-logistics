@@ -28,6 +28,9 @@ import {
 } from "@/components/ui";
 import { format } from "date-fns";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useRouter } from "next/navigation";
+import { useOrgPath } from "@/components/organization/OrgPathProvider";
+import { useAdministrationSettings } from "@/components/administration/AdministrationSettingsProvider";
 
 type RegisterSession = {
   id: number;
@@ -51,6 +54,17 @@ function todayRange() {
 }
 
 export default function AdministrationPage() {
+  const router = useRouter();
+  const { orgPath } = useOrgPath();
+  const { cashRegisterEnabled, loading: settingsLoading } =
+    useAdministrationSettings();
+
+  useEffect(() => {
+    if (!settingsLoading && !cashRegisterEnabled) {
+      router.replace(orgPath("/administration/finance/imports"));
+    }
+  }, [settingsLoading, cashRegisterEnabled, router, orgPath]);
+
   const [registerSession, setRegisterSession] =
     useState<RegisterSession | null>(null);
   const [expectedCashCents, setExpectedCashCents] = useState<number | null>(

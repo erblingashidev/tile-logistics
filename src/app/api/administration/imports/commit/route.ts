@@ -7,6 +7,7 @@ import {
 } from "@/lib/services/finance-prodata-import";
 import { isInvoiceSettlementStatus } from "@/lib/administration/invoice-settlement";
 import { isAdminPaymentMethod } from "@/lib/administration/constants";
+import { getAdministrationSettings } from "@/lib/services/administration-settings";
 import { isProDataTransactionBookHeaders } from "@/lib/administration/prodata-transaction-book";
 import * as XLSX from "xlsx";
 
@@ -115,13 +116,15 @@ export async function POST(request: NextRequest) {
     }
 
     return runWithTenantOrganizationAsync(auth.organizationId, async () => {
+      const adminSettings = await getAdministrationSettings(auth.organizationId);
       const { analysis, result } = await commitProDataFinanceImport(
         auth.organizationId,
         auth.session,
         buffer,
         name,
         {
-          syncRegisterPayments: syncRegister,
+          syncRegisterPayments:
+            syncRegister && adminSettings.cashRegisterEnabled,
           settlementOverrides,
         }
       );
