@@ -3,6 +3,7 @@ import { requireAdministrationRead } from "@/lib/auth/administration-api";
 import { runWithTenantOrganizationAsync } from "@/lib/organizations/tenant-context";
 import { listRegisterTransactions } from "@/lib/services/administration-register";
 import { expenseCategoryLabel } from "@/lib/administration/constants";
+import { guardCashRegisterEnabled } from "@/lib/services/administration-api-guards";
 
 export const runtime = "nodejs";
 
@@ -25,6 +26,8 @@ export async function GET(request: NextRequest) {
   }
 
   return runWithTenantOrganizationAsync(auth.organizationId, async () => {
+    const registerGuard = await guardCashRegisterEnabled(auth.organizationId);
+    if (registerGuard) return registerGuard;
     const transactions = await listRegisterTransactions(auth.organizationId, {
       from,
       to,

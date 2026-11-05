@@ -5,6 +5,7 @@ import { format } from "date-fns";
 import { formatAdminMoney } from "@/components/administration/AdministrationLedgerTable";
 import { FinancePageShell } from "@/components/administration/finance/FinancePageShell";
 import { useAppMessages } from "@/components/i18n/LocaleProvider";
+import { useAdministrationPermissions } from "@/components/administration/useAdministrationPermissions";
 import { Alert, Card, Input, Button, LoadingState } from "@/components/ui";
 
 type SummaryResponse = {
@@ -33,6 +34,7 @@ export default function FinanceReportsPage() {
   const t = useAppMessages();
   const p = t.finance.pages.reports;
   const c = t.finance.common;
+  const { loading: permLoading, canReports } = useAdministrationPermissions();
   const [filterFrom, setFilterFrom] = useState(() =>
     format(new Date(new Date().getFullYear(), 0, 1), "yyyy-MM-dd")
   );
@@ -67,6 +69,22 @@ export default function FinanceReportsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  if (permLoading) {
+    return (
+      <FinancePageShell title={p.title}>
+        <LoadingState title={p.loading} />
+      </FinancePageShell>
+    );
+  }
+
+  if (!canReports) {
+    return (
+      <FinancePageShell title={p.title}>
+        <Alert tone="error">You do not have access to finance reports.</Alert>
+      </FinancePageShell>
+    );
+  }
 
   return (
     <FinancePageShell title={p.title}>

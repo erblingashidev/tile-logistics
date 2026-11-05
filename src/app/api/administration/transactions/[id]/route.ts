@@ -5,6 +5,10 @@ import {
   deleteRegisterTransaction,
   patchRegisterTransaction,
 } from "@/lib/services/administration-register";
+import {
+  isAdminPaymentMethod,
+  isAdminTransactionKind,
+} from "@/lib/administration/constants";
 import { sessionHasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 
 export const runtime = "nodejs";
@@ -21,6 +25,22 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid id" }, { status: 400 });
   }
   const body = (await request.json()) as Record<string, unknown>;
+  if (body.kind != null && body.kind !== "") {
+    const kind = String(body.kind);
+    if (!isAdminTransactionKind(kind)) {
+      return NextResponse.json({ error: "Invalid kind" }, { status: 400 });
+    }
+  }
+  if (
+    body.paymentMethod != null &&
+    body.paymentMethod !== "" &&
+    !isAdminPaymentMethod(String(body.paymentMethod))
+  ) {
+    return NextResponse.json(
+      { error: "Invalid payment method" },
+      { status: 400 }
+    );
+  }
   return runWithTenantOrganizationAsync(auth.organizationId, async () => {
     try {
       await patchRegisterTransaction(

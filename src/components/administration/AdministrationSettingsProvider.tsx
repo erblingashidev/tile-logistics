@@ -17,6 +17,7 @@ import {
 type AdministrationSettingsContextValue = {
   settings: AdministrationSettings;
   loading: boolean;
+  loadError: boolean;
   refresh: () => Promise<void>;
   cashRegisterEnabled: boolean;
 };
@@ -33,15 +34,23 @@ export function AdministrationSettingsProvider({
     DEFAULT_ADMINISTRATION_SETTINGS
   );
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   const refresh = useCallback(async () => {
+    setLoading(true);
+    setLoadError(false);
     try {
       const res = await fetch("/api/administration/settings", {
         cache: "no-store",
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        setLoadError(true);
+        return;
+      }
       const data = (await res.json()) as { settings?: AdministrationSettings };
       if (data.settings) setSettings(data.settings);
+    } catch {
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -55,10 +64,11 @@ export function AdministrationSettingsProvider({
     () => ({
       settings,
       loading,
+      loadError,
       refresh,
-      cashRegisterEnabled: settings.cashRegisterEnabled,
+      cashRegisterEnabled: loadError ? true : settings.cashRegisterEnabled,
     }),
-    [settings, loading, refresh]
+    [settings, loading, loadError, refresh]
   );
 
   return (
@@ -74,6 +84,7 @@ export function useAdministrationSettings() {
     return {
       settings: DEFAULT_ADMINISTRATION_SETTINGS,
       loading: false,
+      loadError: false,
       refresh: async () => {},
       cashRegisterEnabled: DEFAULT_ADMINISTRATION_SETTINGS.cashRegisterEnabled,
     };

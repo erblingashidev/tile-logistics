@@ -21,6 +21,7 @@ import { CashierPageFrame } from "@/components/layout/CashierPageFrame";
 import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
 import { useAppMessages } from "@/components/i18n/LocaleProvider";
 import { useAdministrationSettings } from "@/components/administration/AdministrationSettingsProvider";
+import { useAdministrationPermissions } from "@/components/administration/useAdministrationPermissions";
 import type { AppMessages } from "@/lib/i18n/messages";
 
 function warehouseNavLabels(t: AppMessages) {
@@ -38,7 +39,8 @@ function buildNavGroups(
   modules: CompanyModuleFlags,
   isPlatformAdmin: boolean,
   t: AppMessages,
-  cashRegisterEnabled: boolean
+  cashRegisterEnabled: boolean,
+  canReports: boolean
 ) {
   return [
     {
@@ -101,10 +103,6 @@ function buildNavGroups(
               },
               { href: "/administration/finance/debts", label: t.nav.items.openDebts },
               {
-                href: "/administration/finance/debts/by-agent",
-                label: t.nav.items.debtsByAgent,
-              },
-              {
                 href: "/administration/finance/debts/by-client",
                 label: t.nav.items.debtsByClient,
               },
@@ -116,10 +114,14 @@ function buildNavGroups(
                     },
                   ]
                 : []),
-              {
-                href: "/administration/finance/reports",
-                label: t.nav.items.financeReports,
-              },
+              ...(canReports
+                ? [
+                    {
+                      href: "/administration/finance/reports",
+                      label: t.nav.items.financeReports,
+                    },
+                  ]
+                : []),
             ],
           },
         ]
@@ -186,6 +188,7 @@ function NavLinks({
   const isPlatformAdmin = adminSession?.isPlatformAdmin ?? false;
   const t = useAppMessages();
   const { cashRegisterEnabled } = useAdministrationSettings();
+  const { canReports } = useAdministrationPermissions();
 
   if (!adminSession) {
     return (
@@ -204,7 +207,8 @@ function NavLinks({
     modules,
     isPlatformAdmin,
     t,
-    cashRegisterEnabled
+    cashRegisterEnabled,
+    canReports
   );
   return (
     <>

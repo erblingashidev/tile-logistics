@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useAppMessages } from "@/components/i18n/LocaleProvider";
 import { useAdministrationSettings } from "@/components/administration/AdministrationSettingsProvider";
+import { useAdministrationPermissions } from "@/components/administration/useAdministrationPermissions";
+import { useOrgPath } from "@/components/organization/OrgPathProvider";
 
 const LINKS = [
   { href: "/administration/finance/imports", key: "excelImport" as const },
@@ -19,33 +21,41 @@ const LINKS = [
 ] as const;
 
 function isActive(pathname: string, href: string) {
+  const path = pathname.replace(/\/+$/, "") || "/";
   if (href === "/administration/finance") {
-    return pathname === "/administration/finance";
+    return path.endsWith("/administration/finance");
   }
   if (href === "/administration/finance/debts") {
-    return pathname === "/administration/finance/debts";
+    return path.endsWith("/administration/finance/debts");
   }
   if (href === "/administration/finance/assignments") {
-    return pathname === "/administration/finance/assignments";
+    return path.endsWith("/administration/finance/assignments");
   }
-  return pathname === href || pathname.startsWith(`${href}/`);
+  return path === href || path.endsWith(href);
 }
 
 export function AdministrationFinanceNav() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const t = useAppMessages();
+  const { orgPath } = useOrgPath();
   const { cashRegisterEnabled } = useAdministrationSettings();
+  const { canReports } = useAdministrationPermissions();
   const q = searchParams.get("q");
   const day = searchParams.get("day");
   const params = new URLSearchParams();
   if (day) params.set("day", day);
   if (q) params.set("q", q);
   const querySuffix = params.toString() ? `?${params.toString()}` : "";
-  const links = LINKS.filter(
-    (link) =>
-      link.href !== "/administration/finance" || cashRegisterEnabled
-  );
+  const links = LINKS.filter((link) => {
+    if (link.href === "/administration/finance" && !cashRegisterEnabled) {
+      return false;
+    }
+    if (link.href === "/administration/finance/reports" && !canReports) {
+      return false;
+    }
+    return true;
+  });
   return (
     <nav className="mb-6 flex flex-wrap gap-2 border-b border-zinc-200 pb-4">
       {links.map((link) => {
@@ -53,7 +63,7 @@ export function AdministrationFinanceNav() {
         return (
           <Link
             key={link.href}
-            href={`${link.href}${querySuffix}`}
+            href={`${orgPath(link.href)}${querySuffix}`}
             className={`rounded-full px-4 py-2 text-base font-semibold shadow-sm transition ${
               active
                 ? "bg-zinc-900 text-white"

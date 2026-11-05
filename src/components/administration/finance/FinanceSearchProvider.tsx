@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { todayBusinessDay } from "@/lib/administration/prodata-invoice-conflicts";
+import { todayBusinessDay } from "@/lib/administration/business-day";
 import { useAppMessages } from "@/components/i18n/LocaleProvider";
 import { Input } from "@/components/ui";
 

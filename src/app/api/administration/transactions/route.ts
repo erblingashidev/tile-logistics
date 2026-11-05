@@ -13,6 +13,7 @@ import {
   isAdminTransactionKind,
 } from "@/lib/administration/constants";
 import { assertCashRegisterEnabled } from "@/lib/services/administration-settings";
+import { guardCashRegisterEnabled } from "@/lib/services/administration-api-guards";
 
 export const runtime = "nodejs";
 
@@ -21,6 +22,8 @@ export async function GET(request: NextRequest) {
   if (!auth.ok) return auth.response;
   const sp = request.nextUrl.searchParams;
   return runWithTenantOrganizationAsync(auth.organizationId, async () => {
+    const registerGuard = await guardCashRegisterEnabled(auth.organizationId);
+    if (registerGuard) return registerGuard;
     const pm = sp.get("paymentMethod");
     const kind = sp.get("kind");
     const transactions = await listRegisterTransactions(auth.organizationId, {

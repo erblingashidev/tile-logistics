@@ -25,21 +25,8 @@ export default function AdministrationFinancePage() {
     useAdministrationSettings();
   const t = useAppMessages();
   const p = t.finance.pages.register;
-
-  useEffect(() => {
-    if (!settingsLoading && !cashRegisterEnabled) {
-      router.replace(orgPath("/administration/finance/imports"));
-    }
-  }, [settingsLoading, cashRegisterEnabled, router, orgPath]);
-
-  if (settingsLoading || !cashRegisterEnabled) {
-    return (
-      <FinancePageShell title={p.title}>
-        <LoadingState title={t.common.loading} />
-      </FinancePageShell>
-    );
-  }
   const c = t.finance.common;
+
   const [filterFrom, setFilterFrom] = useState(() =>
     format(new Date(), "yyyy-MM-dd")
   );
@@ -51,6 +38,12 @@ export default function AdministrationFinancePage() {
     []
   );
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!settingsLoading && !cashRegisterEnabled) {
+      router.replace(orgPath("/administration/finance/imports"));
+    }
+  }, [settingsLoading, cashRegisterEnabled, router, orgPath]);
 
   const loadOverview = useCallback(async () => {
     const params = new URLSearchParams({
@@ -88,8 +81,9 @@ export default function AdministrationFinancePage() {
   }, [loadOverview, loadClosedSessions]);
 
   useEffect(() => {
+    if (settingsLoading || !cashRegisterEnabled) return;
     void refreshSummary();
-  }, [refreshSummary]);
+  }, [refreshSummary, settingsLoading, cashRegisterEnabled]);
 
   function exportLedgerCsv() {
     const params = new URLSearchParams({
@@ -97,6 +91,14 @@ export default function AdministrationFinancePage() {
       to: `${filterTo}T23:59:59.999Z`,
     });
     window.location.href = `/api/administration/export?${params}`;
+  }
+
+  if (settingsLoading || !cashRegisterEnabled) {
+    return (
+      <FinancePageShell title={p.title}>
+        <LoadingState title={t.common.loading} />
+      </FinancePageShell>
+    );
   }
 
   return (

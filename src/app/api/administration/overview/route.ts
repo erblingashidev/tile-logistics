@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdministrationRead } from "@/lib/auth/administration-api";
 import { runWithTenantOrganizationAsync } from "@/lib/organizations/tenant-context";
 import { getRegisterFinanceOverview } from "@/lib/services/administration-register";
+import { guardCashRegisterEnabled } from "@/lib/services/administration-api-guards";
 
 export const runtime = "nodejs";
 
@@ -17,6 +18,8 @@ export async function GET(request: NextRequest) {
     `${new Date().toISOString().slice(0, 10)}T23:59:59.999Z`;
 
   return runWithTenantOrganizationAsync(auth.organizationId, async () => {
+    const registerGuard = await guardCashRegisterEnabled(auth.organizationId);
+    if (registerGuard) return registerGuard;
     const overview = await getRegisterFinanceOverview(
       auth.organizationId,
       from,

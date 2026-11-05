@@ -24,6 +24,12 @@ export async function POST(
     decision?: "approve" | "reject";
     reviewNotes?: string;
   };
+  if (body.decision !== "approve" && body.decision !== "reject") {
+    return NextResponse.json(
+      { error: "decision must be approve or reject" },
+      { status: 400 }
+    );
+  }
   const approve = body.decision === "approve";
   return runWithTenantOrganizationAsync(auth.organizationId, async () => {
     try {
@@ -38,7 +44,7 @@ export async function POST(
     } catch (err) {
       const message = err instanceof Error ? err.message : "Request failed";
       const status = message === "Forbidden" ? 403 : 400;
-      return NextResponse.json({ error: message }, { status: 400 });
+      return NextResponse.json({ error: message }, { status });
     }
   });
 }

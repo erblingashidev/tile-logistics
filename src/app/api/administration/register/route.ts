@@ -12,6 +12,7 @@ import {
 } from "@/lib/services/administration-register";
 import { sessionHasPermission, PERMISSIONS } from "@/lib/auth/permissions";
 import { assertCashRegisterEnabled } from "@/lib/services/administration-settings";
+import { guardCashRegisterEnabled } from "@/lib/services/administration-api-guards";
 
 export const runtime = "nodejs";
 
@@ -22,6 +23,8 @@ export async function GET(request: NextRequest) {
   const from = sp.get("from");
   const to = sp.get("to");
   return runWithTenantOrganizationAsync(auth.organizationId, async () => {
+    const registerGuard = await guardCashRegisterEnabled(auth.organizationId);
+    if (registerGuard) return registerGuard;
     if (from && to) {
       const sessions = await listClosedRegisterSessions(
         auth.organizationId,
