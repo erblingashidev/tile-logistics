@@ -159,7 +159,9 @@ export function FinanceSearchBar() {
     });
   }
 
-  const onDebtsRoute = pathname.includes("/administration/finance/debts");
+  const onDebtsRoute =
+    pathname.includes("/administration/finance/debts") ||
+    pathname.includes("/administration/finance/assignments");
 
   return (
     <div className="mb-4 rounded-lg border border-zinc-200 bg-white px-4 py-3">

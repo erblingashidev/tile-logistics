@@ -32,6 +32,7 @@ import {
   normalizeBusinessDay,
   type InvoiceNumberConflict,
 } from "@/lib/administration/prodata-invoice-conflicts";
+import { invoiceMatchesAssignmentBusinessDay } from "@/lib/administration/business-day";
 
 export type ProDataFinanceInvoiceRow = {
   invoiceNumber: string;
@@ -95,12 +96,14 @@ export async function listProDataInvoicesPendingAssignment(
   organizationId: number,
   businessDay?: string | null
 ): Promise<ProDataFinanceInvoiceRow[]> {
-  const day = businessDay?.trim().slice(0, 10);
   const all = await listProDataFinanceInvoices(organizationId);
   return all.filter(
     (inv) =>
       inv.documentCategory !== "delivery_note" &&
-      (!day || inv.transactionDate.slice(0, 10) === day) &&
+      invoiceMatchesAssignmentBusinessDay(
+        inv.transactionDate,
+        businessDay
+      ) &&
       !isInvoiceSettlementAssignmentComplete({
         settlementStatus: inv.settlementStatus,
         paidAmountCents: inv.paidAmountCents,

@@ -128,7 +128,7 @@ export const en = {
     workday: {
       label: "Business day",
       scopeNote:
-        "Day filter applies to Excel import and To assign. Open debts list every unpaid invoice until it is settled.",
+        "Excel import is for the selected day. To assign and open debts include today’s backlog until payment status is complete.",
     },
     clientCard: {
       title: "Client report",

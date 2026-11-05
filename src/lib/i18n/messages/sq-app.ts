@@ -130,7 +130,7 @@ export const sqApp: AppMessages = {
     workday: {
       label: "Dita e punës",
       scopeNote:
-        "Dita vlen për import Excel dhe Për caktim. Borxhet e hapura mbajnë çdo faturë të papaguar derisa të mbyllet.",
+        "Import Excel është për ditën e zgjedhur. Për caktim dhe borxhet e hapura përfshijnë mbetjen e sotme derisa statusi i pagesës të plotësohet.",
     },
     clientCard: {
       title: "Raporti i klientit",
